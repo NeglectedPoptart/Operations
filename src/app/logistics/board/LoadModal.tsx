@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createLoad, updateLoad } from "./actions";
+import { createDestinationCity, createHub, createLoad, updateLoad } from "./actions";
+import { splitDestinationLabel, validateCityStateLabel } from "@/lib/destination";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
+import LockedCombobox from "@/components/LockedCombobox";
 import StopsEditor, { emptyStop, type StopFormState } from "./StopsEditor";
 
 function stopsFromLoad(load: Load | null): StopFormState[] {
@@ -19,21 +21,17 @@ function stopsFromLoad(load: Load | null): StopFormState[] {
     }));
 }
 
-// Splits a "City, ST" destination string into its two DB columns.
-function splitDestination(destination: string): { destination_city: string; destination_state: string } {
-  const [city, state] = destination.split(",").map((part) => part.trim());
-  return { destination_city: city ?? "", destination_state: state ?? "" };
-}
-
 export default function LoadModal({
   load,
   brokers,
-  cityOptions,
+  hubOptions: initialHubOptions,
+  cityOptions: initialCityOptions,
   initialStatus,
   onClose,
 }: {
   load: Load | null;
   brokers: Broker[];
+  hubOptions: string[];
   cityOptions: string[];
   initialStatus: LoadStatus;
   onClose: () => void;
@@ -41,13 +39,26 @@ export default function LoadModal({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [stops, setStops] = useState<StopFormState[]>(() => stopsFromLoad(load));
+  const [source, setSource] = useState(load?.source ?? "");
+  const [hubOptions, setHubOptions] = useState(initialHubOptions);
+  const [cityOptions, setCityOptions] = useState(initialCityOptions);
+
+  function addHubOption(name: string) {
+    setHubOptions((prev) => (prev.includes(name) ? prev : [...prev, name].sort()));
+    createHub(name).catch(() => {});
+  }
+
+  function addCityOption(label: string) {
+    setCityOptions((prev) => (prev.includes(label) ? prev : [...prev, label].sort()));
+    createDestinationCity(label).catch(() => {});
+  }
 
   function handleSubmit(formData: FormData) {
     setError(null);
-    const stopsForSave = stops.map(({ destination, ...rest }) => ({
-      ...rest,
-      ...splitDestination(destination),
-    }));
+    const stopsForSave = stops.map(({ destination, ...rest }) => {
+      const { city, state } = splitDestinationLabel(destination);
+      return { ...rest, destination_city: city, destination_state: state };
+    });
     formData.set("stops_json", JSON.stringify(stopsForSave));
     startTransition(async () => {
       try {
@@ -83,8 +94,17 @@ export default function LoadModal({
             <input type="date" name="loading_date" defaultValue={load?.loading_date ?? ""} className={field} />
           </div>
           <div className="col-span-1">
-            <label className={label}>Source</label>
-            <input name="source" defaultValue={load?.source ?? ""} className={field} />
+            <label className={label}>Source City</label>
+            <input type="hidden" name="source" value={source} />
+            <LockedCombobox
+              value={source}
+              onChange={setSource}
+              options={hubOptions}
+              onAddOption={addHubOption}
+              validateNew={validateCityStateLabel}
+              placeholder="Pharr, TX"
+              className={field}
+            />
           </div>
           <div className="col-span-1">
             <label className={label}>Status</label>
@@ -113,12 +133,13 @@ export default function LoadModal({
             </select>
           </div>
 
-          <StopsEditor stops={stops} onChange={setStops} cityOptions={cityOptions} />
+          <StopsEditor
+            stops={stops}
+            onChange={setStops}
+            cityOptions={cityOptions}
+            onAddCityOption={addCityOption}
+          />
 
-          <div className="col-span-2 sm:col-span-4">
-            <label className={label}>Status Notes</label>
-            <textarea name="status_note" defaultValue={load?.status_note ?? ""} rows={2} className={field} />
-          </div>
           <div className="col-span-2 sm:col-span-4">
             <label className={label}>Notes</label>
             <textarea name="notes" defaultValue={load?.notes ?? ""} rows={2} className={field} />

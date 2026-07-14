@@ -9,7 +9,7 @@ export interface DeliveringStop extends LoadStop {
     id: string;
     source: string | null;
     rate: number | null;
-    status_note: string | null;
+    notes: string | null;
     brokers: Broker | null;
   } | null;
 }
@@ -51,9 +51,9 @@ export default function DeliveringCard({ stop }: { stop: DeliveringStop }) {
       <p className="mt-2 text-xs text-black/60 dark:text-white/60">
         Delivering today{stop.delivery_time && ` at ${stop.delivery_time}`}
       </p>
-      {load?.status_note && (
+      {load?.notes && (
         <p className="mt-2 rounded bg-yellow-50 px-2 py-1 text-xs text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-          {load.status_note}
+          {load.notes}
         </p>
       )}
       <div className="mt-3 flex items-center justify-end gap-2">

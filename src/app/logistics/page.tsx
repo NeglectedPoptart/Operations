@@ -32,8 +32,9 @@ export default async function HomePage() {
       .order("position", { foreignTable: "load_stops", ascending: true }),
     supabase
       .from("load_stops")
-      .select("*, loads(id, source, rate, status_note, brokers(id, name))")
+      .select("*, loads!inner(id, source, rate, notes, brokers(id, name))")
       .eq("delivery_date", today)
+      .neq("loads.status", "complete")
       .order("delivery_time", { ascending: true }),
     supabase
       .from("loads")

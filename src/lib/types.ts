@@ -17,6 +17,17 @@ export interface Lane {
   destination: string;
 }
 
+export interface Hub {
+  id: string;
+  name: string;
+}
+
+export interface DestinationCity {
+  id: string;
+  city: string;
+  state: string;
+}
+
 export interface LoadStop {
   id: string;
   load_id: string;
@@ -35,7 +46,6 @@ export interface Load {
   loading_date: string | null;
   source: string | null;
   status: LoadStatus;
-  status_note: string | null;
   rate: number | null;
   broker_id: string | null;
   brokers: Broker | null;

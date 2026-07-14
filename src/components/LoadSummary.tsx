@@ -7,6 +7,7 @@ import type { Load } from "@/lib/types";
 export default function LoadSummary({ load }: { load: Load }) {
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const firstStop = stops[0];
+  const additionalStops = stops.slice(1);
 
   return (
     <>
@@ -40,10 +41,18 @@ export default function LoadSummary({ load }: { load: Load }) {
       </div>
 
       <div className="mt-2 space-y-1 text-xs text-black/60 dark:text-white/60">
-        <p>Loading: {formatDate(load.loading_date) || "—"}</p>
-        {stops.map((stop, i) => (
+        <p>
+          Loading: {formatDate(load.loading_date) || "—"}
+          {additionalStops.length === 0 && firstStop && (firstStop.delivery_date || firstStop.delivery_time) && (
+            <span>
+              {" "}
+              · Delivery: {formatDate(firstStop.delivery_date) || "—"} {firstStop.delivery_time}
+            </span>
+          )}
+        </p>
+        {additionalStops.map((stop, i) => (
           <p key={stop.id}>
-            {stops.length > 1 && <span className="font-medium">Drop {i + 1}: </span>}
+            <span className="font-medium">Drop {i + 2}: </span>
             {stop.client_name && <span>{stop.client_name} · </span>}
             {stop.order_number && `#${stop.order_number} `}
             {stop.po_number && `· PO ${stop.po_number} `}
@@ -58,11 +67,6 @@ export default function LoadSummary({ load }: { load: Load }) {
         ))}
       </div>
 
-      {load.status_note && (
-        <p className="mt-2 rounded bg-yellow-50 px-2 py-1 text-xs text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
-          {load.status_note}
-        </p>
-      )}
       {load.notes && <p className="mt-1 text-xs italic text-black/50 dark:text-white/50">{load.notes}</p>}
     </>
   );

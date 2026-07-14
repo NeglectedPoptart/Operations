@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
+import { splitDestinationLabel } from "@/lib/destination";
 import type { LoadStatus } from "@/lib/types";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -36,7 +37,6 @@ function loadFieldsFromForm(formData: FormData) {
     loading_date: str(formData, "loading_date"),
     source: str(formData, "source"),
     status: (str(formData, "status") ?? "pending_to_load") as LoadStatus,
-    status_note: str(formData, "status_note"),
     rate: num(formData, "rate"),
     broker_id: str(formData, "broker_id"),
     notes: str(formData, "notes"),
@@ -148,11 +148,11 @@ export async function updateLoadReady(id: string, readyToLoad: boolean) {
   revalidateAll();
 }
 
-export async function updateStatusNote(id: string, statusNote: string) {
+export async function updateNotes(id: string, notes: string) {
   const supabase = await createClient();
   const { error } = await supabase
     .from("loads")
-    .update({ status_note: statusNote.trim() === "" ? null : statusNote.trim() })
+    .update({ notes: notes.trim() === "" ? null : notes.trim() })
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
@@ -175,4 +175,26 @@ export async function createBroker(name: string) {
   if (error) throw new Error(error.message);
   revalidateAll();
   return data;
+}
+
+// Adds a new option to the locked Source City list. Fire-and-forget from the
+// UI's "+ Add" combobox action - duplicate names (23505) are ignored since
+// the load form field itself doesn't depend on this succeeding.
+export async function createHub(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  const supabase = await createClient();
+  const { error } = await supabase.from("hubs").insert({ name: trimmed });
+  if (error && error.code !== "23505") throw new Error(error.message);
+  revalidateAll();
+}
+
+// Same idea as createHub, for the locked Destination list.
+export async function createDestinationCity(label: string) {
+  const { city, state } = splitDestinationLabel(label);
+  if (!city || !state) return;
+  const supabase = await createClient();
+  const { error } = await supabase.from("destination_cities").insert({ city, state });
+  if (error && error.code !== "23505") throw new Error(error.message);
+  revalidateAll();
 }

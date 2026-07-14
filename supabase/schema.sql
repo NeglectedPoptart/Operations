@@ -23,6 +23,26 @@ create table if not exists lanes (
   unique (from_hub, destination)
 );
 
+-- Locked list of Source City values for the load form - prevents duplicate
+-- entries from typos/capitalization (e.g. "pharr tx" vs "Pharr, TX").
+create table if not exists hubs (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique check (name like '%,%')
+);
+
+insert into hubs (name) values
+  ('Pharr, TX'), ('Salinas, CA'), ('Santa Maria, CA'), ('Nogales, AZ')
+on conflict (name) do nothing;
+
+-- Locked list of Destination values for the load form, same reasoning as
+-- hubs above.
+create table if not exists destination_cities (
+  id uuid primary key default gen_random_uuid(),
+  city text not null,
+  state text not null,
+  unique (city, state)
+);
+
 -- Loads: the Pending to Load / On the Road / Complete Load board. ---------
 -- One row = one truck run. Per-drop details (client, order/PO, destination,
 -- delivery date/time) live in load_stops, since a single truck can carry
@@ -33,7 +53,6 @@ create table if not exists loads (
   source text,
   status text not null default 'pending_to_load'
     check (status in ('pending_to_load', 'on_the_road', 'complete')),
-  status_note text,
   rate numeric,
   broker_id uuid references brokers (id) on delete set null,
   notes text,
@@ -146,6 +165,8 @@ create trigger old_age_items_set_updated_at
 -- tool, so all authenticated users get full read/write access) -----------
 alter table brokers enable row level security;
 alter table lanes enable row level security;
+alter table hubs enable row level security;
+alter table destination_cities enable row level security;
 alter table loads enable row level security;
 alter table load_stops enable row level security;
 alter table broker_rate_entries enable row level security;

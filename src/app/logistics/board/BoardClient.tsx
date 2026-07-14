@@ -1,26 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
 
-export default function BoardClient({ loads, brokers }: { loads: Load[]; brokers: Broker[] }) {
+export default function BoardClient({
+  loads,
+  brokers,
+  hubOptions,
+  cityOptions,
+}: {
+  loads: Load[];
+  brokers: Broker[];
+  hubOptions: string[];
+  cityOptions: string[];
+}) {
   const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(undefined);
   const [newStatus, setNewStatus] = useState<LoadStatus>("pending_to_load");
 
   const modalOpen = editingLoad !== undefined;
-
-  const cityOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const load of loads) {
-      for (const stop of load.load_stops) {
-        const label = [stop.destination_city, stop.destination_state].filter(Boolean).join(", ");
-        if (label) set.add(label);
-      }
-    }
-    return Array.from(set).sort();
-  }, [loads]);
 
   return (
     <div className="space-y-8">
@@ -59,6 +58,7 @@ export default function BoardClient({ loads, brokers }: { loads: Load[]; brokers
         <LoadModal
           load={editingLoad ?? null}
           brokers={brokers}
+          hubOptions={hubOptions}
           cityOptions={cityOptions}
           initialStatus={newStatus}
           onClose={() => setEditingLoad(undefined)}

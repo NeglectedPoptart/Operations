@@ -1,6 +1,8 @@
 "use client";
 
 import { formatMilitaryInput } from "@/lib/dates";
+import { validateCityStateLabel } from "@/lib/destination";
+import LockedCombobox from "@/components/LockedCombobox";
 
 export interface StopFormState {
   order_number: string;
@@ -28,10 +30,12 @@ export default function StopsEditor({
   stops,
   onChange,
   cityOptions,
+  onAddCityOption,
 }: {
   stops: StopFormState[];
   onChange: (stops: StopFormState[]) => void;
   cityOptions: string[];
+  onAddCityOption: (label: string) => void;
 }) {
   function updateStop(index: number, patch: Partial<StopFormState>) {
     onChange(stops.map((s, i) => (i === index ? { ...s, ...patch } : s)));
@@ -47,12 +51,6 @@ export default function StopsEditor({
 
   return (
     <div className="col-span-2 space-y-3 sm:col-span-4">
-      <datalist id="destination-city-options">
-        {cityOptions.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
-
       <div className="flex items-center justify-between">
         <label className={label}>
           Stops / Drops {stops.length > 1 && <span>({stops.length})</span>}
@@ -109,11 +107,13 @@ export default function StopsEditor({
             </div>
             <div className="col-span-2">
               <label className={label}>Destination (City, ST)</label>
-              <input
-                list="destination-city-options"
-                placeholder="Houston, TX"
+              <LockedCombobox
                 value={stop.destination}
-                onChange={(e) => updateStop(i, { destination: e.target.value })}
+                onChange={(value) => updateStop(i, { destination: value })}
+                options={cityOptions}
+                onAddOption={onAddCityOption}
+                validateNew={validateCityStateLabel}
+                placeholder="Houston, TX"
                 className={field}
               />
             </div>

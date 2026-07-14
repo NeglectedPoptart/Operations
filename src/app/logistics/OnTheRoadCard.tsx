@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateStatusNote } from "./board/actions";
+import { updateNotes } from "./board/actions";
 import { destinationLabel } from "@/lib/laneLabel";
 import type { Load } from "@/lib/types";
 
 export default function OnTheRoadCard({ load }: { load: Load }) {
   const [pending, startTransition] = useTransition();
-  const [note, setNote] = useState(load.status_note ?? "");
+  const [note, setNote] = useState(load.notes ?? "");
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const label = destinationLabel(stops);
 
   function handleSubmit() {
-    startTransition(() => updateStatusNote(load.id, note));
+    startTransition(() => updateNotes(load.id, note));
   }
 
   return (
