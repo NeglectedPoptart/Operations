@@ -81,6 +81,43 @@ create table if not exists rate_submissions (
   submitted_at timestamptz not null default now()
 );
 
+-- Warehouse: AM Holdovers - each morning's list of inbounds that didn't -----
+-- arrive the day before. A fresh list per entry_date; past days stay around
+-- for history.
+create table if not exists am_holdovers (
+  id uuid primary key default gen_random_uuid(),
+  entry_date date not null default current_date,
+  position int not null default 1,
+  po_lot_number text,
+  status text not null default 'pending_inbound'
+    check (status in ('pending_inbound', 'pending_changes', 'cancelled')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists am_holdovers_entry_date_idx on am_holdovers (entry_date);
+
+-- Warehouse: Old Age - pasted in wholesale from the Excel aging report each --
+-- time (the whole list is replaced on import), then annotated with a next
+-- step and notes here.
+create table if not exists old_age_items (
+  id uuid primary key default gen_random_uuid(),
+  position int not null default 1,
+  document text,
+  received_date date,
+  description text,
+  pack_style text,
+  size text,
+  qty numeric,
+  age integer,
+  next_step text
+    check (next_step in ('pending_qc', 'cash_sale', 'repack', 'as_is', 'dump_donate', 'moved')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Keep loads.updated_at current on every edit ------------------------------
 create or replace function set_updated_at()
 returns trigger as $$
@@ -95,6 +132,16 @@ create trigger loads_set_updated_at
   before update on loads
   for each row execute function set_updated_at();
 
+drop trigger if exists am_holdovers_set_updated_at on am_holdovers;
+create trigger am_holdovers_set_updated_at
+  before update on am_holdovers
+  for each row execute function set_updated_at();
+
+drop trigger if exists old_age_items_set_updated_at on old_age_items;
+create trigger old_age_items_set_updated_at
+  before update on old_age_items
+  for each row execute function set_updated_at();
+
 -- Row Level Security: any signed-in user (this is an internal 1-3 person
 -- tool, so all authenticated users get full read/write access) -----------
 alter table brokers enable row level security;
@@ -103,6 +150,8 @@ alter table loads enable row level security;
 alter table load_stops enable row level security;
 alter table broker_rate_entries enable row level security;
 alter table rate_submissions enable row level security;
+alter table am_holdovers enable row level security;
+alter table old_age_items enable row level security;
 
 drop policy if exists "authenticated full access" on brokers;
 create policy "authenticated full access" on brokers
@@ -126,4 +175,12 @@ create policy "authenticated full access" on broker_rate_entries
 
 drop policy if exists "authenticated full access" on rate_submissions;
 create policy "authenticated full access" on rate_submissions
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on am_holdovers;
+create policy "authenticated full access" on am_holdovers
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on old_age_items;
+create policy "authenticated full access" on old_age_items
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

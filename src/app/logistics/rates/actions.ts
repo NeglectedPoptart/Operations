@@ -17,7 +17,8 @@ export async function upsertRateEntry(
       { onConflict: "lane_id,broker_id,week_start_date" },
     );
   if (error) throw new Error(error.message);
-  revalidatePath("/rates");
+  revalidatePath("/logistics/rates");
+  revalidatePath("/");
 }
 
 export async function createLane(fromHub: string, destination: string) {
@@ -28,7 +29,7 @@ export async function createLane(fromHub: string, destination: string) {
     .select()
     .single();
   if (error) throw new Error(error.message);
-  revalidatePath("/rates");
+  revalidatePath("/logistics/rates");
   return data;
 }
 
@@ -36,8 +37,8 @@ export async function createBroker(name: string) {
   const supabase = await createClient();
   const { data, error } = await supabase.from("brokers").insert({ name }).select().single();
   if (error) throw new Error(error.message);
-  revalidatePath("/rates");
-  revalidatePath("/board");
+  revalidatePath("/logistics/rates");
+  revalidatePath("/logistics/board");
   return data;
 }
 
@@ -45,7 +46,8 @@ export async function deleteLane(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("lanes").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidatePath("/rates");
+  revalidatePath("/logistics/rates");
+  revalidatePath("/");
 }
 
 export async function submitWeek(weekStartDate: string, submittedByEmail: string) {
@@ -57,12 +59,14 @@ export async function submitWeek(weekStartDate: string, submittedByEmail: string
       { onConflict: "week_start_date" },
     );
   if (error) throw new Error(error.message);
-  revalidatePath("/rates");
+  revalidatePath("/logistics/rates");
+  revalidatePath("/");
 }
 
 export async function unlockWeek(weekStartDate: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("rate_submissions").delete().eq("week_start_date", weekStartDate);
   if (error) throw new Error(error.message);
-  revalidatePath("/rates");
+  revalidatePath("/logistics/rates");
+  revalidatePath("/");
 }

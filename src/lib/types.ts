@@ -60,3 +60,49 @@ export interface RateSubmission {
   submitted_by: string;
   submitted_at: string;
 }
+
+export type AmHoldoverStatus = "pending_inbound" | "pending_changes" | "cancelled";
+
+export const AM_HOLDOVER_STATUSES: { value: AmHoldoverStatus; label: string }[] = [
+  { value: "pending_inbound", label: "Pending Inbound" },
+  { value: "pending_changes", label: "Pending Changes" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+export interface AmHoldover {
+  id: string;
+  entry_date: string;
+  position: number;
+  po_lot_number: string | null;
+  status: AmHoldoverStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type OldAgeNextStep = "pending_qc" | "cash_sale" | "repack" | "as_is" | "dump_donate" | "moved";
+
+export const OLD_AGE_NEXT_STEPS: { value: OldAgeNextStep; label: string }[] = [
+  { value: "pending_qc", label: "Pending QC" },
+  { value: "cash_sale", label: "Cash Sale" },
+  { value: "repack", label: "Repack" },
+  { value: "as_is", label: "As Is" },
+  { value: "dump_donate", label: "Dump/Donate" },
+  { value: "moved", label: "Moved" },
+];
+
+export interface OldAgeItem {
+  id: string;
+  position: number;
+  document: string | null;
+  received_date: string | null;
+  description: string | null;
+  pack_style: string | null;
+  size: string | null;
+  qty: number | null;
+  age: number | null;
+  next_step: OldAgeNextStep | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}

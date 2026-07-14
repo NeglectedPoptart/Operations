@@ -71,9 +71,10 @@ function stopsFromForm(formData: FormData): StopInput[] {
 }
 
 function revalidateAll() {
-  revalidatePath("/board");
+  revalidatePath("/logistics/board");
+  revalidatePath("/logistics");
+  revalidatePath("/logistics/rates");
   revalidatePath("/");
-  revalidatePath("/rates");
 }
 
 async function replaceStops(supabase: SupabaseClient, loadId: string, stops: StopInput[]) {
