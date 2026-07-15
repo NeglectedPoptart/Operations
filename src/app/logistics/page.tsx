@@ -22,13 +22,20 @@ export default async function HomePage() {
 
   const [
     { data: loadingToday, error: e1 },
-    { data: deliveringToday, error: e2 },
-    { data: onTheRoad, error: e3 },
+    { data: pendingToLoad, error: e2 },
+    { data: deliveringToday, error: e3 },
+    { data: onTheRoad, error: e4 },
   ] = await Promise.all([
     supabase
       .from("loads")
       .select("*, brokers(id, name), load_stops(*)")
       .eq("loading_date", today)
+      .order("position", { foreignTable: "load_stops", ascending: true }),
+    supabase
+      .from("loads")
+      .select("*, brokers(id, name), load_stops(*)")
+      .eq("status", "pending_to_load")
+      .order("loading_date", { ascending: true })
       .order("position", { foreignTable: "load_stops", ascending: true }),
     supabase
       .from("load_stops")
@@ -43,11 +50,16 @@ export default async function HomePage() {
       .order("position", { foreignTable: "load_stops", ascending: true }),
   ]);
 
-  if (e1 || e2 || e3) {
-    return <p className="text-red-600">Failed to load home data: {e1?.message ?? e2?.message ?? e3?.message}</p>;
+  if (e1 || e2 || e3 || e4) {
+    return (
+      <p className="text-red-600">
+        Failed to load home data: {e1?.message ?? e2?.message ?? e3?.message ?? e4?.message}
+      </p>
+    );
   }
 
   const loading = (loadingToday ?? []) as unknown as Load[];
+  const pending = (pendingToLoad ?? []) as unknown as Load[];
   const delivering = (deliveringToday ?? []) as unknown as DeliveringStop[];
   const onRoad = (onTheRoad ?? []) as unknown as Load[];
 
@@ -69,6 +81,21 @@ export default async function HomePage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {loading.map((l) => (
+              <LoadingCard key={l.id} load={l} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 border-b-2 border-green-600 pb-2 text-lg font-bold text-green-700 dark:text-green-400">
+          Pending to Load <span className="text-sm font-normal text-black/40">({pending.length})</span>
+        </h2>
+        {pending.length === 0 ? (
+          <p className="text-sm text-black/40 dark:text-white/40">Nothing pending to load.</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {pending.map((l) => (
               <LoadingCard key={l.id} load={l} />
             ))}
           </div>

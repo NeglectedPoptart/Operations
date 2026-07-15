@@ -84,6 +84,7 @@ export interface AmHoldover {
   entry_date: string;
   position: number;
   po_lot_number: string | null;
+  customer_name: string | null;
   status: AmHoldoverStatus;
   notes: string | null;
   created_at: string;

@@ -141,6 +141,7 @@ create table if not exists am_holdovers (
   entry_date date not null default current_date,
   position int not null default 1,
   po_lot_number text,
+  customer_name text,
   status text not null default 'pending_inbound'
     check (status in ('pending_inbound', 'pending_changes', 'cancelled')),
   notes text,

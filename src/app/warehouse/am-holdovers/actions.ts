@@ -23,7 +23,12 @@ export async function addHoldoverRow(entryDate: string, nextPosition: number) {
 
 export async function updateHoldoverRow(
   id: string,
-  patch: { po_lot_number?: string | null; status?: AmHoldoverStatus; notes?: string | null },
+  patch: {
+    po_lot_number?: string | null;
+    customer_name?: string | null;
+    status?: AmHoldoverStatus;
+    notes?: string | null;
+  },
 ) {
   const supabase = await createClient();
   const { error } = await supabase.from("am_holdovers").update(patch).eq("id", id);

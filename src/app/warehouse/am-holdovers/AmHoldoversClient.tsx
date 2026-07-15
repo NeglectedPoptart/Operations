@@ -59,7 +59,10 @@ export default function AmHoldoversClient({
     }));
   }
 
-  async function handleFieldSave(id: string, patch: { po_lot_number?: string; notes?: string }) {
+  async function handleFieldSave(
+    id: string,
+    patch: { po_lot_number?: string; customer_name?: string; notes?: string },
+  ) {
     await updateHoldoverRow(id, patch).catch(() => {});
   }
 
@@ -123,6 +126,7 @@ export default function AmHoldoversClient({
             <tr>
               <th className="w-10 px-2 py-2">#</th>
               <th className="px-2 py-2">PO/Lot #</th>
+              <th className="px-2 py-2">Customer Name</th>
               <th className="px-2 py-2">Status</th>
               <th className="px-2 py-2">Notes / Follow-up</th>
               <th className="w-16 px-2 py-2 print:hidden" />
@@ -136,6 +140,13 @@ export default function AmHoldoversClient({
                   <input
                     defaultValue={entry.po_lot_number ?? ""}
                     onBlur={(e) => handleFieldSave(entry.id, { po_lot_number: e.target.value })}
+                    className={field}
+                  />
+                </td>
+                <td className="px-1 py-1">
+                  <input
+                    defaultValue={entry.customer_name ?? ""}
+                    onBlur={(e) => handleFieldSave(entry.id, { customer_name: e.target.value })}
                     className={field}
                   />
                 </td>
@@ -171,7 +182,7 @@ export default function AmHoldoversClient({
             ))}
             {entries.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No holdovers logged for this day yet.
                 </td>
               </tr>
