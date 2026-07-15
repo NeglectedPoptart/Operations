@@ -68,6 +68,31 @@ export function formatMilitaryInput(raw: string): string {
   return `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
 }
 
+// First of the month containing dateStr.
+export function monthStart(dateStr: string): string {
+  return `${dateStr.slice(0, 7)}-01`;
+}
+
+export function addMonths(dateStr: string, months: number): string {
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+// Last day of the month containing monthStartStr (which must be a "-01" date).
+export function monthEnd(monthStartStr: string): string {
+  return addDays(addMonths(monthStartStr, 1), -1);
+}
+
+export function currentMonthStart(): string {
+  return monthStart(todayISO());
+}
+
+export function formatMonthLabel(monthStartStr: string): string {
+  const d = new Date(`${monthStartStr}T00:00:00Z`);
+  return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return "";
   const d = new Date(`${dateStr}T00:00:00Z`);

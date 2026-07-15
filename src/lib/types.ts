@@ -116,3 +116,105 @@ export interface OldAgeItem {
   created_at: string;
   updated_at: string;
 }
+
+// Management: Workflow ------------------------------------------------------
+
+export type WorkflowSection = "morning_early_afternoon" | "afternoon_early_evening";
+
+export const WORKFLOW_SECTIONS: { value: WorkflowSection; label: string }[] = [
+  { value: "morning_early_afternoon", label: "Morning/Early Afternoon" },
+  { value: "afternoon_early_evening", label: "Afternoon/Early Evening" },
+];
+
+export type WorkflowStatus = "pending" | "done";
+
+export interface WorkflowTask {
+  id: string;
+  section: WorkflowSection;
+  position: number;
+  name: string;
+  status: WorkflowStatus;
+  notes: string | null;
+  is_permanent: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Management: Call Out Sheet -------------------------------------------------
+
+export type CalloutApproved = "yes" | "no";
+
+export interface CalloutEntry {
+  id: string;
+  employee_name: string;
+  entry_date: string;
+  call_out_type: string;
+  reason: string | null;
+  notified_at: string | null;
+  approved: CalloutApproved | null;
+  return_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Management: QC Agenda -------------------------------------------------------
+
+export interface QcAgendaMeta {
+  id: string;
+  entry_date: string;
+  prepared_by: string | null;
+  qc1: string | null;
+  qc2: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type QcInboundStatus = "in_transit" | "arrived" | "qc_completed";
+
+export const QC_INBOUND_STATUSES: { value: QcInboundStatus; label: string }[] = [
+  { value: "in_transit", label: "In Transit" },
+  { value: "arrived", label: "Arrived" },
+  { value: "qc_completed", label: "QC Completed" },
+];
+
+export interface QcAgendaInbound {
+  id: string;
+  entry_date: string;
+  position: number;
+  vendor_origin: string | null;
+  commodity_sku: string | null;
+  po_load_number: string | null;
+  carrier: string | null;
+  eta: string | null;
+  photo_report: string | null;
+  status: QcInboundStatus | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QcAgendaFloorAging {
+  id: string;
+  entry_date: string;
+  position: number;
+  commodity_sku: string | null;
+  lot_number: string | null;
+  received_date: string | null;
+  days_on_floor: number | null;
+  action_needed: string | null;
+  old_age_item_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface QcAgendaRepack {
+  id: string;
+  entry_date: string;
+  position: number;
+  reference: string | null;
+  pack_format: string | null;
+  priority: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
