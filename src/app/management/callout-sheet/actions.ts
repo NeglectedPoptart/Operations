@@ -59,3 +59,27 @@ export async function createCalloutType(name: string) {
   if (error && error.code !== "23505") throw new Error(error.message);
   revalidateAll();
 }
+
+// PTO requests (planned future time off) ----------------------------------
+
+export interface PtoRequestInput {
+  employee_name: string;
+  start_date: string;
+  end_date: string;
+  notes: string | null;
+}
+
+export async function createPtoRequest(input: PtoRequestInput) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("pto_requests").insert(input).select().single();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return data;
+}
+
+export async function deletePtoRequest(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("pto_requests").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}

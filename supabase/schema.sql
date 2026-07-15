@@ -217,6 +217,20 @@ create table if not exists callout_entries (
 
 create index if not exists callout_entries_date_idx on callout_entries (entry_date);
 
+-- Planned future time off (a date range) - a different shape from the
+-- reactive, single-day callout_entries log above, so it gets its own table.
+create table if not exists pto_requests (
+  id uuid primary key default gen_random_uuid(),
+  employee_name text not null,
+  start_date date not null,
+  end_date date not null,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists pto_requests_start_date_idx on pto_requests (start_date);
+
 -- Management: QC Agenda - a per-day form (like AM Holdovers), editable and --
 -- reprintable throughout the day, with past days kept as history.
 create table if not exists qc_agenda_meta (
@@ -319,6 +333,7 @@ alter table workflow_tasks enable row level security;
 alter table employees enable row level security;
 alter table callout_types enable row level security;
 alter table callout_entries enable row level security;
+alter table pto_requests enable row level security;
 alter table qc_agenda_meta enable row level security;
 alter table qc_agenda_inbounds enable row level security;
 alter table qc_agenda_floor_aging enable row level security;
@@ -370,6 +385,10 @@ create policy "authenticated full access" on callout_types
 
 drop policy if exists "authenticated full access" on callout_entries;
 create policy "authenticated full access" on callout_entries
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on pto_requests;
+create policy "authenticated full access" on pto_requests
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "authenticated full access" on qc_agenda_meta;

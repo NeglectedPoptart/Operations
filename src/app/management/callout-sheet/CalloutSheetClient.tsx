@@ -2,16 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { addMonths, formatMonthLabel, mondayOf, monthEnd, todayISO } from "@/lib/dates";
-import type { CalloutApproved, CalloutEntry } from "@/lib/types";
+import { addMonths, formatDate, formatMonthLabel, mondayOf, monthEnd, todayISO } from "@/lib/dates";
+import type { CalloutApproved, CalloutEntry, PtoRequest } from "@/lib/types";
 import LockedCombobox from "@/components/LockedCombobox";
 import {
   createCalloutEntry,
   createCalloutType,
   createEmployee,
+  createPtoRequest,
   deleteCalloutEntry,
+  deletePtoRequest,
   updateCalloutEntry,
   type CalloutEntryInput,
+  type PtoRequestInput,
 } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -28,16 +31,31 @@ function emptyDraft(defaultDate: string): CalloutEntryInput {
   };
 }
 
+function emptyPtoDraft(defaultDate: string): PtoRequestInput {
+  return { employee_name: "", start_date: defaultDate, end_date: defaultDate, notes: "" };
+}
+
+function ptoDuration(start: string, end: string): number {
+  const ms = new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime();
+  return Math.round(ms / 86400000) + 1;
+}
+
+function ptoDateRange(start: string, end: string): string {
+  return start === end ? formatDate(start) : `${formatDate(start)} - ${formatDate(end)}`;
+}
+
 export default function CalloutSheetClient({
   initialMonth,
   initialEntries,
   employeeOptions: initialEmployeeOptions,
   calloutTypeOptions: initialCalloutTypeOptions,
+  initialUpcomingPto,
 }: {
   initialMonth: string;
   initialEntries: CalloutEntry[];
   employeeOptions: string[];
   calloutTypeOptions: string[];
+  initialUpcomingPto: PtoRequest[];
 }) {
   const [month, setMonth] = useState(initialMonth);
   const [cache, setCache] = useState<Record<string, CalloutEntry[]>>(() => ({
@@ -47,6 +65,9 @@ export default function CalloutSheetClient({
   const [calloutTypeOptions, setCalloutTypeOptions] = useState(initialCalloutTypeOptions);
   const [draft, setDraft] = useState<CalloutEntryInput>(() => emptyDraft(todayISO()));
   const [adding, setAdding] = useState(false);
+  const [upcomingPto, setUpcomingPto] = useState(initialUpcomingPto);
+  const [ptoDraft, setPtoDraft] = useState<PtoRequestInput>(() => emptyPtoDraft(todayISO()));
+  const [addingPto, setAddingPto] = useState(false);
 
   const entries = useMemo(
     () => [...(cache[month] ?? [])].sort((a, b) => a.entry_date.localeCompare(b.entry_date)),
@@ -154,6 +175,28 @@ export default function CalloutSheetClient({
     }
   }
 
+  async function handleAddPto() {
+    if (!ptoDraft.employee_name.trim() || !ptoDraft.start_date || !ptoDraft.end_date) return;
+    setAddingPto(true);
+    try {
+      const cleaned: PtoRequestInput = {
+        ...ptoDraft,
+        end_date: ptoDraft.end_date < ptoDraft.start_date ? ptoDraft.start_date : ptoDraft.end_date,
+        notes: ptoDraft.notes?.trim() || null,
+      };
+      const row = (await createPtoRequest(cleaned)) as PtoRequest;
+      setUpcomingPto((prev) => [...prev, row].sort((a, b) => a.start_date.localeCompare(b.start_date)));
+      setPtoDraft(emptyPtoDraft(todayISO()));
+    } finally {
+      setAddingPto(false);
+    }
+  }
+
+  async function handleDeletePto(id: string) {
+    setUpcomingPto((prev) => prev.filter((p) => p.id !== id));
+    await deletePtoRequest(id).catch(() => {});
+  }
+
   const isCurrentMonth = month === todayISO().slice(0, 7) + "-01";
 
   return (
@@ -188,6 +231,101 @@ export default function CalloutSheetClient({
       </div>
 
       <h1 className="hidden text-xl font-bold print:block">Call Out Sheet - {formatMonthLabel(month)}</h1>
+
+      <section className="rounded-lg border border-black/10 p-4 dark:border-white/10 print:border-black">
+        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-black/60 dark:text-white/60">
+          Upcoming Time Off (Next 30 Days)
+        </h2>
+        {upcomingPto.length === 0 ? (
+          <p className="text-sm text-black/40 dark:text-white/40">Nothing scheduled.</p>
+        ) : (
+          <table className="w-full max-w-2xl text-sm">
+            <thead className="text-left">
+              <tr>
+                <th className="px-2 py-1">Employee</th>
+                <th className="px-2 py-1">Dates</th>
+                <th className="px-2 py-1">Duration</th>
+                <th className="px-2 py-1">Notes</th>
+                <th className="w-16 px-2 py-1 print:hidden" />
+              </tr>
+            </thead>
+            <tbody>
+              {upcomingPto.map((pto) => {
+                const days = ptoDuration(pto.start_date, pto.end_date);
+                return (
+                  <tr key={pto.id} className="border-t border-black/10 dark:border-white/10">
+                    <td className="px-2 py-1">{pto.employee_name}</td>
+                    <td className="px-2 py-1">{ptoDateRange(pto.start_date, pto.end_date)}</td>
+                    <td className="px-2 py-1">
+                      {days} day{days !== 1 ? "s" : ""}
+                    </td>
+                    <td className="px-2 py-1">{pto.notes}</td>
+                    <td className="px-2 py-1 print:hidden">
+                      <button
+                        onClick={() => handleDeletePto(pto.id)}
+                        className="text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <div className="mt-3 flex flex-wrap items-end gap-2 print:hidden">
+          <div>
+            <label className="text-xs text-black/60 dark:text-white/60">Employee</label>
+            <LockedCombobox
+              value={ptoDraft.employee_name}
+              onChange={(v) => setPtoDraft((d) => ({ ...d, employee_name: v }))}
+              options={employeeOptions}
+              onAddOption={addEmployeeOption}
+              className={field}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-black/60 dark:text-white/60">Start Date</label>
+            <input
+              type="date"
+              value={ptoDraft.start_date}
+              onChange={(e) =>
+                setPtoDraft((d) => ({
+                  ...d,
+                  start_date: e.target.value,
+                  end_date: d.end_date < e.target.value ? e.target.value : d.end_date,
+                }))
+              }
+              className={field}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-black/60 dark:text-white/60">End Date</label>
+            <input
+              type="date"
+              value={ptoDraft.end_date}
+              onChange={(e) => setPtoDraft((d) => ({ ...d, end_date: e.target.value }))}
+              className={field}
+            />
+          </div>
+          <div className="flex-1">
+            <label className="text-xs text-black/60 dark:text-white/60">Notes</label>
+            <input
+              value={ptoDraft.notes ?? ""}
+              onChange={(e) => setPtoDraft((d) => ({ ...d, notes: e.target.value }))}
+              className={field}
+            />
+          </div>
+          <button
+            onClick={handleAddPto}
+            disabled={addingPto}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            {addingPto ? "Adding..." : "+ Add Time Off"}
+          </button>
+        </div>
+      </section>
 
       <section className="rounded-lg border border-black/10 p-4 dark:border-white/10 print:border-black">
         <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-black/60 dark:text-white/60">

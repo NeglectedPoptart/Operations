@@ -157,6 +157,16 @@ export interface CalloutEntry {
   updated_at: string;
 }
 
+export interface PtoRequest {
+  id: string;
+  employee_name: string;
+  start_date: string;
+  end_date: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Management: QC Agenda -------------------------------------------------------
 
 export interface QcAgendaMeta {
