@@ -50,6 +50,7 @@ export interface Load {
   broker_id: string | null;
   brokers: Broker | null;
   notes: string | null;
+  eta_note: string | null;
   ready_to_load: boolean;
   created_at: string;
   updated_at: string;

@@ -40,6 +40,7 @@ function loadFieldsFromForm(formData: FormData) {
     rate: num(formData, "rate"),
     broker_id: str(formData, "broker_id"),
     notes: str(formData, "notes"),
+    eta_note: str(formData, "eta_note"),
   };
 }
 
@@ -148,11 +149,11 @@ export async function updateLoadReady(id: string, readyToLoad: boolean) {
   revalidateAll();
 }
 
-export async function updateNotes(id: string, notes: string) {
+export async function updateEtaNote(id: string, etaNote: string) {
   const supabase = await createClient();
   const { error } = await supabase
     .from("loads")
-    .update({ notes: notes.trim() === "" ? null : notes.trim() })
+    .update({ eta_note: etaNote.trim() === "" ? null : etaNote.trim() })
     .eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();

@@ -89,6 +89,7 @@ create table if not exists loads (
   rate numeric,
   broker_id uuid references brokers (id) on delete set null,
   notes text,
+  eta_note text,
   ready_to_load boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

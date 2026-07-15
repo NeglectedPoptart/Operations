@@ -144,6 +144,10 @@ export default function LoadModal({
             <label className={label}>Notes</label>
             <textarea name="notes" defaultValue={load?.notes ?? ""} rows={2} className={field} />
           </div>
+          <div className="col-span-2 sm:col-span-4">
+            <label className={label}>ETA / Location Update</label>
+            <textarea name="eta_note" defaultValue={load?.eta_note ?? ""} rows={2} className={field} />
+          </div>
 
           {error && <p className="col-span-2 text-sm text-red-600 sm:col-span-4">{error}</p>}
 
