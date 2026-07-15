@@ -48,9 +48,9 @@ export default async function HomePage() {
   const today = todayISO();
 
   const [
+    pendingTodayRes,
     pendingRes,
     onRoadRes,
-    completeRes,
     lanesRes,
     brokersRes,
     entriesRes,
@@ -59,9 +59,13 @@ export default async function HomePage() {
     holdoverCancelledRes,
     oldAgeNextStepsRes,
   ] = await Promise.all([
+    supabase
+      .from("loads")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending_to_load")
+      .eq("loading_date", today),
     supabase.from("loads").select("*", { count: "exact", head: true }).eq("status", "pending_to_load"),
     supabase.from("loads").select("*", { count: "exact", head: true }).eq("status", "on_the_road"),
-    supabase.from("loads").select("*", { count: "exact", head: true }).eq("status", "complete"),
     supabase.from("lanes").select("*"),
     supabase.from("brokers").select("*"),
     supabase.from("broker_rate_entries").select("*").in("week_start_date", [currWeek, prevWeek]),
@@ -84,9 +88,9 @@ export default async function HomePage() {
   ]);
 
   const error =
+    pendingTodayRes.error ??
     pendingRes.error ??
     onRoadRes.error ??
-    completeRes.error ??
     lanesRes.error ??
     brokersRes.error ??
     entriesRes.error ??
@@ -128,9 +132,9 @@ export default async function HomePage() {
         <section>
           <SubHeading>Loads</SubHeading>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StatTile label="Pending to Load" value={pendingRes.count ?? 0} href="/logistics/board" />
+            <StatTile label="Pending Today" value={pendingTodayRes.count ?? 0} href="/logistics/board" />
+            <StatTile label="Total Pending" value={pendingRes.count ?? 0} href="/logistics/board" />
             <StatTile label="On the Road" value={onRoadRes.count ?? 0} href="/logistics/board" />
-            <StatTile label="Completed" value={completeRes.count ?? 0} href="/logistics/board" />
           </div>
         </section>
 
