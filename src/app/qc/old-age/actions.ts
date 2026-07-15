@@ -6,7 +6,7 @@ import type { ParsedOldAgeRow } from "@/lib/oldAgeParse";
 import type { OldAgeNextStep } from "@/lib/types";
 
 function revalidateAll() {
-  revalidatePath("/warehouse/old-age");
+  revalidatePath("/qc/old-age");
   revalidatePath("/");
 }
 

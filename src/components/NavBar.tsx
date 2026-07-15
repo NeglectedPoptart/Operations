@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { canAccessTab, type Role, type Tab } from "@/lib/roles";
 
 interface NavItem {
   href: string;
@@ -13,6 +14,7 @@ interface NavItem {
 interface NavCategory {
   label: string;
   href?: string;
+  tab?: Tab;
   items?: NavItem[];
 }
 
@@ -20,6 +22,7 @@ const NAV: NavCategory[] = [
   { label: "Home", href: "/" },
   {
     label: "Logistics",
+    tab: "logistics",
     items: [
       { href: "/logistics", label: "Summary" },
       { href: "/logistics/board", label: "List" },
@@ -28,31 +31,43 @@ const NAV: NavCategory[] = [
   },
   {
     label: "Warehouse",
+    tab: "warehouse",
     items: [
       { href: "/warehouse/am-holdovers", label: "AM Holdovers" },
-      { href: "/warehouse/old-age", label: "Old Age" },
       { href: "/warehouse/repack-inventory", label: "Repack Inventory" },
       { href: "/warehouse/local-inbounds", label: "Local Inbounds" },
     ],
   },
   {
     label: "QC",
+    tab: "qc",
     items: [
       { href: "/qc/agenda", label: "QC Agenda" },
       { href: "/qc/inspections", label: "QC Inspections" },
+      { href: "/qc/old-age", label: "Old Age" },
     ],
   },
   {
     label: "Sales",
+    tab: "sales",
     items: [{ href: "/sales/fob-pharr", label: "FOB - Pharr" }],
+  },
+  {
+    label: "Management",
+    tab: "management",
+    items: [
+      { href: "/management/workflow", label: "Workflow" },
+      { href: "/management/callout-sheet", label: "Callout Sheet" },
+    ],
   },
 ];
 
-export default function NavBar() {
+export default function NavBar({ role }: { role: Role | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const [openCategory, setOpenCategory] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
+  const nav = NAV.filter((category) => !category.tab || canAccessTab(role, category.tab));
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -87,7 +102,7 @@ export default function NavBar() {
         className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-3"
       >
         <div className="flex flex-wrap items-center gap-1">
-          {NAV.map((category) => {
+          {nav.map((category) => {
             if (category.href) {
               const active = pathname === category.href;
               return (

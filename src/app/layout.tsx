@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Rajdhani } from "next/font/google";
 import NavBar from "@/components/NavBar";
+import { createClient } from "@/lib/supabase/server";
+import type { Role } from "@/lib/roles";
 import "./globals.css";
 
 const rajdhani = Rajdhani({
@@ -33,15 +35,26 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let role: Role | null = null;
+  if (user) {
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    role = (profile?.role ?? null) as Role | null;
+  }
+
   return (
     <html lang="en" className={`${rajdhani.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <NavBar />
+        <NavBar role={role} />
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
           {children}
         </main>

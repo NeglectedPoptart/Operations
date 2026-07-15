@@ -7,6 +7,39 @@
 
 create extension if not exists "pgcrypto";
 
+-- Permission levels: one role per auth user (Admin / Operations /
+-- Warehouse-QC / Sales - see src/lib/roles.ts for what each can access).
+-- New sign-ups default to the least-privileged role via the trigger below;
+-- an admin upgrades them manually via the SQL Editor.
+create table if not exists profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text,
+  role text not null default 'sales'
+    check (role in ('admin', 'operations', 'warehouse_qc', 'sales')),
+  created_at timestamptz not null default now()
+);
+
+alter table profiles enable row level security;
+
+drop policy if exists "read own profile" on profiles;
+create policy "read own profile" on profiles
+  for select using (auth.uid() = id);
+
+create or replace function handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, role)
+  values (new.id, new.email, 'sales')
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
+
 -- Brokers (e.g. GRIFFITH, DESERT, PGTRANS) --------------------------------
 create table if not exists brokers (
   id uuid primary key default gen_random_uuid(),

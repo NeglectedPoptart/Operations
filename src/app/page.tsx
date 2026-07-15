@@ -182,6 +182,10 @@ export default async function HomePage() {
             <PieChart slices={holdoverSlices} />
           </div>
         </section>
+      </div>
+
+      <div className="space-y-5">
+        <CategoryHeading>QC</CategoryHeading>
 
         <section>
           <SubHeading>Old Age - Next Steps</SubHeading>
