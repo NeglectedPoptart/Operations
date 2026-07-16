@@ -43,6 +43,32 @@ function parseNumber(raw: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// The source report now breaks a lot down by individual tag number - one line
+// per pallet tag instead of one line per lot. Rows that share the same
+// Document (lot/PO), Description (commodity), Pack Style, and Size are the
+// same lot split across tags, so we collapse them into a single row and sum
+// their quantities. Received date and age are taken from the first tag seen
+// in the group (all tags of one lot share the same receiving day).
+function groupKey(row: ParsedOldAgeRow): string {
+  return [row.document, row.description, row.pack_style, row.size]
+    .map((v) => v.trim().toLowerCase())
+    .join("|");
+}
+
+function aggregateRows(rows: ParsedOldAgeRow[]): ParsedOldAgeRow[] {
+  const groups = new Map<string, ParsedOldAgeRow>();
+  for (const row of rows) {
+    const key = groupKey(row);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.qty = (existing.qty ?? 0) + (row.qty ?? 0);
+    } else {
+      groups.set(key, { ...row });
+    }
+  }
+  return Array.from(groups.values());
+}
+
 // Column order/count varies (hidden columns, extra blanks), so we match by
 // header NAME rather than a fixed position - the first row must be the
 // Excel header row (Document, Received, Description, PStyle, Size, Qty, Age,
@@ -98,5 +124,5 @@ export function parsePastedOldAge(text: string): ParseResult {
     return { rows: [], error: "No data rows found under the header." };
   }
 
-  return { rows };
+  return { rows: aggregateRows(rows) };
 }

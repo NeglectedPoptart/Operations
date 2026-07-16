@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { todayISO } from "@/lib/dates";
+import { formatDate, todayISO } from "@/lib/dates";
 import type { Load } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
 import DeliveringCard, { type DeliveringStop } from "./DeliveringCard";
@@ -14,6 +14,34 @@ function LoadingCard({ load }: { load: Load }) {
       <LoadSummary load={load} />
     </div>
   );
+}
+
+function PendingLoadCard({ load }: { load: Load }) {
+  return (
+    <div className="rounded-lg border border-black/10 p-3 shadow-sm dark:border-white/10">
+      <LoadSummary load={load} dateFirst />
+    </div>
+  );
+}
+
+// Pending to Load is grouped into subsections by loading date - loads with no
+// loading date set yet fall into a trailing "No Date Set" group. The query
+// already orders by loading_date ascending (nulls last), so a single pass
+// keeps each group's loads in that order too.
+function groupByLoadingDate(loads: Load[]): { date: string | null; loads: Load[] }[] {
+  const groups: { date: string | null; loads: Load[] }[] = [];
+  const byDate = new Map<string | null, Load[]>();
+  for (const load of loads) {
+    const key = load.loading_date;
+    let bucket = byDate.get(key);
+    if (!bucket) {
+      bucket = [];
+      byDate.set(key, bucket);
+      groups.push({ date: key, loads: bucket });
+    }
+    bucket.push(load);
+  }
+  return groups;
 }
 
 export default async function HomePage() {
@@ -94,9 +122,19 @@ export default async function HomePage() {
         {pending.length === 0 ? (
           <p className="text-sm text-black/40 dark:text-white/40">Nothing pending to load.</p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {pending.map((l) => (
-              <LoadingCard key={l.id} load={l} />
+          <div className="space-y-5">
+            {groupByLoadingDate(pending).map((group) => (
+              <div key={group.date ?? "no-date"}>
+                <h3 className="mb-2 text-sm font-semibold text-black/60 dark:text-white/60">
+                  {group.date ? formatDate(group.date) : "No Date Set"}{" "}
+                  <span className="font-normal text-black/40">({group.loads.length})</span>
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {group.loads.map((l) => (
+                    <PendingLoadCard key={l.id} load={l} />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}

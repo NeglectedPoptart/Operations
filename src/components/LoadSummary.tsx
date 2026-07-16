@@ -4,13 +4,21 @@ import type { Load } from "@/lib/types";
 // Shared header + per-stop breakdown used by both the Board's load cards and
 // the Home page's Loading Today tiles, so a multi-drop load reads the same
 // way everywhere - each drop's own destination/delivery date included.
-export default function LoadSummary({ load }: { load: Load }) {
+// `dateFirst` moves the loading date above the client name instead of into
+// the detail line below - used by the Logistics Summary page's Pending to
+// Load section, which is already grouped into per-date subsections.
+export default function LoadSummary({ load, dateFirst = false }: { load: Load; dateFirst?: boolean }) {
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const firstStop = stops[0];
   const additionalStops = stops.slice(1);
 
   return (
     <>
+      {dateFirst && (
+        <p className="mb-1 text-sm font-semibold text-green-700 dark:text-green-400">
+          {formatDate(load.loading_date) || "No date set"}
+        </p>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-medium">
@@ -41,15 +49,22 @@ export default function LoadSummary({ load }: { load: Load }) {
       </div>
 
       <div className="mt-2 space-y-1 text-xs text-black/60 dark:text-white/60">
-        <p>
-          Loading: {formatDate(load.loading_date) || "—"}
-          {additionalStops.length === 0 && firstStop && (firstStop.delivery_date || firstStop.delivery_time) && (
-            <span>
-              {" "}
-              · Delivery: {formatDate(firstStop.delivery_date) || "—"} {firstStop.delivery_time}
-            </span>
-          )}
-        </p>
+        {!dateFirst && (
+          <p>
+            Loading: {formatDate(load.loading_date) || "—"}
+            {additionalStops.length === 0 && firstStop && (firstStop.delivery_date || firstStop.delivery_time) && (
+              <span>
+                {" "}
+                · Delivery: {formatDate(firstStop.delivery_date) || "—"} {firstStop.delivery_time}
+              </span>
+            )}
+          </p>
+        )}
+        {dateFirst && additionalStops.length === 0 && firstStop && (firstStop.delivery_date || firstStop.delivery_time) && (
+          <p>
+            Delivery: {formatDate(firstStop.delivery_date) || "—"} {firstStop.delivery_time}
+          </p>
+        )}
         {additionalStops.map((stop, i) => (
           <p key={stop.id}>
             <span className="font-medium">Drop {i + 2}: </span>
