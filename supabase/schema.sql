@@ -295,6 +295,35 @@ create table if not exists qc_agenda_repack (
 
 create index if not exists qc_agenda_repack_date_idx on qc_agenda_repack (entry_date);
 
+-- Compliance: PAS Files - a running sheet (never wholesale-replaced) --------
+-- tracking Price As Sale orders pending invoice, for the accountant. Each
+-- day's paste is merged in: rows already present (matched on order_no + po)
+-- are left completely untouched; only genuinely new rows get inserted.
+-- "Days" isn't stored - it's computed from ship_date at render time.
+create table if not exists pas_files (
+  id uuid primary key default gen_random_uuid(),
+  position int not null default 1,
+  order_no text not null,
+  po text,
+  customer text,
+  slp text,
+  order_date date,
+  ship_date date,
+  ship_qty numeric,
+  fob_amt numeric,
+  whse text,
+  status text,
+  order_type text,
+  sales_type text,
+  update_notes text,
+  last_contact text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists pas_files_order_no_po_idx on pas_files (order_no, po);
+
 -- Keep loads.updated_at current on every edit ------------------------------
 create or replace function set_updated_at()
 returns trigger as $$
@@ -340,6 +369,7 @@ alter table qc_agenda_meta enable row level security;
 alter table qc_agenda_inbounds enable row level security;
 alter table qc_agenda_floor_aging enable row level security;
 alter table qc_agenda_repack enable row level security;
+alter table pas_files enable row level security;
 
 drop policy if exists "authenticated full access" on brokers;
 create policy "authenticated full access" on brokers
@@ -407,6 +437,10 @@ create policy "authenticated full access" on qc_agenda_floor_aging
 
 drop policy if exists "authenticated full access" on qc_agenda_repack;
 create policy "authenticated full access" on qc_agenda_repack
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on pas_files;
+create policy "authenticated full access" on pas_files
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- Seed: Workflow core tasks (from the current daily checklist). Guarded by

@@ -93,6 +93,15 @@ export function formatMonthLabel(monthStartStr: string): string {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
+// Whole days between dateStr and today - used for "aging" displays computed
+// at render time rather than stored (so it stays accurate for rows that are
+// never re-touched, e.g. PAS Files' merge-only import).
+export function daysSince(dateStr: string | null): number | null {
+  if (!dateStr) return null;
+  const ms = new Date(`${todayISO()}T00:00:00Z`).getTime() - new Date(`${dateStr}T00:00:00Z`).getTime();
+  return Math.round(ms / 86400000);
+}
+
 export function formatDate(dateStr: string | null): string {
   if (!dateStr) return "";
   const d = new Date(`${dateStr}T00:00:00Z`);

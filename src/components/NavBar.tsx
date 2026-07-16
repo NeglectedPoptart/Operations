@@ -60,6 +60,11 @@ const NAV: NavCategory[] = [
       { href: "/management/callout-sheet", label: "Callout Sheet" },
     ],
   },
+  {
+    label: "Compliance",
+    tab: "compliance",
+    items: [{ href: "/compliance/pas-files", label: "PAS Files" }],
+  },
 ];
 
 export default function NavBar({ role }: { role: Role | null }) {
