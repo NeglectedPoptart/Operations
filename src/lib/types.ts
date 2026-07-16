@@ -1,3 +1,5 @@
+import type { Role } from "@/lib/roles";
+
 export type LoadStatus = "pending_to_load" | "on_the_road" | "complete";
 
 export const LOAD_STATUSES: { value: LoadStatus; label: string }[] = [
@@ -262,4 +264,13 @@ export interface PasFile {
   highlight: PasHighlight;
   created_at: string;
   updated_at: string;
+}
+
+// Management: User Roles -------------------------------------------------------
+
+export interface Profile {
+  id: string;
+  email: string | null;
+  role: Role;
+  created_at: string;
 }

@@ -25,6 +25,25 @@ drop policy if exists "read own profile" on profiles;
 create policy "read own profile" on profiles
   for select using (auth.uid() = id);
 
+-- is_admin() is security definer so these policies can check the caller's
+-- own role without recursing back into profiles' own RLS - it runs as the
+-- function owner and bypasses RLS internally. Lets an admin manage every
+-- user's role from an in-app panel (Management -> User Roles).
+create or replace function is_admin()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and role = 'admin'
+  );
+$$ language sql security definer set search_path = public stable;
+
+drop policy if exists "admins read all profiles" on profiles;
+create policy "admins read all profiles" on profiles
+  for select using (is_admin());
+
+drop policy if exists "admins update roles" on profiles;
+create policy "admins update roles" on profiles
+  for update using (is_admin()) with check (is_admin());
+
 create or replace function handle_new_user()
 returns trigger as $$
 begin
@@ -325,6 +344,29 @@ create table if not exists pas_files (
 
 create index if not exists pas_files_order_no_po_idx on pas_files (order_no, po);
 
+-- QC: Inspections - a running, append-only log of each day's inbound QC ----
+-- checks (what was expected, what was checked, what held over) matching the
+-- team's existing Excel tracker. Unlike PAS Files there's no reliable
+-- natural key to merge on (PO/Lot are often blank), so every paste just
+-- appends new rows - a few new rows added per day, same as the sheet itself.
+create table if not exists qc_inspections (
+  id uuid primary key default gen_random_uuid(),
+  position int not null default 1,
+  entry_date date,
+  po text,
+  lot text,
+  product text,
+  qc text,
+  chat boolean not null default false,
+  report boolean not null default false,
+  mail boolean not null default false,
+  status text,
+  result text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Keep loads.updated_at current on every edit ------------------------------
 create or replace function set_updated_at()
 returns trigger as $$
@@ -371,6 +413,7 @@ alter table qc_agenda_inbounds enable row level security;
 alter table qc_agenda_floor_aging enable row level security;
 alter table qc_agenda_repack enable row level security;
 alter table pas_files enable row level security;
+alter table qc_inspections enable row level security;
 
 drop policy if exists "authenticated full access" on brokers;
 create policy "authenticated full access" on brokers
@@ -442,6 +485,10 @@ create policy "authenticated full access" on qc_agenda_repack
 
 drop policy if exists "authenticated full access" on pas_files;
 create policy "authenticated full access" on pas_files
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on qc_inspections;
+create policy "authenticated full access" on qc_inspections
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- Seed: Workflow core tasks (from the current daily checklist). Guarded by
