@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { formatDate } from "@/lib/dates";
+import { groupByLoadingDate } from "@/lib/loadGrouping";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
@@ -43,6 +45,22 @@ export default function BoardClient({
             </div>
             {sectionLoads.length === 0 ? (
               <p className="text-sm text-black/40 dark:text-white/40">No loads here.</p>
+            ) : section.value === "pending_to_load" ? (
+              <div className="space-y-5">
+                {groupByLoadingDate(sectionLoads).map((group) => (
+                  <div key={group.date ?? "no-date"}>
+                    <h3 className="mb-2 text-sm font-semibold text-black/60 dark:text-white/60">
+                      {group.date ? formatDate(group.date) : "No Date Set"}{" "}
+                      <span className="font-normal text-black/40">({group.loads.length})</span>
+                    </h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {group.loads.map((load) => (
+                        <LoadCard key={load.id} load={load} onEdit={() => setEditingLoad(load)} dateFirst />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {sectionLoads.map((load) => (

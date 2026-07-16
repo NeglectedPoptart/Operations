@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, todayISO } from "@/lib/dates";
+import { groupByLoadingDate } from "@/lib/loadGrouping";
 import type { Load } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
 import DeliveringCard, { type DeliveringStop } from "./DeliveringCard";
@@ -22,26 +23,6 @@ function PendingLoadCard({ load }: { load: Load }) {
       <LoadSummary load={load} dateFirst />
     </div>
   );
-}
-
-// Pending to Load is grouped into subsections by loading date - loads with no
-// loading date set yet fall into a trailing "No Date Set" group. The query
-// already orders by loading_date ascending (nulls last), so a single pass
-// keeps each group's loads in that order too.
-function groupByLoadingDate(loads: Load[]): { date: string | null; loads: Load[] }[] {
-  const groups: { date: string | null; loads: Load[] }[] = [];
-  const byDate = new Map<string | null, Load[]>();
-  for (const load of loads) {
-    const key = load.loading_date;
-    let bucket = byDate.get(key);
-    if (!bucket) {
-      bucket = [];
-      byDate.set(key, bucket);
-      groups.push({ date: key, loads: bucket });
-    }
-    bucket.push(load);
-  }
-  return groups;
 }
 
 export default async function HomePage() {

@@ -8,9 +8,11 @@ import LoadSummary from "@/components/LoadSummary";
 export default function LoadCard({
   load,
   onEdit,
+  dateFirst = false,
 }: {
   load: Load;
   onEdit: () => void;
+  dateFirst?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -36,7 +38,7 @@ export default function LoadCard({
 
   return (
     <div className={`rounded-lg border p-3 shadow-sm ${borderClass}`}>
-      <LoadSummary load={load} />
+      <LoadSummary load={load} dateFirst={dateFirst} />
 
       {load.status === "pending_to_load" && (
         <button
