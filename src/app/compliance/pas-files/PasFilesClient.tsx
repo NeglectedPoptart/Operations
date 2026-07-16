@@ -7,6 +7,7 @@ import type { PasFile } from "@/lib/types";
 import { addPasFileRow, deletePasFileRow, importPasFiles, updatePasFileRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+const label = "text-xs font-medium text-black/60 dark:text-white/60";
 
 export default function PasFilesClient({ initialItems }: { initialItems: PasFile[] }) {
   const [items, setItems] = useState(initialItems);
@@ -186,165 +187,167 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-        <table className="w-full text-sm">
-          <thead className="bg-black/5 text-left dark:bg-white/5">
-            <tr>
-              <th className="px-2 py-2">Order No</th>
-              <th className="px-2 py-2">Customer</th>
-              <th className="px-2 py-2">PO</th>
-              <th className="px-2 py-2">Slp</th>
-              <th className="px-2 py-2">Date</th>
-              <th className="px-2 py-2">Ship Date</th>
-              <th className="px-2 py-2">Days</th>
-              <th className="px-2 py-2">Ship Qty</th>
-              <th className="px-2 py-2">FOB Amt</th>
-              <th className="px-2 py-2">Whse</th>
-              <th className="px-2 py-2">Status</th>
-              <th className="px-2 py-2">Order Type</th>
-              <th className="px-2 py-2">Sales Type</th>
-              <th className="px-2 py-2">Update</th>
-              <th className="px-2 py-2">Last Contact</th>
-              <th className="px-2 py-2">Notes</th>
-              <th className="w-16 px-2 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    defaultValue={item.order_no}
-                    onBlur={(e) => handleFieldSave(item.id, { order_no: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[10rem] px-1 py-1">
-                  <input
-                    defaultValue={item.customer ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { customer: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    defaultValue={item.po ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { po: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[4rem] px-1 py-1">
-                  <input
-                    defaultValue={item.slp ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { slp: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="px-1 py-1">
-                  <input
-                    type="date"
-                    defaultValue={item.order_date ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { order_date: e.target.value || null })}
-                    className={field}
-                  />
-                </td>
-                <td className="px-1 py-1">
-                  <input
-                    type="date"
-                    defaultValue={item.ship_date ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { ship_date: e.target.value || null })}
-                    className={field}
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center text-black/60 dark:text-white/60">
-                  {daysSince(item.ship_date) ?? "—"}
-                </td>
-                <td className="min-w-[5rem] px-1 py-1">
-                  <input
-                    type="number"
-                    defaultValue={item.ship_qty ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { ship_qty: e.target.value ? Number(e.target.value) : null })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    type="number"
-                    step="0.01"
-                    defaultValue={item.fob_amt ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { fob_amt: e.target.value ? Number(e.target.value) : null })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[4rem] px-1 py-1">
-                  <input
-                    defaultValue={item.whse ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { whse: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    defaultValue={item.status ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { status: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    defaultValue={item.order_type ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { order_type: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    defaultValue={item.sales_type ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { sales_type: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[12rem] px-1 py-1">
-                  <input
-                    defaultValue={item.update_notes ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { update_notes: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    defaultValue={item.last_contact ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { last_contact: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="min-w-[10rem] px-1 py-1">
-                  <input
-                    defaultValue={item.notes ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
+      {items.length === 0 ? (
+        <p className="rounded-lg border border-black/10 px-3 py-4 text-center text-sm text-black/40 dark:border-white/10 dark:text-white/40">
+          No PAS files yet - paste in today&apos;s export from Excel above.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => {
+            const days = daysSince(item.ship_date);
+            return (
+              <div key={item.id} className="rounded-lg border border-black/10 p-3 shadow-sm dark:border-white/10">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-[8rem] flex-1">
+                    <label className={label}>Order No</label>
+                    <input
+                      defaultValue={item.order_no}
+                      onBlur={(e) => handleFieldSave(item.id, { order_no: e.target.value })}
+                      className={`${field} font-medium`}
+                    />
+                  </div>
+                  <div className="min-w-[12rem] flex-[2]">
+                    <label className={label}>Customer</label>
+                    <input
+                      defaultValue={item.customer ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { customer: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div className="min-w-[6rem]">
+                    <label className={label}>Status</label>
+                    <input
+                      defaultValue={item.status ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { status: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div className="text-right">
+                    <p className={label}>Days Pending</p>
+                    <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-400">{days ?? "—"}</p>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                  <div>
+                    <label className={label}>PO</label>
+                    <input
+                      defaultValue={item.po ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { po: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Slp</label>
+                    <input
+                      defaultValue={item.slp ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { slp: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Date</label>
+                    <input
+                      type="date"
+                      defaultValue={item.order_date ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { order_date: e.target.value || null })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Ship Date</label>
+                    <input
+                      type="date"
+                      defaultValue={item.ship_date ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { ship_date: e.target.value || null })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Ship Qty</label>
+                    <input
+                      type="number"
+                      defaultValue={item.ship_qty ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { ship_qty: e.target.value ? Number(e.target.value) : null })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>FOB Amt</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      defaultValue={item.fob_amt ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { fob_amt: e.target.value ? Number(e.target.value) : null })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Whse</label>
+                    <input
+                      defaultValue={item.whse ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { whse: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Order Type</label>
+                    <input
+                      defaultValue={item.order_type ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { order_type: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Sales Type</label>
+                    <input
+                      defaultValue={item.sales_type ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { sales_type: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div>
+                    <label className={label}>Update</label>
+                    <input
+                      defaultValue={item.update_notes ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { update_notes: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Last Contact</label>
+                    <input
+                      defaultValue={item.last_contact ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { last_contact: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                  <div>
+                    <label className={label}>Notes</label>
+                    <input
+                      defaultValue={item.notes ?? ""}
+                      onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
+                      className={field}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-2 flex justify-end">
                   <button
                     onClick={() => handleDelete(item.id)}
                     className="text-xs font-medium text-red-600 hover:underline"
                   >
                     Delete
                   </button>
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={17} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                  No PAS files yet - paste in today&apos;s export from Excel above.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <button
         onClick={handleAddRow}
