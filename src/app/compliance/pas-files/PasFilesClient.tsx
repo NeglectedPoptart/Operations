@@ -6,15 +6,19 @@ import { daysSince, formatDate } from "@/lib/dates";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
 import { addPasFileRow, deletePasFileRow, importPasFiles, updatePasFileRow } from "./actions";
 
-const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
-
-// Applied to the whole <tr> so a flagged row (needs contact / escalated) is
-// visible at a glance while scanning the list.
-const ROW_HIGHLIGHT_CLASS: Record<PasHighlight, string> = {
-  none: "",
-  yellow: "bg-yellow-50 dark:bg-yellow-900/20",
-  red: "bg-red-50 dark:bg-red-900/20",
+// Every cell in a row is a white input butted up against its neighbors, so a
+// background tint on the <tr> itself is only visible in the thin gaps
+// between fields - not a real "highlight at a glance". Tinting the inputs'
+// own background instead makes a flagged row unmistakable.
+const INPUT_BG_CLASS: Record<PasHighlight, string> = {
+  none: "bg-white",
+  yellow: "bg-yellow-200",
+  red: "bg-red-200",
 };
+
+function rowFieldClass(highlight: PasHighlight): string {
+  return `w-full rounded border border-gray-300 ${INPUT_BG_CLASS[highlight]} px-2 py-1 text-sm text-black`;
+}
 
 export default function PasFilesClient({ initialItems }: { initialItems: PasFile[] }) {
   const [items, setItems] = useState(initialItems);
@@ -222,147 +226,147 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr
-                  key={item.id}
-                  className={`border-t border-black/10 dark:border-white/10 ${ROW_HIGHLIGHT_CLASS[item.highlight]}`}
-                >
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      defaultValue={item.order_no}
-                      onBlur={(e) => handleFieldSave(item.id, { order_no: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[10rem] px-1 py-1">
-                    <input
-                      defaultValue={item.customer ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { customer: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      defaultValue={item.po ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { po: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[4rem] px-1 py-1">
-                    <input
-                      defaultValue={item.slp ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { slp: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="px-1 py-1">
-                    <input
-                      type="date"
-                      defaultValue={item.order_date ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { order_date: e.target.value || null })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="px-1 py-1">
-                    <input
-                      type="date"
-                      defaultValue={item.ship_date ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { ship_date: e.target.value || null })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 text-center text-black/60 dark:text-white/60">
-                    {daysSince(item.ship_date) ?? "—"}
-                  </td>
-                  <td className="min-w-[5rem] px-1 py-1">
-                    <input
-                      type="number"
-                      defaultValue={item.ship_qty ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { ship_qty: e.target.value ? Number(e.target.value) : null })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      type="number"
-                      step="0.01"
-                      defaultValue={item.fob_amt ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { fob_amt: e.target.value ? Number(e.target.value) : null })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[4rem] px-1 py-1">
-                    <input
-                      defaultValue={item.whse ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { whse: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      defaultValue={item.status ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { status: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      defaultValue={item.order_type ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { order_type: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      defaultValue={item.sales_type ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { sales_type: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[12rem] px-1 py-1">
-                    <input
-                      defaultValue={item.update_notes ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { update_notes: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[6rem] px-1 py-1">
-                    <input
-                      defaultValue={item.last_contact ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { last_contact: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[10rem] px-1 py-1">
-                    <input
-                      defaultValue={item.notes ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[8rem] px-1 py-1">
-                    <select
-                      value={item.highlight}
-                      onChange={(e) => handleFieldSave(item.id, { highlight: e.target.value as PasHighlight })}
-                      className={field}
-                    >
-                      {PAS_HIGHLIGHTS.map((h) => (
-                        <option key={h.value} value={h.value}>
-                          {h.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="text-xs font-medium text-red-600 hover:underline"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {items.map((item) => {
+                const rowField = rowFieldClass(item.highlight);
+                return (
+                  <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        defaultValue={item.order_no}
+                        onBlur={(e) => handleFieldSave(item.id, { order_no: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[10rem] px-1 py-1">
+                      <input
+                        defaultValue={item.customer ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { customer: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        defaultValue={item.po ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { po: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[4rem] px-1 py-1">
+                      <input
+                        defaultValue={item.slp ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { slp: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="px-1 py-1">
+                      <input
+                        type="date"
+                        defaultValue={item.order_date ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { order_date: e.target.value || null })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="px-1 py-1">
+                      <input
+                        type="date"
+                        defaultValue={item.ship_date ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { ship_date: e.target.value || null })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-center text-black/60 dark:text-white/60">
+                      {daysSince(item.ship_date) ?? "—"}
+                    </td>
+                    <td className="min-w-[5rem] px-1 py-1">
+                      <input
+                        type="number"
+                        defaultValue={item.ship_qty ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { ship_qty: e.target.value ? Number(e.target.value) : null })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        type="number"
+                        step="0.01"
+                        defaultValue={item.fob_amt ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { fob_amt: e.target.value ? Number(e.target.value) : null })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[4rem] px-1 py-1">
+                      <input
+                        defaultValue={item.whse ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { whse: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        defaultValue={item.status ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { status: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        defaultValue={item.order_type ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { order_type: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        defaultValue={item.sales_type ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { sales_type: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[12rem] px-1 py-1">
+                      <input
+                        defaultValue={item.update_notes ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { update_notes: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[6rem] px-1 py-1">
+                      <input
+                        defaultValue={item.last_contact ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { last_contact: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[10rem] px-1 py-1">
+                      <input
+                        defaultValue={item.notes ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
+                        className={rowField}
+                      />
+                    </td>
+                    <td className="min-w-[8rem] px-1 py-1">
+                      <select
+                        value={item.highlight}
+                        onChange={(e) => handleFieldSave(item.id, { highlight: e.target.value as PasHighlight })}
+                        className={rowField}
+                      >
+                        {PAS_HIGHLIGHTS.map((h) => (
+                          <option key={h.value} value={h.value}>
+                            {h.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {items.length === 0 && (
                 <tr>
                   <td colSpan={18} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
