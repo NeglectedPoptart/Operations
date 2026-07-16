@@ -266,6 +266,26 @@ export interface PasFile {
   updated_at: string;
 }
 
+// QC: Inspections -------------------------------------------------------------
+
+export interface QcInspection {
+  id: string;
+  position: number;
+  entry_date: string | null;
+  po: string | null;
+  lot: string | null;
+  product: string | null;
+  qc: string | null;
+  chat: boolean;
+  report: boolean;
+  mail: boolean;
+  status: string | null;
+  result: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Management: User Roles -------------------------------------------------------
 
 export interface Profile {
