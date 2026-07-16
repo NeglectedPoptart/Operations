@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedPasFileRow } from "@/lib/pasFilesParse";
+import type { PasFile } from "@/lib/types";
 
 function revalidateAll() {
   revalidatePath("/compliance/pas-files");
@@ -53,17 +54,7 @@ export async function addPasFileRow(nextPosition: number) {
   return data;
 }
 
-export async function updatePasFileRow(
-  id: string,
-  patch: {
-    order_no?: string;
-    po?: string | null;
-    customer?: string | null;
-    update_notes?: string | null;
-    last_contact?: string | null;
-    notes?: string | null;
-  },
-) {
+export async function updatePasFileRow(id: string, patch: Partial<Omit<PasFile, "id" | "created_at" | "updated_at">>) {
   const supabase = await createClient();
   const { error } = await supabase.from("pas_files").update(patch).eq("id", id);
   if (error) throw new Error(error.message);

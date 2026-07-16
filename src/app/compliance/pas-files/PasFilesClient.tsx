@@ -3,11 +3,17 @@
 import { useState } from "react";
 import { parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
-import type { PasFile } from "@/lib/types";
+import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
 import { addPasFileRow, deletePasFileRow, importPasFiles, updatePasFileRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 const label = "text-xs font-medium text-black/60 dark:text-white/60";
+
+const CARD_HIGHLIGHT_CLASS: Record<PasHighlight, string> = {
+  none: "border-black/10 dark:border-white/10",
+  yellow: "border-yellow-400 bg-yellow-50 dark:border-yellow-600 dark:bg-yellow-900/20",
+  red: "border-red-400 bg-red-50 dark:border-red-600 dark:bg-red-900/20",
+};
 
 export default function PasFilesClient({ initialItems }: { initialItems: PasFile[] }) {
   const [items, setItems] = useState(initialItems);
@@ -196,7 +202,10 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
           {items.map((item) => {
             const days = daysSince(item.ship_date);
             return (
-              <div key={item.id} className="rounded-lg border border-black/10 p-3 shadow-sm dark:border-white/10">
+              <div
+                key={item.id}
+                className={`rounded-lg border p-3 shadow-sm ${CARD_HIGHLIGHT_CLASS[item.highlight]}`}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-[8rem] flex-1">
                     <label className={label}>Order No</label>
@@ -221,6 +230,20 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
                       onBlur={(e) => handleFieldSave(item.id, { status: e.target.value })}
                       className={field}
                     />
+                  </div>
+                  <div className="min-w-[8rem]">
+                    <label className={label}>Highlight</label>
+                    <select
+                      value={item.highlight}
+                      onChange={(e) => handleFieldSave(item.id, { highlight: e.target.value as PasHighlight })}
+                      className={field}
+                    >
+                      {PAS_HIGHLIGHTS.map((h) => (
+                        <option key={h.value} value={h.value}>
+                          {h.label}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="text-right">
                     <p className={label}>Days Pending</p>

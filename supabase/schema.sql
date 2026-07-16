@@ -318,6 +318,7 @@ create table if not exists pas_files (
   update_notes text,
   last_contact text,
   notes text,
+  highlight text not null default 'none' check (highlight in ('none', 'yellow', 'red')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -233,6 +233,14 @@ export interface QcAgendaRepack {
 
 // Compliance: PAS Files -------------------------------------------------------
 
+export type PasHighlight = "none" | "yellow" | "red";
+
+export const PAS_HIGHLIGHTS: { value: PasHighlight; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "yellow", label: "Needs Contact" },
+  { value: "red", label: "Escalated" },
+];
+
 export interface PasFile {
   id: string;
   position: number;
@@ -251,6 +259,7 @@ export interface PasFile {
   update_notes: string | null;
   last_contact: string | null;
   notes: string | null;
+  highlight: PasHighlight;
   created_at: string;
   updated_at: string;
 }
