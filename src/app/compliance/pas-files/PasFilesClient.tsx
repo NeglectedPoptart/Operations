@@ -5,6 +5,7 @@ import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasF
 import { daysSince, formatDate } from "@/lib/dates";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
 import { addPasFileRow, deletePasFileRow, importPendingList, updatePasFileRow } from "./actions";
+import HorizontalBarChart from "@/components/HorizontalBarChart";
 
 // Every cell in a row is a white input butted up against its neighbors, so a
 // background tint on the <tr> itself is only visible in the thin gaps
@@ -41,6 +42,12 @@ export default function PasFilesClient({
   const [adding, setAdding] = useState(false);
 
   const existingKeys = new Set(items.map((i) => matchKey(i.order_no, i.po ?? "")));
+
+  const summaryData = [
+    { label: "Total PAS Files", value: items.length },
+    { label: "Needing Contact", value: items.filter((i) => i.highlight === "yellow").length },
+    { label: "Needing Escalation", value: items.filter((i) => i.highlight === "red").length },
+  ];
 
   function handlePreview() {
     const result = parsePastedPasFiles(pasteText);
@@ -135,6 +142,10 @@ export default function PasFilesClient({
           Keep Update well updated to avoid a slip in admin updating. Move files to Invoicing once settled,
           and delete from this list once the settled invoice is sent (or invoiced in general for accounting).
         </p>
+
+        <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+          <HorizontalBarChart data={summaryData} />
+        </div>
 
         {showPaste && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">

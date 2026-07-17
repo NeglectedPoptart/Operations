@@ -40,6 +40,44 @@ function SubHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
+// A single bar showing the whole PAS Files list at a glance: how much of it
+// needs contact or escalation, stacked left to right against the total.
+function PasBreakdownBar({
+  total,
+  needingContact,
+  needingEscalation,
+}: {
+  total: number;
+  needingContact: number;
+  needingEscalation: number;
+}) {
+  const normal = Math.max(total - needingContact - needingEscalation, 0);
+  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex h-6 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
+        {normal > 0 && <div className="h-full bg-green-500" style={{ width: `${pct(normal)}%` }} />}
+        {needingContact > 0 && <div className="h-full bg-yellow-400" style={{ width: `${pct(needingContact)}%` }} />}
+        {needingEscalation > 0 && <div className="h-full bg-red-500" style={{ width: `${pct(needingEscalation)}%` }} />}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        <p>
+          Total PAS Files: <span className="font-semibold">{total}</span>
+        </p>
+        <p>
+          Needing Contact:{" "}
+          <span className="font-semibold text-yellow-700 dark:text-yellow-400">{needingContact}</span>
+        </p>
+        <p>
+          Needing Escalation:{" "}
+          <span className="font-semibold text-red-700 dark:text-red-400">{needingEscalation}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default async function HomePage() {
   const supabase = await createClient();
 
@@ -59,6 +97,9 @@ export default async function HomePage() {
     holdoverCancelledRes,
     localInboundsRes,
     oldAgeNextStepsRes,
+    pasTotalRes,
+    pasContactRes,
+    pasEscalationRes,
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -87,6 +128,9 @@ export default async function HomePage() {
       .eq("status", "cancelled"),
     supabase.from("local_inbounds").select("id, po, vendor, eta, status").eq("entry_date", today),
     supabase.from("old_age_items").select("next_step"),
+    supabase.from("pas_files").select("*", { count: "exact", head: true }),
+    supabase.from("pas_files").select("*", { count: "exact", head: true }).eq("highlight", "yellow"),
+    supabase.from("pas_files").select("*", { count: "exact", head: true }).eq("highlight", "red"),
   ]);
 
   const error =
@@ -100,7 +144,10 @@ export default async function HomePage() {
     holdoverPendingChangesRes.error ??
     holdoverCancelledRes.error ??
     localInboundsRes.error ??
-    oldAgeNextStepsRes.error;
+    oldAgeNextStepsRes.error ??
+    pasTotalRes.error ??
+    pasContactRes.error ??
+    pasEscalationRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load dashboard: {error.message}</p>;
   }
@@ -226,6 +273,21 @@ export default async function HomePage() {
           <SubHeading>Old Age - Next Steps</SubHeading>
           <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
             <HorizontalBarChart data={oldAgeNextStepSummary} />
+          </div>
+        </section>
+      </div>
+
+      <div className="space-y-5">
+        <CategoryHeading>Compliance</CategoryHeading>
+
+        <section>
+          <SubHeading>PAS Files</SubHeading>
+          <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+            <PasBreakdownBar
+              total={pasTotalRes.count ?? 0}
+              needingContact={pasContactRes.count ?? 0}
+              needingEscalation={pasEscalationRes.count ?? 0}
+            />
           </div>
         </section>
       </div>
