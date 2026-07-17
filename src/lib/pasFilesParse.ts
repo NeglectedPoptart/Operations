@@ -125,3 +125,10 @@ export function parsePastedPasFiles(text: string): ParseResult {
 
   return { rows };
 }
+
+// A row is a PAS (Price As Sale) order if either its PO or Order Type is
+// literally marked "PAS" - everything else pasted alongside it is a regular
+// order pending invoice, routed to Sales > Pending to Invoice instead.
+export function isPasRow(row: ParsedPasFileRow): boolean {
+  return row.po.trim().toUpperCase() === "PAS" || row.order_type.trim().toUpperCase() === "PAS";
+}

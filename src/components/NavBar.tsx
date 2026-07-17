@@ -50,7 +50,10 @@ const NAV: NavCategory[] = [
   {
     label: "Sales",
     tab: "sales",
-    items: [{ href: "/sales/fob-pharr", label: "FOB - Pharr" }],
+    items: [
+      { href: "/sales/fob-pharr", label: "FOB - Pharr" },
+      { href: "/sales/pending-to-invoice", label: "Pending to Invoice" },
+    ],
   },
   {
     label: "Management",

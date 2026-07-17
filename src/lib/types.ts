@@ -266,6 +266,29 @@ export interface PasFile {
   updated_at: string;
 }
 
+// Sales: Pending to Invoice -----------------------------------------------------
+
+export interface PendingToInvoiceItem {
+  id: string;
+  position: number;
+  order_no: string;
+  po: string | null;
+  customer: string | null;
+  slp: string | null;
+  order_date: string | null;
+  ship_date: string | null;
+  ship_qty: number | null;
+  fob_amt: number | null;
+  whse: string | null;
+  status: string | null;
+  order_type: string | null;
+  sales_type: string | null;
+  update_notes: string | null;
+  last_contact: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // QC: Inspections -------------------------------------------------------------
 
 export interface QcInspection {

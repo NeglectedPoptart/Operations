@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
+import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
-import { addPasFileRow, deletePasFileRow, importPasFiles, updatePasFileRow } from "./actions";
+import { addPasFileRow, deletePasFileRow, importPendingList, updatePasFileRow } from "./actions";
 
 // Every cell in a row is a white input butted up against its neighbors, so a
 // background tint on the <tr> itself is only visible in the thin gaps
@@ -20,8 +20,19 @@ function rowFieldClass(highlight: PasHighlight): string {
   return `w-full rounded border border-gray-300 ${INPUT_BG_CLASS[highlight]} px-2 py-1 text-sm text-black`;
 }
 
-export default function PasFilesClient({ initialItems }: { initialItems: PasFile[] }) {
+function matchKey(orderNo: string, po: string): string {
+  return `${orderNo.trim().toLowerCase()}|${po.trim().toLowerCase()}`;
+}
+
+export default function PasFilesClient({
+  initialItems,
+  existingPendingKeys,
+}: {
+  initialItems: PasFile[];
+  existingPendingKeys: string[];
+}) {
   const [items, setItems] = useState(initialItems);
+  const [pendingKeys, setPendingKeys] = useState(() => new Set(existingPendingKeys));
   const [showPaste, setShowPaste] = useState(initialItems.length === 0);
   const [pasteText, setPasteText] = useState("");
   const [previewRows, setPreviewRows] = useState<ParsedPasFileRow[] | null>(null);
@@ -29,7 +40,7 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
   const [importing, setImporting] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  const existingKeys = new Set(items.map((i) => `${i.order_no.trim().toLowerCase()}|${(i.po ?? "").trim().toLowerCase()}`));
+  const existingKeys = new Set(items.map((i) => matchKey(i.order_no, i.po ?? "")));
 
   function handlePreview() {
     const result = parsePastedPasFiles(pasteText);
@@ -42,17 +53,30 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
     setPreviewRows(result.rows);
   }
 
-  const newCount = previewRows
-    ? previewRows.filter((r) => !existingKeys.has(`${r.order_no.trim().toLowerCase()}|${r.po.trim().toLowerCase()}`)).length
-    : 0;
-  const alreadyCount = previewRows ? previewRows.length - newCount : 0;
+  function previewStatus(row: ParsedPasFileRow) {
+    const key = matchKey(row.order_no, row.po);
+    if (isPasRow(row)) {
+      return { destination: "PAS Files", isNew: !existingKeys.has(key) };
+    }
+    return { destination: "Pending to Invoice", isNew: !pendingKeys.has(key) };
+  }
+
+  const newPasCount = previewRows ? previewRows.filter((r) => isPasRow(r) && previewStatus(r).isNew).length : 0;
+  const newInvoiceCount = previewRows ? previewRows.filter((r) => !isPasRow(r) && previewStatus(r).isNew).length : 0;
+  const totalNew = newPasCount + newInvoiceCount;
+  const alreadyCount = previewRows ? previewRows.length - totalNew : 0;
 
   async function handleConfirmImport() {
     if (!previewRows) return;
     setImporting(true);
     try {
-      const inserted = await importPasFiles(previewRows);
-      setItems((prev) => [...prev, ...((inserted ?? []) as PasFile[])]);
+      const { pasFiles, pendingToInvoice } = await importPendingList(previewRows);
+      setItems((prev) => [...prev, ...((pasFiles ?? []) as PasFile[])]);
+      setPendingKeys((prev) => {
+        const next = new Set(prev);
+        for (const row of pendingToInvoice ?? []) next.add(matchKey(row.order_no, row.po ?? ""));
+        return next;
+      });
       setPreviewRows(null);
       setPasteText("");
       setShowPaste(false);
@@ -115,9 +139,10 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
         {showPaste && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
             <p className="text-sm text-black/60 dark:text-white/60">
-              Copy the rows from your system export (including the header row) and paste below. This is a
-              running list - rows already here (matched on Order No + PO) are left untouched; only new rows
-              get added.
+              Paste the entire pending-to-invoice export here (including the header row) - not just PAS
+              orders. Rows marked PAS (on PO or Order Type) are routed here; everything else goes to Sales
+              &gt; Pending to Invoice instead. Both lists are running - rows already present (matched on
+              Order No + PO) are left untouched, only new rows get added.
             </p>
             <textarea
               value={pasteText}
@@ -145,8 +170,9 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
             {previewRows && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">
-                  Found {previewRows.length} row{previewRows.length === 1 ? "" : "s"}: {newCount} new,{" "}
-                  {alreadyCount} already in the list (will be skipped).
+                  Found {previewRows.length} row{previewRows.length === 1 ? "" : "s"}: {newPasCount} new to PAS
+                  Files, {newInvoiceCount} new to Pending to Invoice, {alreadyCount} already in a list (will be
+                  skipped).
                 </p>
                 <div className="max-h-64 overflow-auto rounded border border-black/10 dark:border-white/10">
                   <table className="w-full text-xs">
@@ -156,18 +182,20 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
                         <th className="px-2 py-1">PO</th>
                         <th className="px-2 py-1">Customer</th>
                         <th className="px-2 py-1">Ship Date</th>
+                        <th className="px-2 py-1">Goes To</th>
                         <th className="px-2 py-1">Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {previewRows.map((r, i) => {
-                        const isNew = !existingKeys.has(`${r.order_no.trim().toLowerCase()}|${r.po.trim().toLowerCase()}`);
+                        const { destination, isNew } = previewStatus(r);
                         return (
                           <tr key={i} className="border-t border-black/10 dark:border-white/10">
                             <td className="px-2 py-1">{r.order_no}</td>
                             <td className="px-2 py-1">{r.po}</td>
                             <td className="px-2 py-1">{r.customer}</td>
                             <td className="px-2 py-1">{formatDate(r.ship_date)}</td>
+                            <td className="px-2 py-1">{destination}</td>
                             <td className="px-2 py-1">
                               {isNew ? (
                                 <span className="font-medium text-green-600">new</span>
@@ -184,10 +212,10 @@ export default function PasFilesClient({ initialItems }: { initialItems: PasFile
                 <div className="flex gap-2">
                   <button
                     onClick={handleConfirmImport}
-                    disabled={importing || newCount === 0}
+                    disabled={importing || totalNew === 0}
                     className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
                   >
-                    {importing ? "Importing..." : `Add ${newCount} New Row${newCount === 1 ? "" : "s"}`}
+                    {importing ? "Importing..." : `Add ${totalNew} New Row${totalNew === 1 ? "" : "s"}`}
                   </button>
                   <button
                     onClick={handleCancelPreview}
