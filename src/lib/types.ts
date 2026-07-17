@@ -113,6 +113,28 @@ export interface LocalInbound {
   updated_at: string;
 }
 
+// Warehouse: Repack Inventory -----------------------------------------------------
+
+export interface RepackItem {
+  id: string;
+  position: number;
+  name: string;
+  initial_stock: number;
+  current_stock: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// qty is signed: negative = used by a repack, positive = restocked/corrected.
+export interface RepackAdjustment {
+  id: string;
+  item_id: string;
+  entry_date: string;
+  qty: number;
+  notes: string | null;
+  created_at: string;
+}
+
 export type OldAgeNextStep = "pending_qc" | "cash_sale" | "repack" | "as_is" | "dump_donate" | "moved";
 
 export const OLD_AGE_NEXT_STEPS: { value: OldAgeNextStep; label: string }[] = [

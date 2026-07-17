@@ -191,6 +191,32 @@ create table if not exists local_inbounds (
 
 create index if not exists local_inbounds_entry_date_idx on local_inbounds (entry_date);
 
+-- Warehouse: Repack Inventory - one row per material with a running -------
+-- current_stock, instead of the spreadsheet's "one new column per usage
+-- date". repack_adjustments is the full ledger (qty negative = used by a
+-- repack, positive = restocked/corrected); a trigger further down keeps
+-- current_stock in sync automatically on insert or delete.
+create table if not exists repack_items (
+  id uuid primary key default gen_random_uuid(),
+  position int not null default 1,
+  name text not null,
+  initial_stock numeric not null default 0,
+  current_stock numeric not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists repack_adjustments (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references repack_items (id) on delete cascade,
+  entry_date date not null default current_date,
+  qty numeric not null,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists repack_adjustments_item_id_idx on repack_adjustments (item_id);
+
 -- Warehouse: Old Age - pasted in wholesale from the Excel aging report each --
 -- time (the whole list is replaced on import), then annotated with a next
 -- step and notes here.
@@ -438,6 +464,37 @@ create trigger local_inbounds_set_updated_at
   before update on local_inbounds
   for each row execute function set_updated_at();
 
+drop trigger if exists repack_items_set_updated_at on repack_items;
+create trigger repack_items_set_updated_at
+  before update on repack_items
+  for each row execute function set_updated_at();
+
+create or replace function apply_repack_adjustment()
+returns trigger as $$
+begin
+  update repack_items set current_stock = current_stock + new.qty where id = new.item_id;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists repack_adjustments_apply_insert on repack_adjustments;
+create trigger repack_adjustments_apply_insert
+  after insert on repack_adjustments
+  for each row execute function apply_repack_adjustment();
+
+create or replace function reverse_repack_adjustment()
+returns trigger as $$
+begin
+  update repack_items set current_stock = current_stock - old.qty where id = old.item_id;
+  return old;
+end;
+$$ language plpgsql;
+
+drop trigger if exists repack_adjustments_reverse_delete on repack_adjustments;
+create trigger repack_adjustments_reverse_delete
+  after delete on repack_adjustments
+  for each row execute function reverse_repack_adjustment();
+
 drop trigger if exists old_age_items_set_updated_at on old_age_items;
 create trigger old_age_items_set_updated_at
   before update on old_age_items
@@ -455,6 +512,8 @@ alter table broker_rate_entries enable row level security;
 alter table rate_submissions enable row level security;
 alter table am_holdovers enable row level security;
 alter table local_inbounds enable row level security;
+alter table repack_items enable row level security;
+alter table repack_adjustments enable row level security;
 alter table old_age_items enable row level security;
 alter table workflow_tasks enable row level security;
 alter table employees enable row level security;
@@ -499,6 +558,14 @@ create policy "authenticated full access" on am_holdovers
 
 drop policy if exists "authenticated full access" on local_inbounds;
 create policy "authenticated full access" on local_inbounds
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on repack_items;
+create policy "authenticated full access" on repack_items
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on repack_adjustments;
+create policy "authenticated full access" on repack_adjustments
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "authenticated full access" on old_age_items;
