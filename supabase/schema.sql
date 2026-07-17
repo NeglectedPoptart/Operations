@@ -8,14 +8,14 @@
 create extension if not exists "pgcrypto";
 
 -- Permission levels: one role per auth user (Admin / Operations /
--- Warehouse-QC / Sales - see src/lib/roles.ts for what each can access).
--- New sign-ups default to the least-privileged role via the trigger below;
--- an admin upgrades them manually via the SQL Editor.
+-- Warehouse-QC / Sales / Compliance - see src/lib/roles.ts for what each can
+-- access). New sign-ups default to the least-privileged role via the
+-- trigger below; an admin upgrades them via Management -> User Roles.
 create table if not exists profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
   role text not null default 'sales'
-    check (role in ('admin', 'operations', 'warehouse_qc', 'sales')),
+    check (role in ('admin', 'operations', 'warehouse_qc', 'sales', 'compliance')),
   created_at timestamptz not null default now()
 );
 
