@@ -94,6 +94,25 @@ export interface AmHoldover {
   updated_at: string;
 }
 
+// Warehouse: Local Inbounds -----------------------------------------------------
+
+export type LocalInboundStatus = "pending" | "arrived";
+
+export interface LocalInbound {
+  id: string;
+  entry_date: string;
+  position: number;
+  po: string | null;
+  pu_info: string | null;
+  vendor: string | null;
+  loading_warehouse: string | null;
+  eta: string | null;
+  notes: string | null;
+  status: LocalInboundStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 export type OldAgeNextStep = "pending_qc" | "cash_sale" | "repack" | "as_is" | "dump_donate" | "moved";
 
 export const OLD_AGE_NEXT_STEPS: { value: OldAgeNextStep; label: string }[] = [

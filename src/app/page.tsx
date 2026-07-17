@@ -4,7 +4,7 @@ import { currentWeekStart, prevWeekStart, todayISO } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
 import { topChangedLanes } from "@/lib/laneChange";
 import { summarizeByNextStep } from "@/lib/oldAgeSummary";
-import type { Broker, BrokerRateEntry, Lane, OldAgeNextStep } from "@/lib/types";
+import type { Broker, BrokerRateEntry, Lane, LocalInbound, OldAgeNextStep } from "@/lib/types";
 import PieChart from "@/components/PieChart";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 
@@ -57,6 +57,7 @@ export default async function HomePage() {
     holdoverPendingInboundRes,
     holdoverPendingChangesRes,
     holdoverCancelledRes,
+    localInboundsRes,
     oldAgeNextStepsRes,
   ] = await Promise.all([
     supabase
@@ -84,6 +85,7 @@ export default async function HomePage() {
       .select("*", { count: "exact", head: true })
       .eq("entry_date", today)
       .eq("status", "cancelled"),
+    supabase.from("local_inbounds").select("id, po, vendor, eta, status").eq("entry_date", today),
     supabase.from("old_age_items").select("next_step"),
   ]);
 
@@ -97,6 +99,7 @@ export default async function HomePage() {
     holdoverPendingInboundRes.error ??
     holdoverPendingChangesRes.error ??
     holdoverCancelledRes.error ??
+    localInboundsRes.error ??
     oldAgeNextStepsRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load dashboard: {error.message}</p>;
@@ -121,6 +124,10 @@ export default async function HomePage() {
   const oldAgeNextStepSummary = summarizeByNextStep(
     (oldAgeNextStepsRes.data ?? []) as { next_step: OldAgeNextStep | null }[],
   );
+
+  const localInbounds = (localInboundsRes.data ?? []) as Pick<LocalInbound, "id" | "po" | "vendor" | "eta" | "status">[];
+  const pendingInbounds = localInbounds.filter((i) => i.status === "pending");
+  const arrivedInboundsCount = localInbounds.filter((i) => i.status === "arrived").length;
 
   return (
     <div className="home-dashboard space-y-10">
@@ -184,6 +191,30 @@ export default async function HomePage() {
           <SubHeading>AM Holdovers (Today)</SubHeading>
           <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
             <PieChart slices={holdoverSlices} />
+          </div>
+        </section>
+
+        <section>
+          <SubHeading>Local Inbounds (Today)</SubHeading>
+          <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+            <div>
+              <p className="text-sm font-medium">Pending to Arrive ({pendingInbounds.length})</p>
+              {pendingInbounds.length === 0 ? (
+                <p className="text-sm text-black/40 dark:text-white/40">Nothing pending.</p>
+              ) : (
+                <ul className="mt-1 space-y-1 text-sm text-black/70 dark:text-white/70">
+                  {pendingInbounds.map((i) => (
+                    <li key={i.id}>
+                      {i.vendor || "(no vendor)"}
+                      {i.po && ` · PO ${i.po}`} — ETA {i.eta || "—"}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <p className="text-sm font-medium">
+              Arrived: <span className="text-green-700 dark:text-green-400">{arrivedInboundsCount}</span>
+            </p>
           </div>
         </section>
       </div>
