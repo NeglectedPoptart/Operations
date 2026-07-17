@@ -237,18 +237,14 @@ export default function PasFilesClient({
                 <th className="px-2 py-2">Customer</th>
                 <th className="px-2 py-2">PO</th>
                 <th className="px-2 py-2">Slp</th>
-                <th className="px-2 py-2">Date</th>
                 <th className="px-2 py-2">Ship Date</th>
                 <th className="px-2 py-2">Days</th>
                 <th className="px-2 py-2">Ship Qty</th>
                 <th className="px-2 py-2">FOB Amt</th>
-                <th className="px-2 py-2">Whse</th>
                 <th className="px-2 py-2">Status</th>
                 <th className="px-2 py-2">Order Type</th>
-                <th className="px-2 py-2">Sales Type</th>
-                <th className="px-2 py-2">Update</th>
                 <th className="px-2 py-2">Last Contact</th>
-                <th className="px-2 py-2">Notes</th>
+                <th className="px-2 py-2">Update</th>
                 <th className="px-2 py-2">Highlight</th>
                 <th className="w-16 px-2 py-2" />
               </tr>
@@ -289,14 +285,6 @@ export default function PasFilesClient({
                     <td className="px-1 py-1">
                       <input
                         type="date"
-                        defaultValue={item.order_date ?? ""}
-                        onBlur={(e) => handleFieldSave(item.id, { order_date: e.target.value || null })}
-                        className={rowField}
-                      />
-                    </td>
-                    <td className="px-1 py-1">
-                      <input
-                        type="date"
                         defaultValue={item.ship_date ?? ""}
                         onBlur={(e) => handleFieldSave(item.id, { ship_date: e.target.value || null })}
                         className={rowField}
@@ -322,13 +310,6 @@ export default function PasFilesClient({
                         className={rowField}
                       />
                     </td>
-                    <td className="min-w-[4rem] px-1 py-1">
-                      <input
-                        defaultValue={item.whse ?? ""}
-                        onBlur={(e) => handleFieldSave(item.id, { whse: e.target.value })}
-                        className={rowField}
-                      />
-                    </td>
                     <td className="min-w-[6rem] px-1 py-1">
                       <input
                         defaultValue={item.status ?? ""}
@@ -345,29 +326,15 @@ export default function PasFilesClient({
                     </td>
                     <td className="min-w-[6rem] px-1 py-1">
                       <input
-                        defaultValue={item.sales_type ?? ""}
-                        onBlur={(e) => handleFieldSave(item.id, { sales_type: e.target.value })}
-                        className={rowField}
-                      />
-                    </td>
-                    <td className="min-w-[12rem] px-1 py-1">
-                      <input
-                        defaultValue={item.update_notes ?? ""}
-                        onBlur={(e) => handleFieldSave(item.id, { update_notes: e.target.value })}
-                        className={rowField}
-                      />
-                    </td>
-                    <td className="min-w-[6rem] px-1 py-1">
-                      <input
                         defaultValue={item.last_contact ?? ""}
                         onBlur={(e) => handleFieldSave(item.id, { last_contact: e.target.value })}
                         className={rowField}
                       />
                     </td>
-                    <td className="min-w-[10rem] px-1 py-1">
+                    <td className="min-w-[14rem] px-1 py-1">
                       <input
-                        defaultValue={item.notes ?? ""}
-                        onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
+                        defaultValue={item.update_notes ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { update_notes: e.target.value })}
                         className={rowField}
                       />
                     </td>
@@ -397,7 +364,7 @@ export default function PasFilesClient({
               })}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={18} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={14} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     No PAS files yet - paste in today&apos;s export from Excel above.
                   </td>
                 </tr>
