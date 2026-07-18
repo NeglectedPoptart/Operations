@@ -27,6 +27,7 @@ const NAV: NavCategory[] = [
       { href: "/logistics", label: "Summary" },
       { href: "/logistics/board", label: "List" },
       { href: "/logistics/rates", label: "Freight Rates" },
+      { href: "/logistics/freight-calculator", label: "Freight Calculator" },
     ],
   },
   {
