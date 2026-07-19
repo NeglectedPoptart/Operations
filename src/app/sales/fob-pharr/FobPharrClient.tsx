@@ -32,9 +32,9 @@ const EMAIL_INTRO =
   "Please find our current price sheet attached for your review, If you have any questions or would like to discuss volume pricing or specific product needs please let us know!";
 
 function buildEmailHeaderHtml() {
-  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:10px;">
-      <tr><td style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;">${escapeHtml(EMAIL_TITLE)}</td></tr>
-      <tr><td style="text-align:center;border:1px solid #000;padding:6px;font-size:12.5px;">${escapeHtml(EMAIL_INTRO)}</td></tr>
+  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:10px;background:#ffffff;">
+      <tr><td style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;background:#ffffff;color:#000000;">${escapeHtml(EMAIL_TITLE)}</td></tr>
+      <tr><td style="text-align:center;border:1px solid #000;padding:6px;font-size:12.5px;background:#ffffff;color:#000000;">${escapeHtml(EMAIL_INTRO)}</td></tr>
     </table>`;
 }
 
@@ -58,30 +58,31 @@ function groupItems(items: FobItem[], section: FobSection): Group[] {
 }
 
 function buildSectionHtml(title: string, headerBg: string, groups: Group[]) {
+  const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
   const rows = groups
     .map(
       (g) => `
-      <tr><td colspan="4" style="background:#f0f0f0;font-weight:bold;padding:4px 6px;border:1px solid #000;">${escapeHtml(g.name)}</td></tr>
+      <tr><td colspan="4" style="background:#f0f0f0;color:#000000;font-weight:bold;padding:4px 6px;border:1px solid #000;">${escapeHtml(g.name)}</td></tr>
       ${g.rows
         .map(
           (r) => `
         <tr>
-          <td style="padding:3px 6px;border:1px solid #000;">${escapeHtml(r.variety ?? "")}</td>
-          <td style="padding:3px 6px;border:1px solid #000;text-align:right;">${r.unit_per ?? ""}</td>
-          <td style="padding:3px 6px;border:1px solid #000;">${escapeHtml(r.size ?? "")}</td>
-          <td style="padding:3px 6px;border:1px solid #000;text-align:right;">${escapeHtml(formatFob(r.fob))}</td>
+          <td style="${cell}">${escapeHtml(r.variety ?? "")}</td>
+          <td style="${cell}text-align:right;">${r.unit_per ?? ""}</td>
+          <td style="${cell}">${escapeHtml(r.size ?? "")}</td>
+          <td style="${cell}text-align:right;">${escapeHtml(formatFob(r.fob))}</td>
         </tr>`,
         )
         .join("")}`,
     )
     .join("");
-  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;">
-      <tr><td colspan="4" style="background:${headerBg};font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
-      <tr style="background:#dddddd;font-weight:bold;">
-        <td style="padding:3px 6px;border:1px solid #000;">Commodity</td>
-        <td style="padding:3px 6px;border:1px solid #000;">Unit Per</td>
-        <td style="padding:3px 6px;border:1px solid #000;">Size</td>
-        <td style="padding:3px 6px;border:1px solid #000;">FOB</td>
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;background:#ffffff;color:#000000;">
+      <tr><td colspan="4" style="background:${headerBg};color:#000000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
+      <tr style="background:#dddddd;color:#000000;font-weight:bold;">
+        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">Commodity</td>
+        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">Unit Per</td>
+        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">Size</td>
+        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">FOB</td>
       </tr>
       ${rows}
     </table>`;
@@ -381,10 +382,10 @@ export default function FobPharrClient({
   async function handleCopy() {
     const westernGroups = groupItems(items, "western_veg");
     const hotHouseGroups = groupItems(items, "hot_house");
-    const html = `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0"><tr>
-        <td valign="top">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups)}</td>
-        <td style="width:24px">&nbsp;</td>
-        <td valign="top">${buildSectionHtml("Hot House", "#FF3333", hotHouseGroups)}</td>
+    const html = `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
+        <td valign="top" style="background:#ffffff;">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups)}</td>
+        <td style="width:24px;background:#ffffff;">&nbsp;</td>
+        <td valign="top" style="background:#ffffff;">${buildSectionHtml("Hot House", "#FF3333", hotHouseGroups)}</td>
       </tr></table>`;
     const text = `${EMAIL_TITLE}\n\n${EMAIL_INTRO}\n\n${buildPlainText("Western Veg", westernGroups)}\n\n${buildPlainText("Hot House", hotHouseGroups)}`;
 
