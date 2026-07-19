@@ -27,6 +27,17 @@ function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+const EMAIL_TITLE = "McAllen FOB Pricing";
+const EMAIL_INTRO =
+  "Please find our current price sheet attached for your review, If you have any questions or would like to discuss volume pricing or specific product needs please let us know!";
+
+function buildEmailHeaderHtml() {
+  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:10px;">
+      <tr><td style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;">${escapeHtml(EMAIL_TITLE)}</td></tr>
+      <tr><td style="text-align:center;border:1px solid #000;padding:6px;font-size:12.5px;">${escapeHtml(EMAIL_INTRO)}</td></tr>
+    </table>`;
+}
+
 interface Group {
   name: string;
   rows: FobItem[];
@@ -370,12 +381,12 @@ export default function FobPharrClient({
   async function handleCopy() {
     const westernGroups = groupItems(items, "western_veg");
     const hotHouseGroups = groupItems(items, "hot_house");
-    const html = `<table cellpadding="0" cellspacing="0"><tr>
+    const html = `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0"><tr>
         <td valign="top">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups)}</td>
         <td style="width:24px">&nbsp;</td>
         <td valign="top">${buildSectionHtml("Hot House", "#FF3333", hotHouseGroups)}</td>
       </tr></table>`;
-    const text = `${buildPlainText("Western Veg", westernGroups)}\n\n${buildPlainText("Hot House", hotHouseGroups)}`;
+    const text = `${EMAIL_TITLE}\n\n${EMAIL_INTRO}\n\n${buildPlainText("Western Veg", westernGroups)}\n\n${buildPlainText("Hot House", hotHouseGroups)}`;
 
     try {
       if (typeof ClipboardItem !== "undefined") {
