@@ -350,6 +350,33 @@ export interface QcInspection {
   updated_at: string;
 }
 
+// Sales: FOB Pricing -----------------------------------------------------------
+
+export type FobSection = "western_veg" | "hot_house";
+
+export interface FobItem {
+  id: string;
+  section: FobSection;
+  commodity_group: string;
+  variety: string | null;
+  unit_per: number | null;
+  size: string | null;
+  fob: number | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FobFreightRate {
+  id: string;
+  lane: string;
+  ltl: number | null;
+  ftl: number | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Management: User Roles -------------------------------------------------------
 
 export interface Profile {
