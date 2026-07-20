@@ -126,9 +126,12 @@ export function parsePastedPasFiles(text: string): ParseResult {
   return { rows };
 }
 
-// A row is a PAS (Price As Sale) order if either its PO or Order Type is
-// literally marked "PAS" - everything else pasted alongside it is a regular
-// order pending invoice, routed to Sales > Pending to Invoice instead.
+// A row is a PAS (Price As Sale) order if its PO mentions "PAS" anywhere
+// (e.g. "0555593 PAS", "PAS Eric 6/25", "PASNeed" - PO is a free-typed
+// field, not a fixed code, so this has to be a substring match) or its
+// Order Type is literally marked "PAS". Everything else pasted alongside
+// it is a regular order pending invoice, routed to Sales > Pending to
+// Invoice instead.
 export function isPasRow(row: ParsedPasFileRow): boolean {
-  return row.po.trim().toUpperCase() === "PAS" || row.order_type.trim().toUpperCase() === "PAS";
+  return row.po.trim().toUpperCase().includes("PAS") || row.order_type.trim().toUpperCase() === "PAS";
 }
