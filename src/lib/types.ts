@@ -13,6 +13,28 @@ export interface Broker {
   name: string;
 }
 
+// Logistics: Invoicing ---------------------------------------------------
+
+export type InvoiceStatus = "pending" | "done";
+
+export const INVOICE_STATUSES: { value: InvoiceStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "done", label: "Done" },
+];
+
+export interface InvoiceStatement {
+  id: string;
+  broker_id: string;
+  invoice_no: string;
+  invoice_date: string | null;
+  customer_po: string | null;
+  amount: number | null;
+  status: InvoiceStatus | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Lane {
   id: string;
   from_hub: string;

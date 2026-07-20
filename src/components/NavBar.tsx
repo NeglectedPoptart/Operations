@@ -29,6 +29,7 @@ const NAV: NavCategory[] = [
       { href: "/logistics/rates", label: "Freight Rates" },
       { href: "/logistics/freight-calculator", label: "Freight Calculator" },
       { href: "/logistics/weight-calculator", label: "Weight Calculator" },
+      { href: "/logistics/invoicing", label: "Invoicing" },
     ],
   },
   {

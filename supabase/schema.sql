@@ -65,6 +65,25 @@ create table if not exists brokers (
   name text not null unique
 );
 
+-- Logistics: Invoicing - per-broker aging list of pasted statement lines.
+-- Merge-only import matched on (broker_id, invoice_no). Age is never
+-- stored - always computed from invoice_date at render/copy time.
+create table if not exists invoice_statements (
+  id uuid primary key default gen_random_uuid(),
+  broker_id uuid not null references brokers (id) on delete cascade,
+  invoice_no text not null,
+  invoice_date date,
+  customer_po text,
+  amount numeric,
+  status text check (status in ('pending', 'done')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists invoice_statements_broker_id_idx on invoice_statements (broker_id);
+create unique index if not exists invoice_statements_broker_invoice_idx on invoice_statements (broker_id, invoice_no);
+
 -- Lanes used by the weekly broker rate tracker (From hub -> destination). --
 -- "destination" is a plain label, e.g. "Houston, TX", or a composite like
 -- "Jessup, MD & Philly, PA" for multi-drop loads - see load_stops below.
@@ -497,6 +516,11 @@ create trigger loads_set_updated_at
   before update on loads
   for each row execute function set_updated_at();
 
+drop trigger if exists invoice_statements_set_updated_at on invoice_statements;
+create trigger invoice_statements_set_updated_at
+  before update on invoice_statements
+  for each row execute function set_updated_at();
+
 drop trigger if exists am_holdovers_set_updated_at on am_holdovers;
 create trigger am_holdovers_set_updated_at
   before update on am_holdovers
@@ -561,6 +585,7 @@ create trigger delivered_price_messages_set_updated_at
 -- Row Level Security: any signed-in user (this is an internal 1-3 person
 -- tool, so all authenticated users get full read/write access) -----------
 alter table brokers enable row level security;
+alter table invoice_statements enable row level security;
 alter table lanes enable row level security;
 alter table hubs enable row level security;
 alter table destination_cities enable row level security;
@@ -588,6 +613,10 @@ alter table pending_to_invoice enable row level security;
 alter table fob_items enable row level security;
 alter table fob_freight_rates enable row level security;
 alter table delivered_price_messages enable row level security;
+
+drop policy if exists "authenticated full access" on invoice_statements;
+create policy "authenticated full access" on invoice_statements
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "authenticated full access" on brokers;
 create policy "authenticated full access" on brokers
