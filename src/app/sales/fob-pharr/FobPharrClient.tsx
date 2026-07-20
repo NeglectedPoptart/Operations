@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
+import { escapeHtml, groupFobItems, type FobItemGroup as Group } from "@/lib/fobPricing";
 import {
   addFobItem,
   addFreightRate,
@@ -23,10 +24,6 @@ function formatFob(n: number | null) {
   return n === null ? "" : `$${n.toFixed(2)}`;
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
 const EMAIL_TITLE = "McAllen FOB Pricing";
 const EMAIL_INTRO =
   "Please find our current price sheet attached for your review, If you have any questions or would like to discuss volume pricing or specific product needs please let us know!";
@@ -36,25 +33,6 @@ function buildEmailHeaderHtml() {
       <tr><td style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;background:#ffffff;color:#000000;">${escapeHtml(EMAIL_TITLE)}</td></tr>
       <tr><td style="text-align:center;border:1px solid #000;padding:6px;font-size:12.5px;background:#ffffff;color:#000000;">${escapeHtml(EMAIL_INTRO)}</td></tr>
     </table>`;
-}
-
-interface Group {
-  name: string;
-  rows: FobItem[];
-}
-
-function groupItems(items: FobItem[], section: FobSection): Group[] {
-  const order: string[] = [];
-  const map = new Map<string, FobItem[]>();
-  for (const item of items) {
-    if (item.section !== section) continue;
-    if (!map.has(item.commodity_group)) {
-      map.set(item.commodity_group, []);
-      order.push(item.commodity_group);
-    }
-    map.get(item.commodity_group)!.push(item);
-  }
-  return order.map((name) => ({ name, rows: map.get(name)! }));
 }
 
 function buildSectionHtml(title: string, headerBg: string, groups: Group[]) {
@@ -204,7 +182,7 @@ function FobItemsSection({
   onAdd: (section: FobSection) => Promise<void>;
   onDelete: (id: string) => void;
 }) {
-  const groups = useMemo(() => groupItems(items, section), [items, section]);
+  const groups = useMemo(() => groupFobItems(items, section), [items, section]);
   const [adding, setAdding] = useState(false);
 
   async function handleAdd() {
@@ -380,8 +358,8 @@ export default function FobPharrClient({
   }
 
   async function handleCopy() {
-    const westernGroups = groupItems(items, "western_veg");
-    const hotHouseGroups = groupItems(items, "hot_house");
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
     const html = `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
         <td valign="top" style="background:#ffffff;">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups)}</td>
         <td style="width:24px;background:#ffffff;">&nbsp;</td>
