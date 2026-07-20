@@ -34,6 +34,7 @@ export default async function HomePage() {
     { data: pendingToLoad, error: e2 },
     { data: deliveringToday, error: e3 },
     { data: onTheRoad, error: e4 },
+    { count: missingAppointmentCount, error: e5 },
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -57,12 +58,17 @@ export default async function HomePage() {
       .select("*, brokers(id, name), load_stops(*)")
       .eq("status", "on_the_road")
       .order("position", { foreignTable: "load_stops", ascending: true }),
+    supabase
+      .from("load_stops")
+      .select("*, loads!inner(status)", { count: "exact", head: true })
+      .is("appointment", null)
+      .neq("loads.status", "complete"),
   ]);
 
-  if (e1 || e2 || e3 || e4) {
+  if (e1 || e2 || e3 || e4 || e5) {
     return (
       <p className="text-red-600">
-        Failed to load home data: {e1?.message ?? e2?.message ?? e3?.message ?? e4?.message}
+        Failed to load home data: {e1?.message ?? e2?.message ?? e3?.message ?? e4?.message ?? e5?.message}
       </p>
     );
   }
@@ -71,6 +77,7 @@ export default async function HomePage() {
   const pending = (pendingToLoad ?? []) as unknown as Load[];
   const delivering = (deliveringToday ?? []) as unknown as DeliveringStop[];
   const onRoad = (onTheRoad ?? []) as unknown as Load[];
+  const missingAppointments = missingAppointmentCount ?? 0;
 
   return (
     <div className="space-y-8">
@@ -80,6 +87,17 @@ export default async function HomePage() {
           Go to full board →
         </Link>
       </div>
+
+      <Link
+        href="/logistics/board"
+        className={`block rounded-lg border p-3 text-sm font-medium shadow-sm ${
+          missingAppointments > 0
+            ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+            : "border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
+        }`}
+      >
+        {missingAppointments} order{missingAppointments === 1 ? "" : "s"} missing an appointment (or FCFS note)
+      </Link>
 
       <section>
         <h2 className="mb-3 border-b-2 border-green-600 pb-2 text-lg font-bold text-green-700 dark:text-green-400">

@@ -82,6 +82,19 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
         ))}
       </div>
 
+      <div className="mt-1 space-y-0.5">
+        {stops.map((stop, i) => (
+          <p key={stop.id} className="text-xs">
+            {stops.length > 1 && <span className="font-medium">Drop {i + 1}: </span>}
+            {stop.appointment ? (
+              <span className="text-black/50 dark:text-white/50">Appt: {stop.appointment}</span>
+            ) : (
+              <span className="font-semibold text-red-600 dark:text-red-400">⚠ Missing Appointment</span>
+            )}
+          </p>
+        ))}
+      </div>
+
       {load.notes && <p className="mt-1 text-xs italic text-black/50 dark:text-white/50">{load.notes}</p>}
     </>
   );

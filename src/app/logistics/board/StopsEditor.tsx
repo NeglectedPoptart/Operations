@@ -11,6 +11,7 @@ export interface StopFormState {
   destination: string;
   delivery_date: string;
   delivery_time: string;
+  appointment: string;
 }
 
 export const emptyStop: StopFormState = {
@@ -20,6 +21,7 @@ export const emptyStop: StopFormState = {
   destination: "",
   delivery_date: "",
   delivery_time: "",
+  appointment: "",
 };
 
 const field =
@@ -134,6 +136,17 @@ export default function StopsEditor({
                 onChange={(e) => updateStop(i, { delivery_time: e.target.value })}
                 onBlur={(e) => updateStop(i, { delivery_time: formatMilitaryInput(e.target.value) })}
                 className={field}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className={label}>
+                Appointment <span className="font-normal text-black/40">(or FCFS)</span>
+              </label>
+              <input
+                placeholder="e.g. 8:00 AM appt, or FCFS"
+                value={stop.appointment}
+                onChange={(e) => updateStop(i, { appointment: e.target.value })}
+                className={`${field} ${stop.appointment.trim() === "" ? "border-red-400" : ""}`}
               />
             </div>
           </div>

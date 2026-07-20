@@ -51,6 +51,11 @@ export default function DeliveringCard({ stop }: { stop: DeliveringStop }) {
       <p className="mt-2 text-xs text-black/60 dark:text-white/60">
         Delivering today{stop.delivery_time && ` at ${stop.delivery_time}`}
       </p>
+      {stop.appointment ? (
+        <p className="text-xs text-black/50 dark:text-white/50">Appt: {stop.appointment}</p>
+      ) : (
+        <p className="text-xs font-semibold text-red-600 dark:text-red-400">⚠ Missing Appointment</p>
+      )}
       {load?.notes && (
         <p className="mt-2 rounded bg-yellow-50 px-2 py-1 text-xs text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">
           {load.notes}

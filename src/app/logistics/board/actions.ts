@@ -16,6 +16,7 @@ interface StopInput {
   destination_state: string | null;
   delivery_date: string | null;
   delivery_time: string | null;
+  appointment: string | null;
 }
 
 function str(formData: FormData, key: string): string | null {
@@ -68,6 +69,7 @@ function stopsFromForm(formData: FormData): StopInput[] {
     destination_state: cleanStr(s?.destination_state),
     delivery_date: cleanStr(s?.delivery_date),
     delivery_time: cleanStr(s?.delivery_time),
+    appointment: cleanStr(s?.appointment),
   }));
 }
 

@@ -14,13 +14,26 @@ function money(n: number): string {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
-function StatTile({ label, value, href }: { label: string; value: number; href: string }) {
+function StatTile({
+  label,
+  value,
+  href,
+  alert = false,
+}: {
+  label: string;
+  value: number;
+  href: string;
+  alert?: boolean;
+}) {
+  const flagged = alert && value > 0;
   return (
     <Link
       href={href}
-      className="rounded-lg border border-black/10 p-4 shadow-sm transition hover:border-green-600 dark:border-white/10"
+      className={`rounded-lg border p-4 shadow-sm transition hover:border-green-600 ${
+        flagged ? "border-red-300 dark:border-red-800" : "border-black/10 dark:border-white/10"
+      }`}
     >
-      <p className="text-3xl font-bold">{value}</p>
+      <p className={`text-3xl font-bold ${flagged ? "text-red-600 dark:text-red-400" : ""}`}>{value}</p>
       <p className="text-sm text-black/60 dark:text-white/60">{label}</p>
     </Link>
   );
@@ -100,6 +113,7 @@ export default async function HomePage() {
     pasTotalRes,
     pasContactRes,
     pasEscalationRes,
+    missingAppointmentRes,
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -131,6 +145,11 @@ export default async function HomePage() {
     supabase.from("pas_files").select("*", { count: "exact", head: true }),
     supabase.from("pas_files").select("*", { count: "exact", head: true }).eq("highlight", "yellow"),
     supabase.from("pas_files").select("*", { count: "exact", head: true }).eq("highlight", "red"),
+    supabase
+      .from("load_stops")
+      .select("*, loads!inner(status)", { count: "exact", head: true })
+      .is("appointment", null)
+      .neq("loads.status", "complete"),
   ]);
 
   const error =
@@ -147,7 +166,8 @@ export default async function HomePage() {
     oldAgeNextStepsRes.error ??
     pasTotalRes.error ??
     pasContactRes.error ??
-    pasEscalationRes.error;
+    pasEscalationRes.error ??
+    missingAppointmentRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load dashboard: {error.message}</p>;
   }
@@ -185,10 +205,16 @@ export default async function HomePage() {
 
         <section>
           <SubHeading>Loads</SubHeading>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatTile label="Pending Today" value={pendingTodayRes.count ?? 0} href="/logistics/board" />
             <StatTile label="Total Pending" value={pendingRes.count ?? 0} href="/logistics/board" />
             <StatTile label="On the Road" value={onRoadRes.count ?? 0} href="/logistics/board" />
+            <StatTile
+              label="Missing Appointments"
+              value={missingAppointmentRes.count ?? 0}
+              href="/logistics/board"
+              alert
+            />
           </div>
         </section>
 

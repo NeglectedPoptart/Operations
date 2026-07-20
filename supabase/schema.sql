@@ -128,7 +128,8 @@ create table if not exists load_stops (
   destination_city text,
   destination_state text,
   delivery_date date,
-  delivery_time text
+  delivery_time text,
+  appointment text
 );
 
 create index if not exists load_stops_load_id_idx on load_stops (load_id);
@@ -470,6 +471,18 @@ create table if not exists fob_freight_rates (
 
 create index if not exists fob_freight_rates_position_idx on fob_freight_rates (position);
 
+-- Sales: Delivered Price Sheets - per-lane editable "specials" message shown
+-- under the title of each lane's delivered sheet (Houston, etc.). The
+-- pricing itself (LTL/FTL per commodity) is computed on the fly from
+-- fob_items + fob_freight_rates, nothing to store for that.
+create table if not exists delivered_price_messages (
+  id uuid primary key default gen_random_uuid(),
+  lane text not null unique,
+  message text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Keep loads.updated_at current on every edit ------------------------------
 create or replace function set_updated_at()
 returns trigger as $$
@@ -540,6 +553,11 @@ create trigger fob_freight_rates_set_updated_at
   before update on fob_freight_rates
   for each row execute function set_updated_at();
 
+drop trigger if exists delivered_price_messages_set_updated_at on delivered_price_messages;
+create trigger delivered_price_messages_set_updated_at
+  before update on delivered_price_messages
+  for each row execute function set_updated_at();
+
 -- Row Level Security: any signed-in user (this is an internal 1-3 person
 -- tool, so all authenticated users get full read/write access) -----------
 alter table brokers enable row level security;
@@ -569,6 +587,7 @@ alter table qc_inspections enable row level security;
 alter table pending_to_invoice enable row level security;
 alter table fob_items enable row level security;
 alter table fob_freight_rates enable row level security;
+alter table delivered_price_messages enable row level security;
 
 drop policy if exists "authenticated full access" on brokers;
 create policy "authenticated full access" on brokers
@@ -668,6 +687,10 @@ create policy "authenticated full access" on fob_items
 
 drop policy if exists "authenticated full access" on fob_freight_rates;
 create policy "authenticated full access" on fob_freight_rates
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on delivered_price_messages;
+create policy "authenticated full access" on delivered_price_messages
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- Seed: Workflow core tasks (from the current daily checklist). Guarded by
@@ -798,3 +821,10 @@ select * from (values
   ('YUMA-PA', null, 495.00, 10)
 ) as seed(lane, ltl, ftl, position)
 where not exists (select 1 from fob_freight_rates);
+
+-- Seed: Delivered Price Sheets default message (Houston)
+insert into delivered_price_messages (lane, message)
+select * from (values
+  ('houston', 'Please find our current price sheet attached for your review, If you have any questions or would like to discuss volume pricing or specific product needs please let us know!')
+) as seed(lane, message)
+where not exists (select 1 from delivered_price_messages where lane = 'houston');

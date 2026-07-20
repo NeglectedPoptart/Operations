@@ -18,6 +18,7 @@ function stopsFromLoad(load: Load | null): StopFormState[] {
       destination: [s.destination_city, s.destination_state].filter(Boolean).join(", "),
       delivery_date: s.delivery_date ?? "",
       delivery_time: s.delivery_time ?? "",
+      appointment: s.appointment ?? "",
     }));
 }
 

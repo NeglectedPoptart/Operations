@@ -41,6 +41,9 @@ export interface LoadStop {
   destination_state: string | null;
   delivery_date: string | null;
   delivery_time: string | null;
+  // Either a real appointment time/reference, or the literal "FCFS" - a stop
+  // with neither is flagged as missing an appointment.
+  appointment: string | null;
 }
 
 export interface Load {
@@ -373,6 +376,14 @@ export interface FobFreightRate {
   ltl: number | null;
   ftl: number | null;
   position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveredPriceMessage {
+  id: string;
+  lane: string;
+  message: string | null;
   created_at: string;
   updated_at: string;
 }

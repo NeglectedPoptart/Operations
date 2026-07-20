@@ -36,6 +36,19 @@ export default function OnTheRoadCard({ load }: { load: Load }) {
         </div>
       </div>
 
+      <div className="mt-2 space-y-0.5">
+        {stops.map((stop, i) => (
+          <p key={stop.id} className="text-xs">
+            {stops.length > 1 && <span className="font-medium">Drop {i + 1}: </span>}
+            {stop.appointment ? (
+              <span className="text-black/50 dark:text-white/50">Appt: {stop.appointment}</span>
+            ) : (
+              <span className="font-semibold text-red-600 dark:text-red-400">⚠ Missing Appointment</span>
+            )}
+          </p>
+        ))}
+      </div>
+
       <div className="mt-2 flex items-end gap-2">
         <div className="flex-1">
           <label className="text-xs font-medium text-black/60 dark:text-white/60">
