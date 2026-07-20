@@ -24,10 +24,14 @@ function findColumn(header: string[], synonyms: string[]): number {
   return header.findIndex((cell) => normalized.includes(cell));
 }
 
+// Accepts both 2-digit and 4-digit years ("5/18/26" and "5/18/2026") - some
+// carrier statements use a 2-digit year, which previously failed to match
+// at all and silently left invoice_date (and therefore Age) blank.
 function parseUsDate(raw: string): string | null {
-  const m = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const m = raw.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
   if (!m) return null;
-  const [, mm, dd, yyyy] = m;
+  const [, mm, dd, yyyyRaw] = m;
+  const yyyy = yyyyRaw.length === 2 ? `20${yyyyRaw}` : yyyyRaw;
   return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
 }
 
@@ -60,7 +64,19 @@ export function parsePastedInvoices(text: string): ParseResult {
     invoiceNo: findColumn(header, ["inv#", "invno", "invoiceno", "invoicenumber", "invnumber", "invoice"]),
     date: findColumn(header, ["date", "invoicedate", "invdate"]),
     customerPo: findColumn(header, ["customerpo", "custpo", "po", "po#", "reference", "referenceno"]),
-    amount: findColumn(header, ["amt", "amount", "invoiceamt", "invoiceamount", "total"]),
+    amount: findColumn(header, [
+      "amt",
+      "amount",
+      "amountdue",
+      "amtdue",
+      "invoiceamt",
+      "invoiceamount",
+      "total",
+      "totaldue",
+      "invoicetotal",
+      "duebalance",
+      "balancedue",
+    ]),
   };
 
   if (idx.invoiceNo === -1) {

@@ -116,7 +116,7 @@ export default function InvoicingClient({
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
-  function handleFieldSave(id: string, patch: Partial<Pick<InvoiceStatement, "status" | "notes">>) {
+  function handleFieldSave(id: string, patch: Partial<Pick<InvoiceStatement, "status" | "notes" | "flagged">>) {
     updateLocal(id, patch);
     updateInvoiceStatement(id, broker.id, patch).catch(() => {});
   }
@@ -126,7 +126,15 @@ export default function InvoicingClient({
   }
 
   function handleToggleDone(item: InvoiceStatement) {
-    handleFieldSave(item.id, { status: item.status === "done" ? null : "done" });
+    const nextStatus = item.status === "done" ? null : "done";
+    // The flag only means something while the row is marked Done (Statement
+    // Checker found it Done-but-still-has-a-balance) - un-marking Done
+    // clears it since that premise no longer applies.
+    handleFieldSave(item.id, { status: nextStatus, flagged: nextStatus === "done" ? item.flagged : false });
+  }
+
+  function handleDismissFlag(id: string) {
+    handleFieldSave(id, { flagged: false });
   }
 
   async function handleDelete(id: string) {
@@ -227,7 +235,18 @@ export default function InvoicingClient({
               const age = daysSince(item.invoice_date);
               return (
                 <tr key={item.id} className={`border-t border-black/10 dark:border-white/10 ${rowClass(item.status, age)}`}>
-                  <td className="px-2 py-1.5 font-medium">{item.invoice_no}</td>
+                  <td className="px-2 py-1.5 font-medium">
+                    {item.invoice_no}
+                    {item.flagged && (
+                      <button
+                        onClick={() => handleDismissFlag(item.id)}
+                        title="Statement Checker: marked Done here but still has a balance - click to dismiss"
+                        className="ml-1.5 text-red-600 hover:opacity-70"
+                      >
+                        🚩
+                      </button>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5">{formatDate(item.invoice_date) || "-"}</td>
                   <td className="px-2 py-1.5">{item.customer_po || "-"}</td>
                   <td className="px-2 py-1.5">{formatMoney(item.amount)}</td>

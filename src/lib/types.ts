@@ -31,6 +31,7 @@ export interface InvoiceStatement {
   amount: number | null;
   status: InvoiceStatus | null;
   notes: string | null;
+  flagged: boolean;
   created_at: string;
   updated_at: string;
 }

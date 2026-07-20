@@ -77,6 +77,7 @@ create table if not exists invoice_statements (
   amount numeric,
   status text check (status in ('pending', 'done')),
   notes text,
+  flagged boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

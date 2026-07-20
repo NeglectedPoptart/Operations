@@ -49,7 +49,7 @@ export async function importInvoices(brokerId: string, rows: ParsedInvoiceRow[])
 export async function updateInvoiceStatement(
   id: string,
   brokerId: string,
-  patch: Partial<Pick<InvoiceStatement, "status" | "notes">>,
+  patch: Partial<Pick<InvoiceStatement, "status" | "notes" | "flagged">>,
 ) {
   const supabase = await createClient();
   const { error } = await supabase.from("invoice_statements").update(patch).eq("id", id);

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import type { Broker } from "@/lib/types";
+import StatementCheckerClient from "./StatementCheckerClient";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,8 @@ export default async function InvoicingHomePage() {
       <p className="text-sm text-black/60 dark:text-white/60">
         Pick a broker to see its invoice aging list.
       </p>
+
+      <StatementCheckerClient brokers={(brokers ?? []) as Broker[]} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {((brokers ?? []) as Broker[]).map((b) => {
