@@ -57,6 +57,7 @@ const NAV: NavCategory[] = [
       { href: "/sales/fob-pharr", label: "FOB - Pharr" },
       { href: "/sales/delivered/houston", label: "Houston Delivered" },
       { href: "/sales/delivered/dallas", label: "Dallas Delivered" },
+      { href: "/sales/delivered/east-coast", label: "East Coast Delivered" },
       { href: "/sales/pending-to-invoice", label: "Pending to Invoice" },
     ],
   },
