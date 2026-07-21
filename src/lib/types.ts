@@ -11,6 +11,8 @@ export const LOAD_STATUSES: { value: LoadStatus; label: string }[] = [
 export interface Broker {
   id: string;
   name: string;
+  request_statement: boolean;
+  position: number;
 }
 
 // Logistics: Invoicing ---------------------------------------------------

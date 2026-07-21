@@ -35,7 +35,14 @@ export async function createLane(fromHub: string, destination: string) {
 
 export async function createBroker(name: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("brokers").insert({ name }).select().single();
+  const { data: maxRow } = await supabase
+    .from("brokers")
+    .select("position")
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextPosition = ((maxRow as { position: number } | null)?.position ?? -1) + 1;
+  const { data, error } = await supabase.from("brokers").insert({ name, position: nextPosition }).select().single();
   if (error) throw new Error(error.message);
   revalidatePath("/logistics/rates");
   revalidatePath("/logistics/board");

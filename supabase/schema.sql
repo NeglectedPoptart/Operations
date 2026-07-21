@@ -60,9 +60,14 @@ create trigger on_auth_user_created
   for each row execute function handle_new_user();
 
 -- Brokers (e.g. GRIFFITH, DESERT, PGTRANS) --------------------------------
+-- request_statement: a manual flag flipped on the Invoicing home page as a
+-- signal to email that carrier requesting their current statement.
+-- position: manual display order for the Invoicing home page's "Edit Layout".
 create table if not exists brokers (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique
+  name text not null unique,
+  request_statement boolean not null default false,
+  position integer not null default 0
 );
 
 -- Logistics: Invoicing - per-broker aging list of pasted statement lines.

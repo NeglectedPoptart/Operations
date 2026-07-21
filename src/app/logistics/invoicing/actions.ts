@@ -16,6 +16,26 @@ export async function getInvoiceStatementsForBroker(brokerId: string) {
   return (data ?? []) as InvoiceStatement[];
 }
 
+export async function toggleRequestStatement(brokerId: string, value: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("brokers").update({ request_statement: value }).eq("id", brokerId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/logistics/invoicing");
+}
+
+// Persists the broker tile order from the Invoicing home page's "Edit
+// Layout" mode. orderedIds is the full broker list in its new top-to-bottom
+// order; each broker's position is set to its index in that list.
+export async function reorderBrokers(orderedIds: string[]) {
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from("brokers").update({ position: index }).eq("id", id)),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+  revalidatePath("/logistics/invoicing");
+}
+
 // Applies the Statement Checker's confirmed results. The statement is the
 // source of truth for what's actually been posted: any invoice matched to
 // a Posted row is marked Done regardless of its current status here, then
