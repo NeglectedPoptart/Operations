@@ -9,13 +9,25 @@ export interface ParseResult {
   error?: string;
 }
 
+// "#" is mapped to "no" before stripping punctuation so a keyword search for
+// "po" still matches a header like "P.O. No" (-> "pono").
 function normalizeHeader(cell: string): string {
-  return cell.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return cell.trim().toLowerCase().replace(/#/g, "no").replace(/[^a-z0-9]/g, "");
 }
 
-function findColumn(header: string[], synonyms: string[]): number {
-  const normalized = synonyms.map(normalizeHeader);
-  return header.findIndex((cell) => normalized.includes(cell));
+// Matched by keyword SUBSTRING, not exact equality - every accounting
+// system's column wording is a little different. Columns are claimed
+// left-to-right and removed from further consideration, so once something
+// is used for a keyword it can't also satisfy a later one.
+function findColumn(header: string[], keywords: string[], claimed: Set<number>): number {
+  for (let i = 0; i < header.length; i++) {
+    if (claimed.has(i)) continue;
+    if (keywords.some((k) => header[i].includes(k))) {
+      claimed.add(i);
+      return i;
+    }
+  }
+  return -1;
 }
 
 // Our invoice numbers are stored bare ("20496"); the accounting system
@@ -60,10 +72,11 @@ export function parsePastedStatement(text: string): ParseResult {
   const grid = lines.map((l) => l.split("\t"));
   const header = grid[0].map(normalizeHeader);
 
+  const claimed = new Set<number>();
   const idx = {
-    document: findColumn(header, ["document", "invoice", "invoiceno", "invoice#", "inv", "bill", "billno"]),
-    journal: findColumn(header, ["journal"]),
-    balance: findColumn(header, ["balance"]),
+    document: findColumn(header, ["document", "inv", "bill"], claimed),
+    journal: findColumn(header, ["journal"], claimed),
+    balance: findColumn(header, ["balance"], claimed),
   };
 
   if (idx.document === -1) {

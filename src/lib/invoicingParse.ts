@@ -10,18 +10,27 @@ export interface ParseResult {
   error?: string;
 }
 
+// "#" is mapped to "no" before stripping punctuation so a keyword search for
+// "po" still matches a header like "P.O. No" (-> "pono").
 function normalizeHeader(cell: string): string {
-  return cell.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return cell.trim().toLowerCase().replace(/#/g, "no").replace(/[^a-z0-9]/g, "");
 }
 
-// Matched by exact normalized equality against a list of known synonyms
-// (not prefix, unlike PAS Files/Old Age's parsers) - "INV #" normalizes to
-// "inv", which would otherwise also prefix-match a column named "Invoice
-// Date". Every broker's statement format is a little different, so this
-// column list is intentionally generous.
-function findColumn(header: string[], synonyms: string[]): number {
-  const normalized = synonyms.map(normalizeHeader);
-  return header.findIndex((cell) => normalized.includes(cell));
+// Matched by keyword SUBSTRING, not exact equality - every carrier's
+// statement header wording is a little different ("Invoice #" vs
+// "Invoice/CM #", "Customer PO" vs "P.O. No"), and an exact-match synonym
+// list keeps missing real-world variants one at a time. Columns are
+// claimed left-to-right and removed from further consideration, so once
+// something is used for a keyword it can't also satisfy a later one.
+function findColumn(header: string[], keywords: string[], claimed: Set<number>): number {
+  for (let i = 0; i < header.length; i++) {
+    if (claimed.has(i)) continue;
+    if (keywords.some((k) => header[i].includes(k))) {
+      claimed.add(i);
+      return i;
+    }
+  }
+  return -1;
 }
 
 // Accepts both 2-digit and 4-digit years ("5/18/26" and "5/18/2026") - some
@@ -60,23 +69,12 @@ export function parsePastedInvoices(text: string): ParseResult {
   const grid = lines.map((l) => l.split("\t"));
   const header = grid[0].map(normalizeHeader);
 
+  const claimed = new Set<number>();
   const idx = {
-    invoiceNo: findColumn(header, ["inv#", "invno", "invoiceno", "invoicenumber", "invnumber", "invoice"]),
-    date: findColumn(header, ["date", "invoicedate", "invdate"]),
-    customerPo: findColumn(header, ["customerpo", "custpo", "po", "po#", "reference", "referenceno"]),
-    amount: findColumn(header, [
-      "amt",
-      "amount",
-      "amountdue",
-      "amtdue",
-      "invoiceamt",
-      "invoiceamount",
-      "total",
-      "totaldue",
-      "invoicetotal",
-      "duebalance",
-      "balancedue",
-    ]),
+    invoiceNo: findColumn(header, ["inv", "bill"], claimed),
+    date: findColumn(header, ["date"], claimed),
+    customerPo: findColumn(header, ["po", "reference"], claimed),
+    amount: findColumn(header, ["amount", "amt", "total", "balance"], claimed),
   };
 
   if (idx.invoiceNo === -1) {
