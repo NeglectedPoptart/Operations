@@ -39,7 +39,23 @@ export async function createBroker(name: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/logistics/rates");
   revalidatePath("/logistics/board");
+  revalidatePath("/logistics/invoicing");
   return data;
+}
+
+// Deletes a broker everywhere it's referenced: broker_rate_entries and
+// invoice_statements both cascade-delete (their FKs are ON DELETE CASCADE),
+// so this broker's rate history and invoicing list go with it. loads.broker_id
+// is ON DELETE SET NULL instead, so past loads stay intact and just lose the
+// broker tag rather than disappearing.
+export async function deleteBroker(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("brokers").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/logistics/rates");
+  revalidatePath("/logistics/board");
+  revalidatePath("/logistics/invoicing");
+  revalidatePath("/");
 }
 
 export async function deleteLane(id: string) {

@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatWeekLabel, nextWeekStart, prevWeekStart as prevWeek, currentWeekStart } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
 import type { Broker, BrokerRateEntry, Lane, RateSubmission } from "@/lib/types";
-import { createBroker, createLane, deleteLane, submitWeek, unlockWeek, upsertRateEntry } from "./actions";
+import { createBroker, createLane, deleteBroker, deleteLane, submitWeek, unlockWeek, upsertRateEntry } from "./actions";
 
 function money(n: number | null): string {
   if (n == null) return "—";
@@ -174,6 +174,18 @@ export default function BrokerTrackerClient({
     setLanes((prev) => prev.filter((l) => l.id !== id));
   }
 
+  async function handleDeleteBroker(id: string, name: string) {
+    if (
+      !confirm(
+        `Delete ${name}? This removes their rate history and their whole Invoicing list too - it deletes everywhere. Past loads keep showing but lose the broker tag.`,
+      )
+    ) {
+      return;
+    }
+    await deleteBroker(id);
+    setBrokers((prev) => prev.filter((b) => b.id !== id));
+  }
+
   const isCurrentWeek = weekStart === currentWeekStart();
 
   return (
@@ -240,15 +252,34 @@ export default function BrokerTrackerClient({
 
       {showManage && (
         <div className="grid gap-4 rounded-lg border border-black/10 p-3 sm:grid-cols-2 dark:border-white/10">
-          <form action={handleAddBroker} className="flex items-end gap-2">
-            <div className="flex-1">
-              <label className="text-xs font-medium text-black/60 dark:text-white/60">New broker name</label>
-              <input name="name" className="w-full rounded-md border border-black/20 px-2 py-1.5 text-sm dark:border-white/20 dark:bg-black/20" />
+          <div className="space-y-2">
+            <form action={handleAddBroker} className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-black/60 dark:text-white/60">New broker name</label>
+                <input name="name" className="w-full rounded-md border border-black/20 px-2 py-1.5 text-sm dark:border-white/20 dark:bg-black/20" />
+              </div>
+              <button type="submit" className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
+                Add
+              </button>
+            </form>
+            <div className="flex flex-wrap gap-1.5">
+              {brokers.map((b) => (
+                <span
+                  key={b.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
+                >
+                  {b.name}
+                  <button
+                    onClick={() => handleDeleteBroker(b.id, b.name)}
+                    title={`Delete ${b.name}`}
+                    className="font-bold text-red-600 hover:text-red-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
-            <button type="submit" className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
-              Add
-            </button>
-          </form>
+          </div>
           <form action={handleAddLane} className="flex items-end gap-2">
             <div className="flex-1">
               <label className="text-xs font-medium text-black/60 dark:text-white/60">From hub</label>
