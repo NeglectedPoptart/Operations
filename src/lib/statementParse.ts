@@ -30,14 +30,19 @@ function findColumn(header: string[], keywords: string[], claimed: Set<number>):
   return -1;
 }
 
-// Our invoice numbers are stored bare ("20496"); the accounting system
-// prefixes them ("INV-20496") - strip any leading letters/dashes so the two
-// sides compare equal regardless of which format either one uses.
+// The accounting system always wraps its own literal "INV-" prefix on top
+// of whatever we stored ("20496" -> "INV-20496", but also "P-7566" ->
+// "INV-P-7566" - some invoice numbers already carry their own meaningful
+// letter prefix, e.g. a document-type code, which is NOT an ERP artifact
+// and must survive on both sides). Only that specific "INV" prefix is
+// stripped - stripping any/every leading letter run (as this used to do)
+// destroyed real prefixes like "P-" and made otherwise-identical numbers
+// compare unequal.
 export function normalizeInvoiceNo(raw: string): string {
   return raw
     .trim()
     .toUpperCase()
-    .replace(/^[A-Z]+-?/, "")
+    .replace(/^INV-?/, "")
     .replace(/[^A-Z0-9]/g, "");
 }
 
