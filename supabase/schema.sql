@@ -287,6 +287,27 @@ create table if not exists cold_inventory_items (
   unique (manifest, commodity, size)
 );
 
+-- Sales: Buyers List - a standing task list of shortages (negative Avl)
+-- found in the pasted inventory pivot report. Pasting only adds newly-
+-- negative rows or refreshes qty_needed for one already listed (matched on
+-- whse+comm+variety+pstyle+size+label) - nothing is auto-removed, only by
+-- manual delete once resolved.
+create table if not exists buyers_list_items (
+  id uuid primary key default gen_random_uuid(),
+  whse text not null,
+  comm text not null,
+  variety text not null,
+  pstyle text not null,
+  size text not null,
+  label text not null,
+  qty_needed numeric not null,
+  notes text,
+  position integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (whse, comm, variety, pstyle, size, label)
+);
+
 -- Management: Workflow - a single standing checklist (no daily history). ---
 -- Status/notes are cleared manually each morning via "Reset Day";
 -- is_permanent distinguishes core tasks (survive a reset) from one-off tasks
@@ -617,6 +638,11 @@ create trigger cold_inventory_items_set_updated_at
   before update on cold_inventory_items
   for each row execute function set_updated_at();
 
+drop trigger if exists buyers_list_items_set_updated_at on buyers_list_items;
+create trigger buyers_list_items_set_updated_at
+  before update on buyers_list_items
+  for each row execute function set_updated_at();
+
 -- Row Level Security: any signed-in user (this is an internal 1-3 person
 -- tool, so all authenticated users get full read/write access) -----------
 alter table brokers enable row level security;
@@ -649,6 +675,7 @@ alter table fob_items enable row level security;
 alter table fob_freight_rates enable row level security;
 alter table delivered_price_messages enable row level security;
 alter table cold_inventory_items enable row level security;
+alter table buyers_list_items enable row level security;
 
 drop policy if exists "authenticated full access" on invoice_statements;
 create policy "authenticated full access" on invoice_statements
@@ -760,6 +787,10 @@ create policy "authenticated full access" on delivered_price_messages
 
 drop policy if exists "authenticated full access" on cold_inventory_items;
 create policy "authenticated full access" on cold_inventory_items
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on buyers_list_items;
+create policy "authenticated full access" on buyers_list_items
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- Seed: Workflow core tasks (from the current daily checklist). Guarded by

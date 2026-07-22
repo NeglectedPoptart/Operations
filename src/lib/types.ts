@@ -438,6 +438,23 @@ export interface DeliveredPriceMessage {
   updated_at: string;
 }
 
+// Sales: Buyers List -----------------------------------------------------------
+
+export interface BuyersListItem {
+  id: string;
+  whse: string;
+  comm: string;
+  variety: string;
+  pstyle: string;
+  size: string;
+  label: string;
+  qty_needed: number;
+  notes: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Management: User Roles -------------------------------------------------------
 
 export interface Profile {
