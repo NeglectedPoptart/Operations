@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { formatTimestampSlash } from "@/lib/dates";
 import type { Broker } from "@/lib/types";
@@ -22,6 +22,8 @@ export default function BrokerListClient({
     Object.fromEntries(brokers.map((b) => [b.id, b.request_statement])),
   );
   const [, startTransition] = useTransition();
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const dragStartOrder = useRef<Broker[] | null>(null);
 
   function handleToggle(id: string) {
     const next = !requested[id];
@@ -35,20 +37,42 @@ export default function BrokerListClient({
     });
   }
 
-  function move(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[index], next[target]] = [next[target], next[index]];
-    const previous = order;
-    setOrder(next);
+  function handleDragStart(index: number) {
+    dragStartOrder.current = order;
+    setDraggedIndex(index);
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    setOrder((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(draggedIndex, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    setDraggedIndex(index);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const previous = dragStartOrder.current;
+    const finalOrder = order;
+    setDraggedIndex(null);
+    dragStartOrder.current = null;
+    if (!previous || previous.map((b) => b.id).join() === finalOrder.map((b) => b.id).join()) return;
     startTransition(async () => {
       try {
-        await reorderBrokers(next.map((b) => b.id));
+        await reorderBrokers(finalOrder.map((b) => b.id));
       } catch {
         setOrder(previous);
       }
     });
+  }
+
+  function handleDragEnd() {
+    setDraggedIndex(null);
+    dragStartOrder.current = null;
   }
 
   if (order.length === 0) {
@@ -105,28 +129,24 @@ export default function BrokerListClient({
 
           if (editMode) {
             return (
-              <div key={b.id} className={cardClasses}>
+              <div
+                key={b.id}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={handleDrop}
+                onDragEnd={handleDragEnd}
+                className={`${cardClasses} cursor-grab select-none active:cursor-grabbing ${
+                  draggedIndex === index ? "opacity-40" : ""
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className="shrink-0 text-lg leading-none text-black/30 dark:text-white/30"
+                >
+                  ⠿
+                </span>
                 <div className="min-w-0 flex-1">{body}</div>
-                <div className="flex flex-col gap-1">
-                  <button
-                    type="button"
-                    onClick={() => move(index, -1)}
-                    disabled={index === 0}
-                    aria-label={`Move ${b.name} up`}
-                    className="flex h-6 w-8 items-center justify-center rounded border border-black/20 text-xs font-bold disabled:opacity-30 dark:border-white/20"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => move(index, 1)}
-                    disabled={index === order.length - 1}
-                    aria-label={`Move ${b.name} down`}
-                    className="flex h-6 w-8 items-center justify-center rounded border border-black/20 text-xs font-bold disabled:opacity-30 dark:border-white/20"
-                  >
-                    ▼
-                  </button>
-                </div>
               </div>
             );
           }
