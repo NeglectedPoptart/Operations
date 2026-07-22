@@ -2,7 +2,17 @@
 
 import { Fragment, useMemo, useState } from "react";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
-import { buildWhatsAppSection, escapeHtml, groupFobItems, roundUpToNickel, type FobItemGroup } from "@/lib/fobPricing";
+import {
+  buildWhatsAppSection,
+  copyOrDownloadPng,
+  escapeHtml,
+  groupFobItems,
+  renderPriceSheetPng,
+  roundUpToNickel,
+  toMonoRows,
+  type CanvasBlock,
+  type FobItemGroup,
+} from "@/lib/fobPricing";
 import { updateEastCoastMessage } from "./actions";
 
 function formatMoney(n: number | null) {
@@ -173,6 +183,7 @@ export default function EastCoastPricingClient({
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
   const emailTitle = "EAST COAST DELIVERED PRICE SHEET";
 
   const freightByLane = useMemo(() => {
@@ -185,22 +196,29 @@ export default function EastCoastPricingClient({
     updateEastCoastMessage(e.target.value).catch(() => {});
   }
 
-  async function handleCopy() {
+  function buildFullHtml(message: string) {
     const westernGroups = groupFobItems(items, "western_veg");
     const hotHouseGroups = groupFobItems(items, "hot_house");
-    const messageEl = document.getElementById("east-coast-message") as HTMLTextAreaElement | null;
-    const message = messageEl?.value ?? initialMessage;
 
     const headerHtml = `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:10px;background:#ffffff;">
       <tr><td style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;background:#ffffff;color:#000000;">${escapeHtml(emailTitle)}</td></tr>
       <tr><td style="text-align:center;border:1px solid #000;padding:6px;font-size:12.5px;background:#ffffff;color:#000000;">${escapeHtml(message)}</td></tr>
     </table>`;
 
-    const html = `${headerHtml}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
+    return `${headerHtml}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
         <td valign="top" style="background:#ffffff;">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups, lanes, freightByLane)}</td>
         <td style="width:24px;background:#ffffff;">&nbsp;</td>
         <td valign="top" style="background:#ffffff;">${buildSectionHtml("Hot House", "#FF3333", hotHouseGroups, lanes, freightByLane)}</td>
       </tr></table>`;
+  }
+
+  async function handleCopy() {
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
+    const messageEl = document.getElementById("east-coast-message") as HTMLTextAreaElement | null;
+    const message = messageEl?.value ?? initialMessage;
+
+    const html = buildFullHtml(message);
     const text = `${emailTitle}\n\n${message}\n\n${buildPlainText("Western Veg", westernGroups, lanes, freightByLane)}\n\n${buildPlainText("Hot House", hotHouseGroups, lanes, freightByLane)}`;
 
     try {
@@ -237,6 +255,31 @@ export default function EastCoastPricingClient({
     }
   }
 
+  async function handleCopyImage() {
+    const messageEl = document.getElementById("east-coast-message") as HTMLTextAreaElement | null;
+    const message = messageEl?.value ?? initialMessage;
+    try {
+      const westernGroups = groupFobItems(items, "western_veg");
+      const hotHouseGroups = groupFobItems(items, "hot_house");
+      const headers = ["Commodity", "Unit Per PLT", ...lanes];
+      const rowValues = (item: FobItem) => [
+        item.variety ?? "",
+        item.unit_per !== null ? String(item.unit_per) : "",
+        ...lanes.map((lane) => formatMoney(computeDelivered(item, freightByLane[lane]))),
+      ];
+      const blocks: CanvasBlock[] = [
+        { title: "Western Veg", headerColor: "#8DC63F", columnHeaders: headers, rows: toMonoRows(westernGroups, rowValues) },
+        { title: "Hot House", headerColor: "#FF3333", columnHeaders: headers, rows: toMonoRows(hotHouseGroups, rowValues) },
+      ];
+      const blob = await renderPriceSheetPng({ title: emailTitle, message, blocks });
+      const result = await copyOrDownloadPng(blob, "east-coast-delivered-pricing.png");
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -254,6 +297,12 @@ export default function EastCoastPricingClient({
               className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
             >
               {copiedWhatsApp ? "Copied!" : "Copy for WhatsApp"}
+            </button>
+            <button
+              onClick={handleCopyImage}
+              className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+            >
+              {imageStatus ?? "Copy as Image"}
             </button>
           </div>
         </div>

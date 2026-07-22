@@ -2,7 +2,16 @@
 
 import { Fragment, useMemo, useState } from "react";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
-import { escapeHtml, groupFobItems, type FobItemGroup as Group } from "@/lib/fobPricing";
+import {
+  buildWhatsAppSection,
+  copyOrDownloadPng,
+  escapeHtml,
+  groupFobItems,
+  renderPriceSheetPng,
+  toMonoRows,
+  type CanvasBlock,
+  type FobItemGroup as Group,
+} from "@/lib/fobPricing";
 import {
   addFobItem,
   addFreightRate,
@@ -75,6 +84,17 @@ function buildPlainText(title: string, groups: Group[]) {
     }
   }
   return lines.join("\n");
+}
+
+const FOB_COLUMN_HEADERS = ["Commodity", "Unit Per", "Size", "FOB"];
+function fobRowValues(item: FobItem) {
+  return [item.variety ?? "", item.unit_per !== null ? String(item.unit_per) : "", item.size ?? "", formatFob(item.fob) || "-"];
+}
+
+function buildWhatsAppMessage(westernGroups: Group[], hotHouseGroups: Group[]) {
+  const western = buildWhatsAppSection("WESTERN VEG", westernGroups, FOB_COLUMN_HEADERS, fobRowValues);
+  const hotHouse = buildWhatsAppSection("HOT HOUSE", hotHouseGroups, FOB_COLUMN_HEADERS, fobRowValues);
+  return `*${EMAIL_TITLE}*\n\n${EMAIL_INTRO}\n\n${western}\n\n${hotHouse}`;
 }
 
 function FreightRatesPanel({
@@ -300,6 +320,8 @@ export default function FobPharrClient({
   const [items, setItems] = useState(initialItems);
   const [rates, setRates] = useState(initialFreightRates);
   const [copied, setCopied] = useState(false);
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   function updateLocalItem(id: string, patch: Partial<FobItem>) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -357,14 +379,20 @@ export default function FobPharrClient({
     await deleteFreightRate(id).catch(() => {});
   }
 
-  async function handleCopy() {
+  function buildFullHtml() {
     const westernGroups = groupFobItems(items, "western_veg");
     const hotHouseGroups = groupFobItems(items, "hot_house");
-    const html = `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
+    return `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
         <td valign="top" style="background:#ffffff;">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups)}</td>
         <td style="width:24px;background:#ffffff;">&nbsp;</td>
         <td valign="top" style="background:#ffffff;">${buildSectionHtml("Hot House", "#FF3333", hotHouseGroups)}</td>
       </tr></table>`;
+  }
+
+  async function handleCopy() {
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
+    const html = buildFullHtml();
     const text = `${EMAIL_TITLE}\n\n${EMAIL_INTRO}\n\n${buildPlainText("Western Veg", westernGroups)}\n\n${buildPlainText("Hot House", hotHouseGroups)}`;
 
     try {
@@ -385,6 +413,47 @@ export default function FobPharrClient({
     }
   }
 
+  async function handleCopyWhatsApp() {
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
+    const text = buildWhatsAppMessage(westernGroups, hotHouseGroups);
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedWhatsApp(true);
+      setTimeout(() => setCopiedWhatsApp(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyImage() {
+    try {
+      const westernGroups = groupFobItems(items, "western_veg");
+      const hotHouseGroups = groupFobItems(items, "hot_house");
+      const blocks: CanvasBlock[] = [
+        {
+          title: "Western Veg",
+          headerColor: "#8DC63F",
+          columnHeaders: FOB_COLUMN_HEADERS,
+          rows: toMonoRows(westernGroups, fobRowValues),
+        },
+        {
+          title: "Hot House",
+          headerColor: "#FF3333",
+          columnHeaders: FOB_COLUMN_HEADERS,
+          rows: toMonoRows(hotHouseGroups, fobRowValues),
+        },
+      ];
+      const blob = await renderPriceSheetPng({ title: EMAIL_TITLE, message: EMAIL_INTRO, blocks });
+      const result = await copyOrDownloadPng(blob, "mcallen-fob-pricing.png");
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
@@ -399,12 +468,26 @@ export default function FobPharrClient({
 
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">McAllen FOB Pricing</h2>
-          <button
-            onClick={handleCopy}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-          >
-            {copied ? "Copied!" : "Copy Price Sheet"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopy}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+            >
+              {copied ? "Copied!" : "Copy Price Sheet"}
+            </button>
+            <button
+              onClick={handleCopyWhatsApp}
+              className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              {copiedWhatsApp ? "Copied!" : "Copy for WhatsApp"}
+            </button>
+            <button
+              onClick={handleCopyImage}
+              className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+            >
+              {imageStatus ?? "Copy as Image"}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
