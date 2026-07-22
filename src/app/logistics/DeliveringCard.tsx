@@ -10,6 +10,7 @@ export interface DeliveringStop extends LoadStop {
     source: string | null;
     rate: number | null;
     notes: string | null;
+    rate_con_sent: boolean;
     brokers: Broker | null;
   } | null;
 }
@@ -55,6 +56,11 @@ export default function DeliveringCard({ stop }: { stop: DeliveringStop }) {
         <p className="text-xs text-black/50 dark:text-white/50">Appt: {stop.appointment}</p>
       ) : (
         <p className="text-xs font-semibold text-red-600 dark:text-red-400">⚠ Missing Appointment</p>
+      )}
+      {load?.rate_con_sent ? (
+        <p className="text-xs text-black/50 dark:text-white/50">Rate Con: Sent</p>
+      ) : (
+        <p className="text-xs font-semibold text-red-600 dark:text-red-400">⚠ Rate Con Not Sent</p>
       )}
       {load?.notes && (
         <p className="mt-2 rounded bg-yellow-50 px-2 py-1 text-xs text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300">

@@ -135,6 +135,9 @@ create table if not exists loads (
   notes text,
   eta_note text,
   ready_to_load boolean not null default false,
+  -- Manually flipped on the Board once the rate confirmation has been sent
+  -- to the broker; flagged everywhere while unset on an active load.
+  rate_con_sent boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

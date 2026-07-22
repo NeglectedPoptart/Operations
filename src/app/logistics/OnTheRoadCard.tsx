@@ -49,6 +49,14 @@ export default function OnTheRoadCard({ load }: { load: Load }) {
         ))}
       </div>
 
+      <p className="mt-1 text-xs">
+        {load.rate_con_sent ? (
+          <span className="text-black/50 dark:text-white/50">Rate Con: Sent</span>
+        ) : (
+          <span className="font-semibold text-red-600 dark:text-red-400">⚠ Rate Con Not Sent</span>
+        )}
+      </p>
+
       <div className="mt-2 flex items-end gap-2">
         <div className="flex-1">
           <label className="text-xs font-medium text-black/60 dark:text-white/60">

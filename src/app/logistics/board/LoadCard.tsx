@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { deleteLoad, updateLoadReady, updateLoadStatus } from "./actions";
+import { deleteLoad, updateLoadRateConSent, updateLoadReady, updateLoadStatus } from "./actions";
 import { LOAD_STATUSES, type Load, type LoadStatus } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
 
@@ -29,6 +29,10 @@ export default function LoadCard({
     startTransition(() => updateLoadReady(load.id, !load.ready_to_load));
   }
 
+  function handleToggleRateCon() {
+    startTransition(() => updateLoadRateConSent(load.id, !load.rate_con_sent));
+  }
+
   const borderClass =
     load.status === "pending_to_load"
       ? load.ready_to_load
@@ -40,19 +44,34 @@ export default function LoadCard({
     <div className={`rounded-lg border p-3 shadow-sm ${borderClass}`}>
       <LoadSummary load={load} dateFirst={dateFirst} />
 
-      {load.status === "pending_to_load" && (
-        <button
-          onClick={handleToggleReady}
-          disabled={pending}
-          className={`mt-2 rounded px-2 py-0.5 text-xs font-medium ${
-            load.ready_to_load
-              ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-              : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-          }`}
-        >
-          {load.ready_to_load ? "Ready to Load" : "Not Ready"}
-        </button>
-      )}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {load.status === "pending_to_load" && (
+          <button
+            onClick={handleToggleReady}
+            disabled={pending}
+            className={`rounded px-2 py-0.5 text-xs font-medium ${
+              load.ready_to_load
+                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+            }`}
+          >
+            {load.ready_to_load ? "Ready to Load" : "Not Ready"}
+          </button>
+        )}
+        {load.status !== "complete" && (
+          <button
+            onClick={handleToggleRateCon}
+            disabled={pending}
+            className={`rounded px-2 py-0.5 text-xs font-medium ${
+              load.rate_con_sent
+                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+            }`}
+          >
+            {load.rate_con_sent ? "Rate Con Sent" : "⚠ Rate Con Not Sent"}
+          </button>
+        )}
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <select

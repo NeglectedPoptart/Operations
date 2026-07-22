@@ -35,6 +35,7 @@ export default async function HomePage() {
     { data: deliveringToday, error: e3 },
     { data: onTheRoad, error: e4 },
     { count: missingAppointmentCount, error: e5 },
+    { count: missingRateConCount, error: e6 },
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -49,7 +50,7 @@ export default async function HomePage() {
       .order("position", { foreignTable: "load_stops", ascending: true }),
     supabase
       .from("load_stops")
-      .select("*, loads!inner(id, source, rate, notes, brokers(id, name))")
+      .select("*, loads!inner(id, source, rate, notes, rate_con_sent, brokers(id, name))")
       .eq("delivery_date", today)
       .neq("loads.status", "complete")
       .order("delivery_time", { ascending: true }),
@@ -63,12 +64,18 @@ export default async function HomePage() {
       .select("*, loads!inner(status)", { count: "exact", head: true })
       .is("appointment", null)
       .neq("loads.status", "complete"),
+    supabase
+      .from("loads")
+      .select("*", { count: "exact", head: true })
+      .eq("rate_con_sent", false)
+      .neq("status", "complete"),
   ]);
 
-  if (e1 || e2 || e3 || e4 || e5) {
+  if (e1 || e2 || e3 || e4 || e5 || e6) {
     return (
       <p className="text-red-600">
-        Failed to load home data: {e1?.message ?? e2?.message ?? e3?.message ?? e4?.message ?? e5?.message}
+        Failed to load home data:{" "}
+        {e1?.message ?? e2?.message ?? e3?.message ?? e4?.message ?? e5?.message ?? e6?.message}
       </p>
     );
   }
@@ -78,6 +85,7 @@ export default async function HomePage() {
   const delivering = (deliveringToday ?? []) as unknown as DeliveringStop[];
   const onRoad = (onTheRoad ?? []) as unknown as Load[];
   const missingAppointments = missingAppointmentCount ?? 0;
+  const missingRateCons = missingRateConCount ?? 0;
 
   return (
     <div className="space-y-8">
@@ -97,6 +105,17 @@ export default async function HomePage() {
         }`}
       >
         {missingAppointments} order{missingAppointments === 1 ? "" : "s"} missing an appointment (or FCFS note)
+      </Link>
+
+      <Link
+        href="/logistics/board"
+        className={`block rounded-lg border p-3 text-sm font-medium shadow-sm ${
+          missingRateCons > 0
+            ? "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300"
+            : "border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
+        }`}
+      >
+        {missingRateCons} order{missingRateCons === 1 ? "" : "s"} without a rate confirmation sent
       </Link>
 
       <section>

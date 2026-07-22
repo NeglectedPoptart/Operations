@@ -151,6 +151,13 @@ export async function updateLoadReady(id: string, readyToLoad: boolean) {
   revalidateAll();
 }
 
+export async function updateLoadRateConSent(id: string, rateConSent: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("loads").update({ rate_con_sent: rateConSent }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
 export async function updateEtaNote(id: string, etaNote: string) {
   const supabase = await createClient();
   const { error } = await supabase

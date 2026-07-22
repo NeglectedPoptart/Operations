@@ -95,6 +95,16 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
         ))}
       </div>
 
+      {load.status !== "complete" && (
+        <p className="mt-1 text-xs">
+          {load.rate_con_sent ? (
+            <span className="text-black/50 dark:text-white/50">Rate Con: Sent</span>
+          ) : (
+            <span className="font-semibold text-red-600 dark:text-red-400">⚠ Rate Con Not Sent</span>
+          )}
+        </p>
+      )}
+
       {load.notes && <p className="mt-1 text-xs italic text-black/50 dark:text-white/50">{load.notes}</p>}
     </>
   );

@@ -82,6 +82,7 @@ export interface Load {
   notes: string | null;
   eta_note: string | null;
   ready_to_load: boolean;
+  rate_con_sent: boolean;
   created_at: string;
   updated_at: string;
   load_stops: LoadStop[];

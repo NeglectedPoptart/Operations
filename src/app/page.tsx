@@ -114,6 +114,7 @@ export default async function HomePage() {
     pasContactRes,
     pasEscalationRes,
     missingAppointmentRes,
+    missingRateConRes,
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -150,6 +151,11 @@ export default async function HomePage() {
       .select("*, loads!inner(status)", { count: "exact", head: true })
       .is("appointment", null)
       .neq("loads.status", "complete"),
+    supabase
+      .from("loads")
+      .select("*", { count: "exact", head: true })
+      .eq("rate_con_sent", false)
+      .neq("status", "complete"),
   ]);
 
   const error =
@@ -167,7 +173,8 @@ export default async function HomePage() {
     pasTotalRes.error ??
     pasContactRes.error ??
     pasEscalationRes.error ??
-    missingAppointmentRes.error;
+    missingAppointmentRes.error ??
+    missingRateConRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load dashboard: {error.message}</p>;
   }
@@ -205,13 +212,19 @@ export default async function HomePage() {
 
         <section>
           <SubHeading>Loads</SubHeading>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <StatTile label="Pending Today" value={pendingTodayRes.count ?? 0} href="/logistics/board" />
             <StatTile label="Total Pending" value={pendingRes.count ?? 0} href="/logistics/board" />
             <StatTile label="On the Road" value={onRoadRes.count ?? 0} href="/logistics/board" />
             <StatTile
               label="Missing Appointments"
               value={missingAppointmentRes.count ?? 0}
+              href="/logistics/board"
+              alert
+            />
+            <StatTile
+              label="Rate Con Not Sent"
+              value={missingRateConRes.count ?? 0}
               href="/logistics/board"
               alert
             />
