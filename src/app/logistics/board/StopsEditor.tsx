@@ -128,24 +128,15 @@ export default function StopsEditor({
                 className={field}
               />
             </div>
-            <div>
-              <label className={label}>Delivery Time</label>
-              <input
-                placeholder="1400 or 2:00 PM"
-                value={stop.delivery_time}
-                onChange={(e) => updateStop(i, { delivery_time: e.target.value })}
-                onBlur={(e) => updateStop(i, { delivery_time: formatMilitaryInput(e.target.value) })}
-                className={field}
-              />
-            </div>
-            <div className="col-span-2">
+            <div className="col-span-3">
               <label className={label}>
                 Appointment <span className="font-normal text-black/40">(or FCFS)</span>
               </label>
               <input
-                placeholder="e.g. 8:00 AM appt, or FCFS"
+                placeholder="e.g. 1400, 8:00 AM appt, or FCFS"
                 value={stop.appointment}
                 onChange={(e) => updateStop(i, { appointment: e.target.value })}
+                onBlur={(e) => updateStop(i, { appointment: formatMilitaryInput(e.target.value) })}
                 className={`${field} ${stop.appointment.trim() === "" ? "border-red-400" : ""}`}
               />
             </div>
