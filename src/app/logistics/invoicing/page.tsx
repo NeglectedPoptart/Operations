@@ -22,9 +22,13 @@ export default async function InvoicingHomePage() {
 
   const rows = (statements ?? []) as { broker_id: string; status: string | null }[];
   const pendingCounts: Record<string, number> = {};
+  const doneCounts: Record<string, number> = {};
   for (const r of rows) {
-    if (r.status === "done") continue;
-    pendingCounts[r.broker_id] = (pendingCounts[r.broker_id] ?? 0) + 1;
+    if (r.status === "done") {
+      doneCounts[r.broker_id] = (doneCounts[r.broker_id] ?? 0) + 1;
+    } else {
+      pendingCounts[r.broker_id] = (pendingCounts[r.broker_id] ?? 0) + 1;
+    }
   }
 
   return (
@@ -36,7 +40,7 @@ export default async function InvoicingHomePage() {
 
       <StatementCheckerClient brokers={(brokers ?? []) as Broker[]} />
 
-      <BrokerListClient brokers={(brokers ?? []) as Broker[]} pendingCounts={pendingCounts} />
+      <BrokerListClient brokers={(brokers ?? []) as Broker[]} pendingCounts={pendingCounts} doneCounts={doneCounts} />
     </div>
   );
 }

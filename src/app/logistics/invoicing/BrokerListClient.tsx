@@ -9,9 +9,11 @@ import { toggleRequestStatement, reorderBrokers } from "./actions";
 export default function BrokerListClient({
   brokers,
   pendingCounts,
+  doneCounts,
 }: {
   brokers: Broker[];
   pendingCounts: Record<string, number>;
+  doneCounts: Record<string, number>;
 }) {
   const [order, setOrder] = useState<Broker[]>(brokers);
   const [editMode, setEditMode] = useState(false);
@@ -75,6 +77,7 @@ export default function BrokerListClient({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {order.map((b, index) => {
           const pending = pendingCounts[b.id] ?? 0;
+          const done = doneCounts[b.id] ?? 0;
           const active = requested[b.id] ?? false;
           const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${
             active
@@ -86,7 +89,7 @@ export default function BrokerListClient({
             <>
               <p className="font-medium">{b.name}</p>
               <p className="text-sm text-black/60 dark:text-white/60">
-                {pending} pending invoice{pending === 1 ? "" : "s"}
+                {pending} pending · {done} done
               </p>
               {active && (
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
