@@ -113,3 +113,13 @@ export function formatDate(dateStr: string | null): string {
     timeZone: "UTC",
   });
 }
+
+// Plain MM/DD/YYYY - used where a page wants a compact numeric date instead
+// of formatDate's "Tue, Jun 16, 2026" style.
+export function formatDateSlash(dateStr: string | null): string {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00Z`);
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${mm}/${dd}/${d.getUTCFullYear()}`;
+}

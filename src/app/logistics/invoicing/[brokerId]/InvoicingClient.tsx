@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { daysSince, formatDate } from "@/lib/dates";
+import { daysSince, formatDateSlash } from "@/lib/dates";
 import { parsePastedInvoices, type ParsedInvoiceRow } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement, InvoiceStatus } from "@/lib/types";
 import { deleteInvoiceStatement, importInvoices, updateInvoiceStatement } from "./actions";
@@ -57,7 +57,7 @@ function PastePreview({
             {rows.map((r, i) => (
               <tr key={i} className="border-t border-black/10 dark:border-white/10">
                 <td className="px-2 py-1">{r.invoice_no}</td>
-                <td className="px-2 py-1">{formatDate(r.invoice_date) || "-"}</td>
+                <td className="px-2 py-1">{formatDateSlash(r.invoice_date) || "-"}</td>
                 <td className="px-2 py-1">{r.customer_po || "-"}</td>
                 <td className="px-2 py-1">{formatMoney(r.amount)}</td>
                 <td className="px-2 py-1">
@@ -247,7 +247,7 @@ export default function InvoicingClient({
                       </button>
                     )}
                   </td>
-                  <td className="px-2 py-1.5">{formatDate(item.invoice_date) || "-"}</td>
+                  <td className="px-2 py-1.5">{formatDateSlash(item.invoice_date) || "-"}</td>
                   <td className="px-2 py-1.5">{item.customer_po || "-"}</td>
                   <td className="px-2 py-1.5">{formatMoney(item.amount)}</td>
                   <td className="px-2 py-1.5 font-semibold">{age ?? "-"}</td>
