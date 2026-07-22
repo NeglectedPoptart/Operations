@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
-import { escapeHtml, groupFobItems, roundUpToNickel, type FobItemGroup } from "@/lib/fobPricing";
+import { buildWhatsAppSection, escapeHtml, groupFobItems, roundUpToNickel, type FobItemGroup } from "@/lib/fobPricing";
 import { updateDeliveredMessage } from "./actions";
 
 function formatMoney(n: number | null) {
@@ -75,6 +75,24 @@ function buildPlainText(title: string, groups: FobItemGroup[], freight: FobFreig
     }
   }
   return lines.join("\n");
+}
+
+function buildWhatsAppMessage(
+  title: string,
+  message: string,
+  westernGroups: FobItemGroup[],
+  hotHouseGroups: FobItemGroup[],
+  freight: FobFreightRate,
+  laneLabel: string,
+) {
+  const headers = ["Commodity", "Unit Per", `${laneLabel} LTL`, `${laneLabel} FTL`];
+  const rowValues = (item: FobItem) => {
+    const { ltl, ftl } = computeDelivered(item, freight);
+    return [item.variety ?? "", item.unit_per !== null ? String(item.unit_per) : "", formatMoney(ltl) || "-", formatMoney(ftl) || "-"];
+  };
+  const western = buildWhatsAppSection("WESTERN VEG", westernGroups, headers, rowValues);
+  const hotHouse = buildWhatsAppSection("HOT HOUSE", hotHouseGroups, headers, rowValues);
+  return `*${title}*\n\n${message}\n\n${western}\n\n${hotHouse}`;
 }
 
 function DeliveredSection({
@@ -152,6 +170,7 @@ export default function DeliveredPricingClient({
   initialMessage: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const laneLabel = capitalize(lane);
   const emailTitle = `${lane.toUpperCase()} DELIVERED PRICING`;
 
@@ -195,17 +214,41 @@ export default function DeliveredPricingClient({
     }
   }
 
+  async function handleCopyWhatsApp() {
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
+    const messageEl = document.getElementById("delivered-message") as HTMLTextAreaElement | null;
+    const message = messageEl?.value ?? initialMessage;
+    const text = buildWhatsAppMessage(emailTitle, message, westernGroups, hotHouseGroups, freightRate, laneLabel);
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedWhatsApp(true);
+      setTimeout(() => setCopiedWhatsApp(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">{laneLabel} Delivered Pricing</h1>
-          <button
-            onClick={handleCopy}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-          >
-            {copied ? "Copied!" : "Copy Price Sheet"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopy}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+            >
+              {copied ? "Copied!" : "Copy Price Sheet"}
+            </button>
+            <button
+              onClick={handleCopyWhatsApp}
+              className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
+            >
+              {copiedWhatsApp ? "Copied!" : "Copy for WhatsApp"}
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2">

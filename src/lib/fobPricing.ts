@@ -37,3 +37,56 @@ export function roundUpToNickel(value: number): number {
   const rounded = Math.round(scaled * 1e6) / 1e6;
   return Math.ceil(rounded) / 20;
 }
+
+// Plain-text table formatting for WhatsApp, which strips HTML/table markup
+// on paste and only keeps its own markdown (*bold*, and ```monospace```
+// fencing that preserves fixed-width alignment). A group-header row has no
+// cells; a data row has no group name - column 0 (commodity name) is left
+// aligned, every other column is right aligned like a normal price table.
+export interface MonoRow {
+  group?: string;
+  cells?: string[];
+}
+
+export function buildMonospaceTable(headers: string[], rows: MonoRow[]): string {
+  const widths = headers.map((h) => h.length);
+  for (const r of rows) {
+    if (!r.cells) continue;
+    r.cells.forEach((c, i) => {
+      widths[i] = Math.max(widths[i] ?? 0, c.length);
+    });
+  }
+  const padCell = (s: string, width: number, alignRight: boolean) => {
+    const gap = " ".repeat(Math.max(0, width - s.length));
+    return alignRight ? gap + s : s + gap;
+  };
+  const formatRow = (cells: string[]) => cells.map((c, i) => padCell(c, widths[i], i > 0)).join("  ").trimEnd();
+
+  const lines = [formatRow(headers)];
+  for (const r of rows) {
+    if (r.group) {
+      lines.push(r.group);
+    } else if (r.cells) {
+      lines.push(formatRow(r.cells));
+    }
+  }
+  return lines.join("\n");
+}
+
+// Builds one *bold title* + ```monospace table``` block for a commodity
+// section (Western Veg / Hot House), ready to concatenate into a full
+// WhatsApp message.
+export function buildWhatsAppSection(
+  sectionTitle: string,
+  groups: FobItemGroup[],
+  headers: string[],
+  rowValues: (item: FobItem) => string[],
+): string {
+  const rows: MonoRow[] = [];
+  for (const g of groups) {
+    rows.push({ group: g.name });
+    for (const item of g.rows) rows.push({ cells: rowValues(item) });
+  }
+  const table = buildMonospaceTable(headers, rows);
+  return `*${sectionTitle}*\n\`\`\`\n${table}\n\`\`\``;
+}
