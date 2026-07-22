@@ -13,6 +13,7 @@ export interface Broker {
   name: string;
   request_statement: boolean;
   position: number;
+  last_activity_at: string | null;
 }
 
 // Logistics: Invoicing ---------------------------------------------------

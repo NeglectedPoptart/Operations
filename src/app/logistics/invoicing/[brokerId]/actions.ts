@@ -46,6 +46,18 @@ export async function importInvoices(brokerId: string, rows: ParsedInvoiceRow[])
   return data;
 }
 
+// "Last update" on the broker's Invoicing tile only tracks the two events
+// that actually mean someone worked the account: marking an invoice Done,
+// or adding a note - not every incidental field touch (e.g. re-marking
+// Pending, dismissing a flag).
+async function bumpBrokerActivity(supabase: Awaited<ReturnType<typeof createClient>>, brokerId: string) {
+  const { error } = await supabase
+    .from("brokers")
+    .update({ last_activity_at: new Date().toISOString() })
+    .eq("id", brokerId);
+  if (error) throw new Error(error.message);
+}
+
 export async function updateInvoiceStatement(
   id: string,
   brokerId: string,
@@ -54,6 +66,9 @@ export async function updateInvoiceStatement(
   const supabase = await createClient();
   const { error } = await supabase.from("invoice_statements").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
+  if (patch.status === "done" || patch.notes !== undefined) {
+    await bumpBrokerActivity(supabase, brokerId);
+  }
   revalidateAll(brokerId);
 }
 

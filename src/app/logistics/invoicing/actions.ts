@@ -61,6 +61,11 @@ export async function applyStatementCheck(
       .update({ status: "done", flagged: true })
       .in("id", doneFlagIds);
     if (error) throw new Error(error.message);
+    const { error: activityError } = await supabase
+      .from("brokers")
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq("id", brokerId);
+    if (activityError) throw new Error(activityError.message);
   }
   if (pendingIds.length > 0) {
     const { error } = await supabase

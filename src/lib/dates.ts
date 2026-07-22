@@ -123,3 +123,19 @@ export function formatDateSlash(dateStr: string | null): string {
   const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${mm}/${dd}/${d.getUTCFullYear()}`;
 }
+
+// Same MM/DD/YYYY style as formatDateSlash, but for a full timestamptz
+// value (e.g. "last activity") rather than a plain date - reads the date in
+// the business timezone instead of assuming midnight UTC.
+export function formatTimestampSlash(ts: string | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIMEZONE,
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("month")}/${get("day")}/${get("year")}`;
+}

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { formatTimestampSlash } from "@/lib/dates";
 import type { Broker } from "@/lib/types";
 import FighterJetToggle from "@/components/FighterJetToggle";
 import { toggleRequestStatement, reorderBrokers } from "./actions";
@@ -90,6 +91,9 @@ export default function BrokerListClient({
               <p className="font-medium">{b.name}</p>
               <p className="text-sm text-black/60 dark:text-white/60">
                 {pending} pending · {done} done
+              </p>
+              <p className="text-xs text-black/40 dark:text-white/40">
+                Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
               </p>
               {active && (
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">

@@ -63,11 +63,14 @@ create trigger on_auth_user_created
 -- request_statement: a manual flag flipped on the Invoicing home page as a
 -- signal to email that carrier requesting their current statement.
 -- position: manual display order for the Invoicing home page's "Edit Layout".
+-- last_activity_at: stamped whenever an invoice for this broker is marked
+-- Done or gets a note added, shown as "Last update" on its tile.
 create table if not exists brokers (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   request_statement boolean not null default false,
-  position integer not null default 0
+  position integer not null default 0,
+  last_activity_at timestamptz
 );
 
 -- Logistics: Invoicing - per-broker aging list of pasted statement lines.
