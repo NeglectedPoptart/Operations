@@ -20,6 +20,19 @@ function normCell(s: string | undefined): string {
   return (s ?? "").trim();
 }
 
+function normalizeCommodityForMatch(s: string): string {
+  return s.trim().toUpperCase().replace(/\s+/g, " ");
+}
+
+// Packaging/material line items, not actual produce inventory - always
+// excluded, along with any manifest whose only entries are these columns
+// (which happens automatically once they're never added to colInfo below).
+const EXCLUDED_COMMODITIES = new Set(
+  ["EMPTY BROC BOX CHENEY 20LB", "EMPTY CELERY CHENEY BOX", "EMPTY LETTUCE BOX", "BOX BELL PEPPER"].map(
+    normalizeCommodityForMatch,
+  ),
+);
+
 export function parseColdInventoryPaste(raw: string): { items: ParsedColdInventoryItem[]; error: string | null } {
   const lines = raw.replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "");
   if (lines.length < 3) {
@@ -55,6 +68,7 @@ export function parseColdInventoryPaste(raw: string): { items: ParsedColdInvento
     if (!commodity || size === "") continue;
     const sizeLower = size.toLowerCase();
     if (sizeLower === "subtotal" || sizeLower === "size") continue;
+    if (EXCLUDED_COMMODITIES.has(normalizeCommodityForMatch(commodity))) continue;
     colInfo.set(i, { commodity, size });
   }
 
