@@ -142,6 +142,30 @@ export interface LocalInbound {
   updated_at: string;
 }
 
+// Warehouse: Cold Inventory -----------------------------------------------------
+
+export type ColdInventoryStatus = "good" | "issue" | "dump";
+
+export const COLD_INVENTORY_STATUSES: { value: ColdInventoryStatus; label: string }[] = [
+  { value: "good", label: "Good" },
+  { value: "issue", label: "Issue" },
+  { value: "dump", label: "Dump" },
+];
+
+export interface ColdInventoryItem {
+  id: string;
+  manifest: string;
+  commodity: string;
+  size: string;
+  qty: number;
+  manifest_order: number;
+  column_order: number;
+  status: ColdInventoryStatus | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Warehouse: Repack Inventory -----------------------------------------------------
 
 export interface RepackItem {

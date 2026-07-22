@@ -39,6 +39,7 @@ const NAV: NavCategory[] = [
       { href: "/warehouse/am-holdovers", label: "AM Holdovers" },
       { href: "/warehouse/repack-inventory", label: "Repack Inventory" },
       { href: "/warehouse/local-inbounds", label: "Local Inbounds" },
+      { href: "/warehouse/cold-inventory", label: "Cold Inventory" },
     ],
   },
   {

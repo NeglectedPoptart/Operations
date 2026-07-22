@@ -266,6 +266,27 @@ create table if not exists old_age_items (
   updated_at timestamptz not null default now()
 );
 
+-- Warehouse: Cold Inventory - pasted from the cold storage pivot report
+-- (Manifest x Commodity/Size -> Sum of On Hand Cases). Each paste fully
+-- replaces the current snapshot (stock no longer present is deleted), but
+-- status/notes carry over automatically when the same manifest+commodity+
+-- size reappears in a later paste - manifest_order/column_order get
+-- refreshed on every import to reflect the latest paste's layout.
+create table if not exists cold_inventory_items (
+  id uuid primary key default gen_random_uuid(),
+  manifest text not null,
+  commodity text not null,
+  size text not null,
+  qty numeric not null,
+  manifest_order integer not null default 0,
+  column_order integer not null default 0,
+  status text check (status in ('good', 'issue', 'dump')),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (manifest, commodity, size)
+);
+
 -- Management: Workflow - a single standing checklist (no daily history). ---
 -- Status/notes are cleared manually each morning via "Reset Day";
 -- is_permanent distinguishes core tasks (survive a reset) from one-off tasks
@@ -591,6 +612,11 @@ create trigger delivered_price_messages_set_updated_at
   before update on delivered_price_messages
   for each row execute function set_updated_at();
 
+drop trigger if exists cold_inventory_items_set_updated_at on cold_inventory_items;
+create trigger cold_inventory_items_set_updated_at
+  before update on cold_inventory_items
+  for each row execute function set_updated_at();
+
 -- Row Level Security: any signed-in user (this is an internal 1-3 person
 -- tool, so all authenticated users get full read/write access) -----------
 alter table brokers enable row level security;
@@ -622,6 +648,7 @@ alter table pending_to_invoice enable row level security;
 alter table fob_items enable row level security;
 alter table fob_freight_rates enable row level security;
 alter table delivered_price_messages enable row level security;
+alter table cold_inventory_items enable row level security;
 
 drop policy if exists "authenticated full access" on invoice_statements;
 create policy "authenticated full access" on invoice_statements
@@ -729,6 +756,10 @@ create policy "authenticated full access" on fob_freight_rates
 
 drop policy if exists "authenticated full access" on delivered_price_messages;
 create policy "authenticated full access" on delivered_price_messages
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on cold_inventory_items;
+create policy "authenticated full access" on cold_inventory_items
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- Seed: Workflow core tasks (from the current daily checklist). Guarded by
