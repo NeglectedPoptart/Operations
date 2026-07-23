@@ -271,10 +271,13 @@ create table if not exists old_age_items (
 
 -- Warehouse: Cold Inventory - pasted from the cold storage pivot report
 -- (Manifest x Commodity/Size -> Sum of On Hand Cases). Each paste fully
--- replaces the current snapshot (stock no longer present is deleted), but
--- status/notes carry over automatically when the same manifest+commodity+
--- size reappears in a later paste - manifest_order/column_order get
--- refreshed on every import to reflect the latest paste's layout.
+-- replaces the current snapshot (stock no longer present is deleted).
+-- Reviewed daily, so Good/unmarked items always reset to unmarked on
+-- import; only Issue/Dump status+notes carry over for an exact
+-- manifest+commodity+size match, and get carried_over set so it's visibly
+-- distinguishable from something freshly flagged today (any manual status
+-- change clears it again). manifest_order/column_order get refreshed on
+-- every import to reflect the latest paste's layout.
 create table if not exists cold_inventory_items (
   id uuid primary key default gen_random_uuid(),
   manifest text not null,
@@ -285,6 +288,7 @@ create table if not exists cold_inventory_items (
   column_order integer not null default 0,
   status text check (status in ('good', 'issue', 'dump')),
   notes text,
+  carried_over boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (manifest, commodity, size)

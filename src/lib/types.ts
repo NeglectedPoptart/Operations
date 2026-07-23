@@ -163,6 +163,7 @@ export interface ColdInventoryItem {
   column_order: number;
   status: ColdInventoryStatus | null;
   notes: string | null;
+  carried_over: boolean;
   created_at: string;
   updated_at: string;
 }

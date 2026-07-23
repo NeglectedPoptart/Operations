@@ -32,6 +32,14 @@ function statusLabel(status: ColdInventoryStatus | null): string {
   return "Unmarked";
 }
 
+// Every item shown under the Bell Peppers section already has "BELL PEPPER"
+// in its commodity name - repeating it in every column header just wastes
+// width, so it's stripped from the header label only (the underlying
+// commodity string, used for grouping/matching, is untouched).
+function displayCommodity(commodity: string): string {
+  return commodity.replace(/^bell pepper\s*/i, "") || commodity;
+}
+
 interface ColumnGroup {
   commodity: string;
   sizes: { size: string; key: string }[];
@@ -104,9 +112,10 @@ function InventorySection({
                 <th
                   key={g.commodity}
                   colSpan={g.sizes.length}
+                  title={g.commodity}
                   className="whitespace-nowrap border-l border-black/10 px-2 py-1.5 text-center dark:border-white/10"
                 >
-                  {g.commodity}
+                  {displayCommodity(g.commodity)}
                 </th>
               ))}
             </tr>
@@ -147,10 +156,15 @@ function InventorySection({
                         <button
                           type="button"
                           onClick={() => onCycleStatus(item)}
-                          title={statusLabel(item.status)}
+                          title={
+                            item.carried_over
+                              ? `${statusLabel(item.status)} - carried over from a previous day`
+                              : statusLabel(item.status)
+                          }
                           className={`h-full w-full px-2 py-1 text-center font-medium transition ${cellClasses(item.status)}`}
                         >
                           {item.qty.toLocaleString()}
+                          {item.carried_over && <span className="ml-0.5 align-super text-[9px]">↺</span>}
                         </button>
                       </td>
                     );
@@ -208,6 +222,14 @@ function FlaggedItemsTable({
                   >
                     {statusLabel(item.status)}
                   </button>
+                  {item.carried_over && (
+                    <span
+                      className="ml-1 text-xs text-black/40 dark:text-white/40"
+                      title="Carried over from a previous day"
+                    >
+                      ↺ carried over
+                    </span>
+                  )}
                 </td>
                 <td className="min-w-[14rem] px-1 py-1">
                   <input
@@ -276,7 +298,7 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
 
   function handleCycleStatus(item: ColdInventoryItem) {
     const status = nextStatus(item.status);
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status } : i)));
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, status, carried_over: false } : i)));
     updateColdInventoryStatus(item.id, status).catch(() => {});
   }
 
@@ -286,8 +308,8 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
   }
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-2 sm:px-4">
+      <div className="mx-auto max-w-[110rem] space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">Cold Inventory</h1>
           <button
@@ -302,8 +324,10 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
             <p className="text-sm text-black/60 dark:text-white/60">
               Copy the full pivot report from Excel (both header rows, every manifest) and paste below.
-              This replaces the entire current inventory - anything not in the new paste is removed, but
-              Good/Issue/Dump status and notes carry over for items that reappear.
+              This replaces the entire current inventory - anything not in the new paste is removed.
+              Good/unmarked items always reset for a fresh review. Issue/Dump items that reappear
+              unchanged keep their status and notes, marked with a ↺ so you know they carried over
+              from a prior day.
             </p>
             <textarea
               value={pasteText}
