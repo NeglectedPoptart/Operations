@@ -12,6 +12,7 @@ import {
   type CanvasBlock,
   type FobItemGroup as Group,
 } from "@/lib/fobPricing";
+import { matchFobPriceLines, parseFobPriceEmail, type FobPriceMatch } from "@/lib/fobEmailParse";
 import {
   addFobItem,
   addFreightRate,
@@ -178,6 +179,147 @@ function FreightRatesPanel({
       >
         + Add Lane
       </button>
+    </div>
+  );
+}
+
+function PriceEmailPanel({
+  items,
+  onApply,
+}: {
+  items: FobItem[];
+  onApply: (id: string, fob: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState<FobPriceMatch[] | null>(null);
+  const [applied, setApplied] = useState(false);
+
+  function handlePreview() {
+    const parsed = parseFobPriceEmail(text);
+    setPreview(matchFobPriceLines(parsed, items));
+    setApplied(false);
+  }
+
+  function handleConfirm() {
+    if (!preview) return;
+    for (const line of preview) {
+      for (const item of line.matches) {
+        onApply(item.id, line.price);
+      }
+    }
+    setApplied(true);
+  }
+
+  function handleCancel() {
+    setPreview(null);
+    setText("");
+    setApplied(false);
+  }
+
+  const matchedCount = preview?.filter((p) => p.matches.length > 0).length ?? 0;
+  const unmatchedLines = preview?.filter((p) => p.matches.length === 0) ?? [];
+
+  return (
+    <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Paste Pricing Email</h2>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+        >
+          {open ? "Hide" : "Paste from Email"}
+        </button>
+      </div>
+      {open && (
+        <div className="space-y-3">
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Paste the full morning pricing email below. Only lines that match a known item on this
+            page will update - anything else is listed as not matched so you can update it by hand.
+          </p>
+          <textarea
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setPreview(null);
+              setApplied(false);
+            }}
+            rows={8}
+            placeholder="Paste the pricing email text here..."
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
+          />
+          {!preview && (
+            <button
+              onClick={handlePreview}
+              disabled={text.trim() === ""}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              Preview
+            </button>
+          )}
+          {preview && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">
+                {matchedCount} price{matchedCount === 1 ? "" : "s"} matched
+                {unmatchedLines.length > 0 ? `, ${unmatchedLines.length} not matched` : ""}.
+              </p>
+              <div className="max-h-72 overflow-auto rounded border border-black/10 dark:border-white/10">
+                <table className="w-full text-xs">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-2 py-1">Category</th>
+                      <th className="px-2 py-1">Label</th>
+                      <th className="px-2 py-1">New Price</th>
+                      <th className="px-2 py-1">Matched Item</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((p, i) => (
+                      <tr key={i} className="border-t border-black/10 dark:border-white/10">
+                        <td className="px-2 py-1">{p.category}</td>
+                        <td className="px-2 py-1">{p.label}</td>
+                        <td className="px-2 py-1">{formatFob(p.price)}</td>
+                        <td className="px-2 py-1">
+                          {p.matches.length > 0 ? (
+                            p.matches.map((m) => (
+                              <div key={m.id}>
+                                {m.commodity_group}
+                                {m.variety ? ` - ${m.variety}` : ""}
+                                {m.size ? ` (${m.size})` : ""}
+                                <span className="text-black/40 dark:text-white/40">
+                                  {" "}
+                                  [{formatFob(m.fob)} → {formatFob(p.price)}]
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <span className="text-red-600 dark:text-red-400">Not matched - skipped</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleConfirm}
+                  disabled={matchedCount === 0 || applied}
+                  className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                >
+                  {applied ? "Applied!" : `Apply ${matchedCount} price${matchedCount === 1 ? "" : "s"}`}
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  {applied ? "Close" : "Cancel"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -458,6 +600,8 @@ export default function FobPharrClient({
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <h1 className="text-2xl font-bold">FOB Pricing</h1>
+
+        <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />
 
         <FreightRatesPanel
           rates={rates}
