@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
@@ -157,6 +157,19 @@ export default function InvoicingClient({
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [imageFilter, setImageFilter] = useState<ImageFilter>("all");
 
+  // Server-side fetch already sorts oldest-first, but rows added later
+  // (paste-import, Statement Checker) just get appended to local state -
+  // re-sorting on every render keeps oldest-on-top/newest-on-bottom true no
+  // matter when a row was added, not just at initial page load.
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      if (!a.invoice_date && !b.invoice_date) return 0;
+      if (!a.invoice_date) return 1;
+      if (!b.invoice_date) return -1;
+      return a.invoice_date.localeCompare(b.invoice_date);
+    });
+  }, [items]);
+
   function updateLocal(id: string, patch: Partial<InvoiceStatement>) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
@@ -220,7 +233,7 @@ export default function InvoicingClient({
   async function handleCopyImage() {
     try {
       const filterLabel = IMAGE_FILTERS.find((f) => f.value === imageFilter)?.label ?? "All Items";
-      const filtered = items.filter((item) => matchesImageFilter(item, imageFilter, daysSince(item.invoice_date)));
+      const filtered = sortedItems.filter((item) => matchesImageFilter(item, imageFilter, daysSince(item.invoice_date)));
       const blocks: CanvasBlock[] = [
         {
           title: `${broker.name} - Invoicing (${filterLabel})`,
@@ -324,7 +337,7 @@ export default function InvoicingClient({
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
+            {sortedItems.map((item) => {
               const age = daysSince(item.invoice_date);
               return (
                 <tr key={item.id} className={`border-t border-black/10 dark:border-white/10 ${rowClass(item.status, age)}`}>
