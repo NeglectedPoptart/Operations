@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { parseBuyersListPaste, type ParsedBuyersItem } from "@/lib/buyersListParse";
-import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
+import { buildMonospaceTable, copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import type { BuyersListItem } from "@/lib/types";
 import {
   clearBuyersList,
@@ -36,6 +36,7 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   const [importing, setImporting] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   function handlePreview() {
@@ -129,6 +130,20 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
     }
   }
 
+  async function handleCopyWhatsApp() {
+    const rows =
+      items.length > 0 ? items.map((item) => ({ cells: buyersListRowValues(item) })) : [{ cells: ["Nothing on the list."] }];
+    const table = buildMonospaceTable(BUYERS_LIST_HEADERS, rows);
+    const text = `*Buyers List*\n\`\`\`\n${table}\n\`\`\``;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedWhatsApp(true);
+      setTimeout(() => setCopiedWhatsApp(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
   async function handleCopyImage() {
     try {
       const blocks: CanvasBlock[] = [
@@ -174,6 +189,12 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
             className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
           >
             {copied ? "Copied!" : "Copy for Email"}
+          </button>
+          <button
+            onClick={handleCopyWhatsApp}
+            className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
+          >
+            {copiedWhatsApp ? "Copied!" : "Copy for WhatsApp"}
           </button>
           <button
             onClick={handleCopyImage}
