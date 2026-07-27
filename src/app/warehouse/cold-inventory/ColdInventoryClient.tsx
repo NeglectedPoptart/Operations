@@ -1,7 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { isBellPepper, parseColdInventoryPaste, type ParsedColdInventoryItem } from "@/lib/coldInventoryParse";
+import {
+  isBellPepper,
+  isBroccoli,
+  isCarrotOrCelery,
+  isLettuce,
+  parseColdInventoryPaste,
+  type ParsedColdInventoryItem,
+} from "@/lib/coldInventoryParse";
 import type { ColdInventoryItem, ColdInventoryStatus } from "@/lib/types";
 import { importColdInventory, updateColdInventoryNotes, updateColdInventoryStatus } from "./actions";
 
@@ -256,8 +263,21 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
 
-  const bellPepperItems = useMemo(() => items.filter((i) => isBellPepper(i.commodity)), [items]);
-  const otherItems = useMemo(() => items.filter((i) => !isBellPepper(i.commodity)), [items]);
+  const sections = useMemo(() => {
+    const bellPeppers: ColdInventoryItem[] = [];
+    const broccoli: ColdInventoryItem[] = [];
+    const carrotsCelery: ColdInventoryItem[] = [];
+    const lettuce: ColdInventoryItem[] = [];
+    const everythingElse: ColdInventoryItem[] = [];
+    for (const item of items) {
+      if (isBellPepper(item.commodity)) bellPeppers.push(item);
+      else if (isBroccoli(item.commodity)) broccoli.push(item);
+      else if (isCarrotOrCelery(item.commodity)) carrotsCelery.push(item);
+      else if (isLettuce(item.commodity)) lettuce.push(item);
+      else everythingElse.push(item);
+    }
+    return { bellPeppers, broccoli, carrotsCelery, lettuce, everythingElse };
+  }, [items]);
   const flaggedItems = useMemo(
     () =>
       items
@@ -407,8 +427,19 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
           </p>
         ) : (
           <div className="space-y-8">
-            <InventorySection title="Bell Peppers" items={bellPepperItems} onCycleStatus={handleCycleStatus} />
-            <InventorySection title="Everything Else" items={otherItems} onCycleStatus={handleCycleStatus} />
+            <InventorySection title="Bell Peppers" items={sections.bellPeppers} onCycleStatus={handleCycleStatus} />
+            <InventorySection title="Broccoli" items={sections.broccoli} onCycleStatus={handleCycleStatus} />
+            <InventorySection
+              title="Carrots and Celery"
+              items={sections.carrotsCelery}
+              onCycleStatus={handleCycleStatus}
+            />
+            <InventorySection title="Lettuce" items={sections.lettuce} onCycleStatus={handleCycleStatus} />
+            <InventorySection
+              title="Everything Else"
+              items={sections.everythingElse}
+              onCycleStatus={handleCycleStatus}
+            />
           </div>
         )}
       </div>

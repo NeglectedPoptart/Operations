@@ -4,12 +4,178 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatWeekLabel, nextWeekStart, prevWeekStart as prevWeek, currentWeekStart } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
+import { matchRateLines, parseRateEmail, type MatchedRateLine } from "@/lib/rateEmailParse";
 import type { Broker, BrokerRateEntry, Lane, RateSubmission } from "@/lib/types";
 import { createBroker, createLane, deleteBroker, deleteLane, submitWeek, unlockWeek, upsertRateEntry } from "./actions";
 
 function money(n: number | null): string {
   if (n == null) return "—";
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+function RateEmailPanel({
+  lanes,
+  brokers,
+  onApply,
+}: {
+  lanes: Lane[];
+  brokers: Broker[];
+  onApply: (brokerId: string, lines: MatchedRateLine[]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [brokerId, setBrokerId] = useState("");
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState<MatchedRateLine[] | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
+
+  function handlePreview() {
+    const parsed = parseRateEmail(text, lanes);
+    setPreview(matchRateLines(parsed, lanes));
+    setApplied(false);
+  }
+
+  async function handleConfirm() {
+    if (!preview || !brokerId) return;
+    setApplying(true);
+    try {
+      await onApply(brokerId, preview);
+      setApplied(true);
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  function handleCancel() {
+    setText("");
+    setPreview(null);
+    setApplied(false);
+  }
+
+  const newLaneCount = preview?.filter((p) => !p.lane).length ?? 0;
+
+  return (
+    <div className="space-y-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Paste Pricing Email</h3>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="rounded-md border border-black/20 px-3 py-1.5 text-sm dark:border-white/20"
+        >
+          {open ? "Hide" : "Paste from Email"}
+        </button>
+      </div>
+      {open && (
+        <div className="space-y-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Broker these rates are from</span>
+            <select
+              value={brokerId}
+              onChange={(e) => {
+                setBrokerId(e.target.value);
+                setApplied(false);
+              }}
+              className="w-full max-w-xs rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+            >
+              <option value="">-- select broker --</option>
+              {brokers.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Paste the lane/rate email below. Lanes matching an existing hub + destination update in
+            place for the selected broker and week; anything new gets added as a new lane.
+          </p>
+          <textarea
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setPreview(null);
+              setApplied(false);
+            }}
+            rows={8}
+            placeholder="Paste the pricing email text here..."
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
+          />
+          {!preview && (
+            <button
+              onClick={handlePreview}
+              disabled={text.trim() === ""}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              Preview
+            </button>
+          )}
+          {preview && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium">
+                {preview.length} rate{preview.length === 1 ? "" : "s"} parsed
+                {newLaneCount > 0
+                  ? ` - ${newLaneCount} new lane${newLaneCount === 1 ? "" : "s"} will be created`
+                  : ""}
+                .
+              </p>
+              <div className="max-h-72 overflow-auto rounded border border-black/10 dark:border-white/10">
+                <table className="w-full text-xs">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-2 py-1">Hub</th>
+                      <th className="px-2 py-1">Destination</th>
+                      <th className="px-2 py-1">Rate</th>
+                      <th className="px-2 py-1">Lane</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((p, i) => (
+                      <tr key={i} className="border-t border-black/10 dark:border-white/10">
+                        <td className="px-2 py-1">{p.hub}</td>
+                        <td className="px-2 py-1">{p.destination}</td>
+                        <td className="px-2 py-1">{money(p.rate)}</td>
+                        <td className="px-2 py-1">
+                          {p.lane ? (
+                            <span className="text-black/40 dark:text-white/40">existing lane</span>
+                          ) : (
+                            <span className="text-green-600 dark:text-green-400">new lane</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleConfirm}
+                  disabled={!brokerId || applying || applied}
+                  className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                >
+                  {applied
+                    ? "Applied!"
+                    : applying
+                      ? "Applying..."
+                      : `Apply ${preview.length} rate${preview.length === 1 ? "" : "s"}`}
+                </button>
+                <button
+                  onClick={handleCancel}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  {applied ? "Close" : "Cancel"}
+                </button>
+              </div>
+              {!brokerId && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Select a broker above before applying.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function BrokerTrackerClient({
@@ -153,6 +319,18 @@ export default function BrokerTrackerClient({
     setSubmissionCache((prev) => ({ ...prev, [weekStart]: null }));
   }
 
+  async function handleApplyEmailRates(brokerId: string, lines: MatchedRateLine[]) {
+    for (const line of lines) {
+      let laneId = line.lane?.id;
+      if (!laneId) {
+        const newLane = (await createLane(line.hub, line.destination)) as Lane;
+        setLanes((prev) => [...prev, newLane]);
+        laneId = newLane.id;
+      }
+      handleRateChange(laneId, brokerId, String(line.rate));
+    }
+  }
+
   async function handleAddBroker(formData: FormData) {
     const name = String(formData.get("name") ?? "").trim();
     if (!name) return;
@@ -224,6 +402,8 @@ export default function BrokerTrackerClient({
           {showManage ? "Hide" : "Manage brokers & lanes"}
         </button>
       </div>
+
+      <RateEmailPanel lanes={lanes} brokers={brokers} onApply={handleApplyEmailRates} />
 
       {locked ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">

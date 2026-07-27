@@ -27,11 +27,15 @@ function normalizeCommodityForMatch(s: string): string {
 // Packaging/material line items, not actual produce inventory - always
 // excluded, along with any manifest whose only entries are these columns
 // (which happens automatically once they're never added to colInfo below).
-const EXCLUDED_COMMODITIES = new Set(
-  ["EMPTY BROC BOX CHENEY 20LB", "EMPTY CELERY CHENEY BOX", "EMPTY LETTUCE BOX", "BOX BELL PEPPER"].map(
-    normalizeCommodityForMatch,
-  ),
-);
+const EXCLUDED_COMMODITIES = new Set(["BOX BELL PEPPER"].map(normalizeCommodityForMatch));
+
+// Any commodity naming a packaging material (e.g. "MATERIAL BOX PEPPER
+// 11LB") or an empty-box placeholder (e.g. "EMPTY LETTUCE BOX") - not
+// produce, so it never belongs in inventory regardless of exact wording.
+function isPackagingCommodity(commodity: string): boolean {
+  const c = normalizeCommodityForMatch(commodity);
+  return c.includes("MATERIAL") || c.includes("EMPTY") || EXCLUDED_COMMODITIES.has(c);
+}
 
 export function parseColdInventoryPaste(raw: string): { items: ParsedColdInventoryItem[]; error: string | null } {
   const lines = raw.replace(/\r/g, "").split("\n").filter((l) => l.trim() !== "");
@@ -68,7 +72,7 @@ export function parseColdInventoryPaste(raw: string): { items: ParsedColdInvento
     if (!commodity || size === "") continue;
     const sizeLower = size.toLowerCase();
     if (sizeLower === "subtotal" || sizeLower === "size") continue;
-    if (EXCLUDED_COMMODITIES.has(normalizeCommodityForMatch(commodity))) continue;
+    if (isPackagingCommodity(commodity)) continue;
     colInfo.set(i, { commodity, size });
   }
 
@@ -135,8 +139,23 @@ export function parseColdInventoryPaste(raw: string): { items: ParsedColdInvento
   return { items, error: null };
 }
 
-// Bell Peppers get their own section per the warehouse's request - everything
-// else falls into a second "Everything Else" section.
+// Each of these gets its own section per the warehouse's request, checked in
+// this order (a commodity matching an earlier one won't also land in a
+// later one); anything left over falls into a final "Everything Else"
+// section.
 export function isBellPepper(commodity: string): boolean {
   return commodity.toLowerCase().includes("bell pepper");
+}
+
+export function isBroccoli(commodity: string): boolean {
+  return commodity.toLowerCase().includes("broccoli");
+}
+
+export function isCarrotOrCelery(commodity: string): boolean {
+  const c = commodity.toLowerCase();
+  return c.includes("carrot") || c.includes("celery");
+}
+
+export function isLettuce(commodity: string): boolean {
+  return commodity.toLowerCase().includes("lettuce");
 }
