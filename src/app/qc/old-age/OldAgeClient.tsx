@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import { parsePastedOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
 import { formatDate } from "@/lib/dates";
-import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { summarizeByCommodity, summarizeByNextStep } from "@/lib/oldAgeSummary";
+import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
+import { summarizeByCommodity, summarizeByNextStep, type BarDatum } from "@/lib/oldAgeSummary";
 import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeNextStep } from "@/lib/types";
 import { addOldAgeRow, deleteOldAgeItem, importOldAgeItems, updateOldAgeItem } from "./actions";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
@@ -13,6 +13,10 @@ const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm 
 
 function formatMoney(n: number | null): string {
   return n === null ? "" : `$${n.toFixed(2)}`;
+}
+
+function nextStepLabel(step: OldAgeNextStep | null): string {
+  return OLD_AGE_NEXT_STEPS.find((s) => s.value === step)?.label ?? "";
 }
 
 const CASH_LIST_HEADERS = ["Document", "Received", "Description", "PStyle", "Size", "Qty", "Age", "Price", "Notes"];
@@ -28,6 +32,72 @@ function cashListRowValues(item: OldAgeItem): string[] {
     formatMoney(item.cash_price),
     item.notes ?? "",
   ];
+}
+
+const FULL_LIST_HEADERS = [
+  "Document",
+  "Received",
+  "Description",
+  "PStyle",
+  "Size",
+  "Qty",
+  "Age",
+  "Next Step",
+  "Notes",
+  "Cash List",
+];
+function fullListRowValues(item: OldAgeItem): string[] {
+  return [
+    item.document ?? "",
+    formatDate(item.received_date),
+    item.description ?? "",
+    item.pack_style ?? "",
+    item.size ?? "",
+    item.qty !== null ? String(item.qty) : "",
+    item.age !== null ? String(item.age) : "",
+    nextStepLabel(item.next_step),
+    item.notes ?? "",
+    item.cash_list ? "Yes" : "",
+  ];
+}
+
+const NEXT_STEP_HEADERS = ["Next Step", "Count"];
+function nextStepRowValues(d: BarDatum): string[] {
+  return [d.label, String(d.value)];
+}
+
+const COMMODITY_HEADERS = ["Commodity", "Qty"];
+function commodityRowValues(d: BarDatum): string[] {
+  return [d.label, d.value.toLocaleString()];
+}
+
+// Shared table builder for the Copy for Email clipboard HTML, used both by
+// the Cash List section's own copy buttons and the page-wide Copy All.
+function buildTableHtml(title: string, headerColor: string, headers: string[], rows: string[][]): string {
+  const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
+  const headCell = `${cell}font-weight:bold;background:#dddddd;`;
+  const bodyRows =
+    rows.length > 0
+      ? rows.map((r) => `<tr>${r.map((c) => `<td style="${cell}">${escapeHtml(c)}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${headers.length}" style="${cell}text-align:center;color:#666666;">Nothing here.</td></tr>`;
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;margin-bottom:14px;">
+    <tr><td colspan="${headers.length}" style="background:${headerColor};color:#000000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
+    <tr>${headers.map((h) => `<td style="${headCell}">${escapeHtml(h)}</td>`).join("")}</tr>
+    ${bodyRows}
+  </table>`;
+}
+
+function buildPlainTextSection(title: string, headers: string[], rows: string[][]): string[] {
+  const lines = [title, headers.join("\t")];
+  if (rows.length === 0) lines.push("Nothing here.");
+  for (const r of rows) lines.push(r.join("\t"));
+  lines.push("");
+  return lines;
+}
+
+function toCanvasRows(rows: string[][], colCount: number): MonoRow[] {
+  if (rows.length === 0) return [{ cells: ["Nothing here.", ...Array(colCount - 1).fill("")] }];
+  return rows.map((cells) => ({ cells }));
 }
 
 function CashListSection({
@@ -47,26 +117,8 @@ function CashListSection({
   if (items.length === 0) return null;
 
   async function handleCopyEmail() {
-    const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
-    const headCell = `${cell}font-weight:bold;background:#dddddd;`;
-    const rows = items
-      .map(
-        (item) =>
-          `<tr>${cashListRowValues(item)
-            .map((c) => `<td style="${cell}">${escapeHtml(c)}</td>`)
-            .join("")}</tr>`,
-      )
-      .join("");
-    const html = `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;">
-        <tr><td colspan="${CASH_LIST_HEADERS.length}" style="background:#8DC63F;color:#000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">Cash List</td></tr>
-        <tr>${CASH_LIST_HEADERS.map((h) => `<td style="${headCell}">${escapeHtml(h)}</td>`).join("")}</tr>
-        ${rows}
-      </table>`;
-    const text = [
-      "Cash List",
-      CASH_LIST_HEADERS.join("\t"),
-      ...items.map((item) => cashListRowValues(item).join("\t")),
-    ].join("\n");
+    const html = buildTableHtml("Cash List", "#8DC63F", CASH_LIST_HEADERS, items.map(cashListRowValues));
+    const text = buildPlainTextSection("Cash List", CASH_LIST_HEADERS, items.map(cashListRowValues)).join("\n");
 
     try {
       if (typeof ClipboardItem !== "undefined") {
@@ -194,6 +246,8 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const [imageStatusAll, setImageStatusAll] = useState<string | null>(null);
 
   function handlePreview() {
     const result = parsePastedOldAge(pasteText);
@@ -266,16 +320,112 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
     await updateOldAgeItem(id, { cash_price: price }).catch(() => {});
   }
 
+  async function handleCopyAllEmail() {
+    const html = `<div style="font-family:Calibri,Arial,sans-serif;background:#ffffff;">
+        <div style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;color:#000000;">Old Age Report</div>
+        ${buildTableHtml("Next Step Summary", "#8DC63F", NEXT_STEP_HEADERS, nextStepSummary.map(nextStepRowValues))}
+        ${buildTableHtml("Qty by Commodity", "#8DC63F", COMMODITY_HEADERS, commoditySummary.map(commodityRowValues))}
+        ${cashListItems.length > 0 ? buildTableHtml("Cash List", "#FFA726", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues)) : ""}
+        ${buildTableHtml("Full List", "#64B5F6", FULL_LIST_HEADERS, items.map(fullListRowValues))}
+      </div>`;
+    const text = [
+      "Old Age Report",
+      "",
+      ...buildPlainTextSection("Next Step Summary", NEXT_STEP_HEADERS, nextStepSummary.map(nextStepRowValues)),
+      ...buildPlainTextSection("Qty by Commodity", COMMODITY_HEADERS, commoditySummary.map(commodityRowValues)),
+      ...(cashListItems.length > 0
+        ? buildPlainTextSection("Cash List", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues))
+        : []),
+      ...buildPlainTextSection("Full List", FULL_LIST_HEADERS, items.map(fullListRowValues)),
+    ].join("\n");
+
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyAllImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        {
+          title: "Next Step Summary",
+          headerColor: "#8DC63F",
+          columnHeaders: NEXT_STEP_HEADERS,
+          rows: toCanvasRows(nextStepSummary.map(nextStepRowValues), NEXT_STEP_HEADERS.length),
+        },
+        {
+          title: "Qty by Commodity",
+          headerColor: "#8DC63F",
+          columnHeaders: COMMODITY_HEADERS,
+          rows: toCanvasRows(commoditySummary.map(commodityRowValues), COMMODITY_HEADERS.length),
+        },
+        ...(cashListItems.length > 0
+          ? [
+              {
+                title: "Cash List",
+                headerColor: "#FFA726",
+                columnHeaders: CASH_LIST_HEADERS,
+                rows: toCanvasRows(cashListItems.map(cashListRowValues), CASH_LIST_HEADERS.length),
+              },
+            ]
+          : []),
+        {
+          title: "Full List",
+          headerColor: "#64B5F6",
+          columnHeaders: FULL_LIST_HEADERS,
+          rows: toCanvasRows(items.map(fullListRowValues), FULL_LIST_HEADERS.length),
+        },
+      ];
+      const blob = await renderPriceSheetPng({ title: "Old Age Report", message: "", blocks, direction: "column" });
+      const result = await copyOrDownloadPng(blob, "old-age-report.png");
+      setImageStatusAll(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatusAll(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Old Age</h1>
-        <button
-          onClick={() => setShowPaste((s) => !s)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-        >
-          {showPaste ? "Hide paste box" : "Paste from Excel"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {items.length > 0 && (
+            <>
+              <button
+                onClick={handleCopyAllEmail}
+                className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+              >
+                {copiedAll ? "Copied!" : "Copy All for Email"}
+              </button>
+              <button
+                onClick={handleCopyAllImage}
+                className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+              >
+                {imageStatusAll ?? "Copy All as Image"}
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => setShowPaste((s) => !s)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showPaste ? "Hide paste box" : "Paste from Excel"}
+          </button>
+        </div>
       </div>
 
       {items.length > 0 && (
