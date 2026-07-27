@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { daysSince, formatDateSlash } from "@/lib/dates";
+import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { parsePastedInvoices, type ParsedInvoiceRow } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement, InvoiceStatus } from "@/lib/types";
 import { deleteInvoiceStatement, importInvoices, updateInvoiceStatement } from "./actions";
@@ -16,6 +17,26 @@ function formatMoney(n: number | null) {
 
 function matchKey(invoiceNo: string): string {
   return invoiceNo.trim().toLowerCase();
+}
+
+function statusLabel(status: InvoiceStatus | null): string {
+  if (status === "pending") return "Pending";
+  if (status === "done") return "Done";
+  return "-";
+}
+
+const INVOICE_HEADERS = ["Invoice #", "Date", "Customer PO", "Amount", "Age", "Status", "Notes"];
+function invoiceRowValues(item: InvoiceStatement): string[] {
+  const age = daysSince(item.invoice_date);
+  return [
+    item.invoice_no + (item.flagged ? " \u{1F6A9}" : ""),
+    formatDateSlash(item.invoice_date) || "-",
+    item.customer_po || "-",
+    formatMoney(item.amount),
+    age !== null ? String(age) : "-",
+    statusLabel(item.status),
+    item.notes || "",
+  ];
 }
 
 interface PreviewRow extends ParsedInvoiceRow {
@@ -111,6 +132,7 @@ export default function InvoicingClient({
   const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   function updateLocal(id: string, patch: Partial<InvoiceStatement>) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -172,16 +194,46 @@ export default function InvoicingClient({
     }
   }
 
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        {
+          title: `${broker.name} - Invoicing`,
+          headerColor: "#8DC63F",
+          columnHeaders: INVOICE_HEADERS,
+          rows:
+            items.length > 0
+              ? items.map((item) => ({ cells: invoiceRowValues(item) }))
+              : [{ cells: ["Nothing on this list.", "", "", "", "", "", ""] }],
+        },
+      ];
+      const blob = await renderPriceSheetPng({ title: `${broker.name} - Invoicing`, message: "", blocks });
+      const result = await copyOrDownloadPng(blob, `${broker.name.toLowerCase()}-invoicing.png`);
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{broker.name} - Invoicing</h1>
-        <button
-          onClick={() => setShowPaste((v) => !v)}
-          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-        >
-          {showPaste ? "Hide paste box" : "Paste Statement"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopyImage}
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
+          <button
+            onClick={() => setShowPaste((v) => !v)}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+          >
+            {showPaste ? "Hide paste box" : "Paste Statement"}
+          </button>
+        </div>
       </div>
 
       {showPaste && (
