@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { daysSince } from "@/lib/dates";
+import { OVERDUE_DAYS } from "@/lib/invoicingParse";
 import type { Broker } from "@/lib/types";
 import StatementCheckerClient from "./StatementCheckerClient";
 import BrokerListClient from "./BrokerListClient";
@@ -10,7 +12,7 @@ export default async function InvoicingHomePage() {
 
   const [{ data: brokers, error: brokersError }, { data: statements, error: statementsError }] = await Promise.all([
     supabase.from("brokers").select("*").order("position", { ascending: true }).order("name", { ascending: true }),
-    supabase.from("invoice_statements").select("broker_id, status"),
+    supabase.from("invoice_statements").select("broker_id, status, invoice_date"),
   ]);
 
   if (brokersError) {
@@ -20,14 +22,17 @@ export default async function InvoicingHomePage() {
     return <p className="text-red-600">Failed to load invoices: {statementsError.message}</p>;
   }
 
-  const rows = (statements ?? []) as { broker_id: string; status: string | null }[];
+  const rows = (statements ?? []) as { broker_id: string; status: string | null; invoice_date: string | null }[];
   const pendingCounts: Record<string, number> = {};
   const doneCounts: Record<string, number> = {};
+  const overdueBrokerIds: Record<string, boolean> = {};
   for (const r of rows) {
     if (r.status === "done") {
       doneCounts[r.broker_id] = (doneCounts[r.broker_id] ?? 0) + 1;
     } else {
       pendingCounts[r.broker_id] = (pendingCounts[r.broker_id] ?? 0) + 1;
+      const age = daysSince(r.invoice_date);
+      if (age !== null && age > OVERDUE_DAYS) overdueBrokerIds[r.broker_id] = true;
     }
   }
 
@@ -40,7 +45,12 @@ export default async function InvoicingHomePage() {
 
       <StatementCheckerClient brokers={(brokers ?? []) as Broker[]} />
 
-      <BrokerListClient brokers={(brokers ?? []) as Broker[]} pendingCounts={pendingCounts} doneCounts={doneCounts} />
+      <BrokerListClient
+        brokers={(brokers ?? []) as Broker[]}
+        pendingCounts={pendingCounts}
+        doneCounts={doneCounts}
+        overdueBrokerIds={overdueBrokerIds}
+      />
     </div>
   );
 }

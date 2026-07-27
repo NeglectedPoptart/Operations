@@ -7,14 +7,30 @@ import type { Broker } from "@/lib/types";
 import FighterJetToggle from "@/components/FighterJetToggle";
 import { toggleRequestStatement, reorderBrokers } from "./actions";
 
+// A tile's own status coloring (green/yellow) always yields to the
+// statement-request toggle, which the office actively clicked to flag this
+// carrier - that intent should never be visually buried under whatever the
+// aging happens to say.
+function tileToneClasses(tone: "requested" | "green" | "yellow"): string {
+  if (tone === "requested") {
+    return "border-red-300/70 bg-red-50/60 dark:border-red-800/50 dark:bg-red-950/10";
+  }
+  if (tone === "green") {
+    return "border-green-500/40 bg-green-50 hover:border-green-600 dark:border-green-700/40 dark:bg-green-950/20";
+  }
+  return "border-yellow-500/40 bg-yellow-50 hover:border-yellow-600 dark:border-yellow-700/40 dark:bg-yellow-950/20";
+}
+
 export default function BrokerListClient({
   brokers,
   pendingCounts,
   doneCounts,
+  overdueBrokerIds,
 }: {
   brokers: Broker[];
   pendingCounts: Record<string, number>;
   doneCounts: Record<string, number>;
+  overdueBrokerIds: Record<string, boolean>;
 }) {
   const [order, setOrder] = useState<Broker[]>(brokers);
   const [editMode, setEditMode] = useState(false);
@@ -104,11 +120,15 @@ export default function BrokerListClient({
           const pending = pendingCounts[b.id] ?? 0;
           const done = doneCounts[b.id] ?? 0;
           const active = requested[b.id] ?? false;
-          const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${
-            active
-              ? "border-red-500/60 bg-red-50 dark:bg-red-950/20"
-              : "border-black/10 hover:border-green-600 dark:border-white/10"
-          }`;
+          // All caught up (nothing pending, so nothing can be sitting overdue
+          // either) -> green; anything still pending, aging or not -> yellow.
+          // A clicked statement request always wins over either.
+          const tone: "requested" | "green" | "yellow" = active
+            ? "requested"
+            : pending === 0 && !overdueBrokerIds[b.id]
+              ? "green"
+              : "yellow";
+          const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${tileToneClasses(tone)}`;
 
           const body = (
             <>

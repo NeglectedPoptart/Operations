@@ -4,11 +4,9 @@ import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { parsePastedInvoices, type ParsedInvoiceRow } from "@/lib/invoicingParse";
+import { OVERDUE_DAYS, parsePastedInvoices, type ParsedInvoiceRow } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement, InvoiceStatus } from "@/lib/types";
 import { deleteInvoiceStatement, importInvoices, updateInvoiceStatement } from "./actions";
-
-const OVERDUE_DAYS = 21;
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 

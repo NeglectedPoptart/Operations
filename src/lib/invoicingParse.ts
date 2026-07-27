@@ -1,3 +1,8 @@
+// A pending (not-yet-Done) invoice older than this is considered overdue -
+// drives both the per-broker "Over 21 Days" image filter and the broker
+// tile's green/yellow status coloring.
+export const OVERDUE_DAYS = 21;
+
 export interface ParsedInvoiceRow {
   invoice_no: string;
   invoice_date: string | null;
