@@ -3,7 +3,14 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
-import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
+import {
+  buildMonospaceTable,
+  copyOrDownloadPng,
+  escapeHtml,
+  renderPriceSheetPng,
+  type CanvasBlock,
+  type MonoRow,
+} from "@/lib/fobPricing";
 import {
   QC_INBOUND_STATUSES,
   type QcAgendaFloorAging,
@@ -140,6 +147,25 @@ function toCanvasRows(rows: string[][], colCount: number): MonoRow[] {
   return rows.map((cells) => ({ cells }));
 }
 
+function buildWhatsAppMessage(
+  date: string,
+  meta: QcAgendaMeta | null,
+  inbounds: QcAgendaInbound[],
+  floorAging: QcAgendaFloorAging[],
+  repack: QcAgendaRepack[],
+): string {
+  const section = (title: string, headers: string[], rows: string[][]) =>
+    `*${title}*\n\`\`\`\n${buildMonospaceTable(headers, toCanvasRows(rows, headers.length))}\n\`\`\``;
+  return [
+    `*QC Agenda - ${formatDate(date)}*`,
+    `Prepared By: ${meta?.prepared_by ?? "-"}   QC1: ${meta?.qc1 ?? "-"}   QC2: ${meta?.qc2 ?? "-"}`,
+    "",
+    section("Inbounds", INBOUND_HEADERS, inbounds.map(inboundRowValues)),
+    section("Floor Aging Check", FLOOR_AGING_HEADERS, floorAging.map(floorAgingRowValues)),
+    section("Repack Management & Supply Needs", REPACK_HEADERS, repack.map(repackRowValues)),
+  ].join("\n\n");
+}
+
 interface DayData {
   meta: QcAgendaMeta | null;
   inbounds: QcAgendaInbound[];
@@ -171,6 +197,7 @@ export default function QcAgendaClient({
   }));
   const [pulling, setPulling] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const day = cache[date] ?? { meta: null, inbounds: [], floorAging: [], repack: [] };
@@ -292,6 +319,17 @@ export default function QcAgendaClient({
     }
   }
 
+  async function handleCopyWhatsApp() {
+    const text = buildWhatsAppMessage(date, day.meta, day.inbounds, day.floorAging, day.repack);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedWhatsApp(true);
+      setTimeout(() => setCopiedWhatsApp(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
   async function handleCopyImage() {
     try {
       const blocks: CanvasBlock[] = [
@@ -338,6 +376,12 @@ export default function QcAgendaClient({
             className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
           >
             {copied ? "Copied!" : "Copy for Email"}
+          </button>
+          <button
+            onClick={handleCopyWhatsApp}
+            className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
+          >
+            {copiedWhatsApp ? "Copied!" : "Copy for WhatsApp"}
           </button>
           <button
             onClick={handleCopyImage}
