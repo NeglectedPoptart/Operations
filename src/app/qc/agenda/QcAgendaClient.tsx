@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
+import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
 import {
   QC_INBOUND_STATUSES,
   type QcAgendaFloorAging,
@@ -25,7 +26,119 @@ import {
   updateRepackRow,
 } from "./actions";
 
-const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+const field =
+  "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black print:rounded-none print:border-none print:p-0 print:text-[9px]";
+
+function statusLabel(status: QcInboundStatus | null): string {
+  return QC_INBOUND_STATUSES.find((s) => s.value === status)?.label ?? "";
+}
+
+const INBOUND_HEADERS = ["Vendor/Origin", "Commodity/SKU", "PO/Load #", "Carrier", "ETA", "Photo/Report", "Status", "Notes"];
+function inboundRowValues(r: QcAgendaInbound): string[] {
+  return [
+    r.vendor_origin ?? "",
+    r.commodity_sku ?? "",
+    r.po_load_number ?? "",
+    r.carrier ?? "",
+    r.eta ?? "",
+    r.photo_report ?? "",
+    statusLabel(r.status),
+    r.notes ?? "",
+  ];
+}
+
+const FLOOR_AGING_HEADERS = ["Commodity/SKU", "Lot #", "Date Received", "Days on Floor", "Action Needed"];
+function floorAgingRowValues(r: QcAgendaFloorAging): string[] {
+  return [
+    r.commodity_sku ?? "",
+    r.lot_number ?? "",
+    r.received_date ? formatDate(r.received_date) : "",
+    r.days_on_floor != null ? String(r.days_on_floor) : "",
+    r.action_needed ?? "",
+  ];
+}
+
+const REPACK_HEADERS = ["Reference", "Pack Format", "Priority", "Notes"];
+function repackRowValues(r: QcAgendaRepack): string[] {
+  return [r.reference ?? "", r.pack_format ?? "", r.priority ?? "", r.notes ?? ""];
+}
+
+function buildMetaHtml(date: string, meta: QcAgendaMeta | null): string {
+  const cell = "padding:4px 8px;border:1px solid #000;background:#ffffff;color:#000000;";
+  const headCell = `${cell}font-weight:bold;background:#dddddd;`;
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;margin-bottom:12px;">
+    <tr>
+      <td style="${headCell}">Date</td>
+      <td style="${headCell}">Prepared By</td>
+      <td style="${headCell}">QC 1</td>
+      <td style="${headCell}">QC 2</td>
+    </tr>
+    <tr>
+      <td style="${cell}">${escapeHtml(formatDate(date))}</td>
+      <td style="${cell}">${escapeHtml(meta?.prepared_by ?? "")}</td>
+      <td style="${cell}">${escapeHtml(meta?.qc1 ?? "")}</td>
+      <td style="${cell}">${escapeHtml(meta?.qc2 ?? "")}</td>
+    </tr>
+  </table>`;
+}
+
+function buildSectionHtml(title: string, headerColor: string, headers: string[], rows: string[][]): string {
+  const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
+  const bodyRows =
+    rows.length > 0
+      ? rows.map((r) => `<tr>${r.map((c) => `<td style="${cell}">${escapeHtml(c)}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${headers.length}" style="${cell}text-align:center;color:#666666;">Nothing logged.</td></tr>`;
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;margin-bottom:14px;">
+    <tr><td colspan="${headers.length}" style="background:${headerColor};color:#000000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
+    <tr style="background:#dddddd;">${headers.map((h) => `<td style="padding:3px 6px;border:1px solid #000;font-weight:bold;background:#dddddd;">${escapeHtml(h)}</td>`).join("")}</tr>
+    ${bodyRows}
+  </table>`;
+}
+
+function buildFullEmailHtml(
+  date: string,
+  meta: QcAgendaMeta | null,
+  inbounds: QcAgendaInbound[],
+  floorAging: QcAgendaFloorAging[],
+  repack: QcAgendaRepack[],
+): string {
+  return `<div style="font-family:Calibri,Arial,sans-serif;background:#ffffff;">
+    <div style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;color:#000000;">QC Agenda - ${escapeHtml(formatDate(date))}</div>
+    ${buildMetaHtml(date, meta)}
+    ${buildSectionHtml("Inbounds", "#8DC63F", INBOUND_HEADERS, inbounds.map(inboundRowValues))}
+    ${buildSectionHtml("Floor Aging Check (Product at Day Threshold)", "#FFA726", FLOOR_AGING_HEADERS, floorAging.map(floorAgingRowValues))}
+    ${buildSectionHtml("Repack Management & Supply Needs", "#64B5F6", REPACK_HEADERS, repack.map(repackRowValues))}
+  </div>`;
+}
+
+function buildPlainText(
+  date: string,
+  meta: QcAgendaMeta | null,
+  inbounds: QcAgendaInbound[],
+  floorAging: QcAgendaFloorAging[],
+  repack: QcAgendaRepack[],
+): string {
+  const lines = [
+    `QC Agenda - ${formatDate(date)}`,
+    `Prepared By: ${meta?.prepared_by ?? ""}   QC1: ${meta?.qc1 ?? ""}   QC2: ${meta?.qc2 ?? ""}`,
+    "",
+  ];
+  function section(title: string, headers: string[], rows: string[][]) {
+    lines.push(title, headers.join("\t"));
+    if (rows.length === 0) lines.push("Nothing logged.");
+    for (const r of rows) lines.push(r.join("\t"));
+    lines.push("");
+  }
+  section("Inbounds", INBOUND_HEADERS, inbounds.map(inboundRowValues));
+  section("Floor Aging Check (Product at Day Threshold)", FLOOR_AGING_HEADERS, floorAging.map(floorAgingRowValues));
+  section("Repack Management & Supply Needs", REPACK_HEADERS, repack.map(repackRowValues));
+  return lines.join("\n");
+}
+
+function toCanvasRows(rows: string[][], colCount: number): MonoRow[] {
+  if (rows.length === 0) return [{ cells: ["Nothing logged.", ...Array(colCount - 1).fill("")] }];
+  return rows.map((cells) => ({ cells }));
+}
 
 interface DayData {
   meta: QcAgendaMeta | null;
@@ -57,6 +170,8 @@ export default function QcAgendaClient({
     },
   }));
   const [pulling, setPulling] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const day = cache[date] ?? { meta: null, inbounds: [], floorAging: [], repack: [] };
   const loading = !(date in cache);
@@ -156,16 +271,87 @@ export default function QcAgendaClient({
     await deleteRepackRow(id).catch(() => {});
   }
 
+  async function handleCopyEmail() {
+    const html = buildFullEmailHtml(date, day.meta, day.inbounds, day.floorAging, day.repack);
+    const text = buildPlainText(date, day.meta, day.inbounds, day.floorAging, day.repack);
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        {
+          title: "Inbounds",
+          headerColor: "#8DC63F",
+          columnHeaders: INBOUND_HEADERS,
+          rows: toCanvasRows(day.inbounds.map(inboundRowValues), INBOUND_HEADERS.length),
+        },
+        {
+          title: "Floor Aging Check (Product at Day Threshold)",
+          headerColor: "#FFA726",
+          columnHeaders: FLOOR_AGING_HEADERS,
+          rows: toCanvasRows(day.floorAging.map(floorAgingRowValues), FLOOR_AGING_HEADERS.length),
+        },
+        {
+          title: "Repack Management & Supply Needs",
+          headerColor: "#64B5F6",
+          columnHeaders: REPACK_HEADERS,
+          rows: toCanvasRows(day.repack.map(repackRowValues), REPACK_HEADERS.length),
+        },
+      ];
+      const blob = await renderPriceSheetPng({
+        title: `QC Agenda - ${formatDate(date)}`,
+        message: `Prepared By: ${day.meta?.prepared_by ?? "-"}   QC1: ${day.meta?.qc1 ?? "-"}   QC2: ${day.meta?.qc2 ?? "-"}`,
+        blocks,
+        direction: "column",
+      });
+      const result = await copyOrDownloadPng(blob, `qc-agenda-${date}.png`);
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-2xl font-bold">QC Agenda</h1>
-        <button
-          onClick={() => window.print()}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-        >
-          Print
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopyEmail}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+          >
+            {copied ? "Copied!" : "Copy for Email"}
+          </button>
+          <button
+            onClick={handleCopyImage}
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            Print
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -231,66 +417,66 @@ export default function QcAgendaClient({
           Inbounds
         </h2>
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10 print:border-black">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm print:text-[9px]">
             <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">
               <tr>
-                <th className="px-2 py-2">Vendor / Origin</th>
-                <th className="px-2 py-2">Commodity / SKU</th>
-                <th className="px-2 py-2">PO / Load #</th>
-                <th className="px-2 py-2">Carrier</th>
-                <th className="px-2 py-2">ETA</th>
-                <th className="px-2 py-2">Photo/Report</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Notes</th>
+                <th className="px-2 py-2 print:p-0.5">Vendor / Origin</th>
+                <th className="px-2 py-2 print:p-0.5">Commodity / SKU</th>
+                <th className="px-2 py-2 print:p-0.5">PO / Load #</th>
+                <th className="px-2 py-2 print:p-0.5">Carrier</th>
+                <th className="px-2 py-2 print:p-0.5">ETA</th>
+                <th className="px-2 py-2 print:p-0.5">Photo/Report</th>
+                <th className="px-2 py-2 print:p-0.5">Status</th>
+                <th className="px-2 py-2 print:p-0.5">Notes</th>
                 <th className="w-16 px-2 py-2 print:hidden" />
               </tr>
             </thead>
             <tbody>
               {day.inbounds.map((row) => (
                 <tr key={row.id} className="border-t border-black/10 dark:border-white/10">
-                  <td className="min-w-[7rem] px-1 py-1">
+                  <td className="min-w-[7rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.vendor_origin ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { vendor_origin: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[8rem] px-1 py-1">
+                  <td className="min-w-[8rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.commodity_sku ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { commodity_sku: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[7rem] px-1 py-1">
+                  <td className="min-w-[7rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.po_load_number ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { po_load_number: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[7rem] px-1 py-1">
+                  <td className="min-w-[7rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.carrier ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { carrier: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[6rem] px-1 py-1">
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.eta ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { eta: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[7rem] px-1 py-1">
+                  <td className="min-w-[7rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.photo_report ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { photo_report: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[8rem] px-1 py-1">
+                  <td className="min-w-[8rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <select
                       value={row.status ?? ""}
                       onChange={(e) => handleInboundSave(row.id, { status: (e.target.value || null) as QcInboundStatus | null })}
@@ -304,7 +490,7 @@ export default function QcAgendaClient({
                       ))}
                     </select>
                   </td>
-                  <td className="min-w-[10rem] px-1 py-1">
+                  <td className="min-w-[10rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.notes ?? ""}
                       onBlur={(e) => handleInboundSave(row.id, { notes: e.target.value })}
@@ -348,35 +534,35 @@ export default function QcAgendaClient({
           </button>
         </div>
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10 print:border-black">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm print:text-[9px]">
             <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">
               <tr>
-                <th className="px-2 py-2">Commodity / SKU</th>
-                <th className="px-2 py-2">Lot #</th>
-                <th className="px-2 py-2">Date Received</th>
-                <th className="px-2 py-2">Days on Floor</th>
-                <th className="px-2 py-2">Action Needed</th>
+                <th className="px-2 py-2 print:p-0.5">Commodity / SKU</th>
+                <th className="px-2 py-2 print:p-0.5">Lot #</th>
+                <th className="px-2 py-2 print:p-0.5">Date Received</th>
+                <th className="px-2 py-2 print:p-0.5">Days on Floor</th>
+                <th className="px-2 py-2 print:p-0.5">Action Needed</th>
                 <th className="w-16 px-2 py-2 print:hidden" />
               </tr>
             </thead>
             <tbody>
               {day.floorAging.map((row) => (
                 <tr key={row.id} className="border-t border-black/10 dark:border-white/10">
-                  <td className="min-w-[8rem] px-1 py-1">
+                  <td className="min-w-[8rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.commodity_sku ?? ""}
                       onBlur={(e) => handleFloorAgingSave(row.id, { commodity_sku: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[6rem] px-1 py-1">
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.lot_number ?? ""}
                       onBlur={(e) => handleFloorAgingSave(row.id, { lot_number: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="px-1 py-1">
+                  <td className="px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       type="date"
                       defaultValue={row.received_date ?? ""}
@@ -384,7 +570,7 @@ export default function QcAgendaClient({
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[5rem] px-1 py-1">
+                  <td className="min-w-[5rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       type="number"
                       defaultValue={row.days_on_floor ?? ""}
@@ -392,7 +578,7 @@ export default function QcAgendaClient({
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[10rem] px-1 py-1">
+                  <td className="min-w-[10rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.action_needed ?? ""}
                       onBlur={(e) => handleFloorAgingSave(row.id, { action_needed: e.target.value })}
@@ -429,41 +615,41 @@ export default function QcAgendaClient({
           Repack Management & Supply Needs
         </h2>
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10 print:border-black">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm print:text-[9px]">
             <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">
               <tr>
-                <th className="px-2 py-2">Reference</th>
-                <th className="px-2 py-2">Pack Format</th>
-                <th className="px-2 py-2">Priority</th>
-                <th className="px-2 py-2">Notes</th>
+                <th className="px-2 py-2 print:p-0.5">Reference</th>
+                <th className="px-2 py-2 print:p-0.5">Pack Format</th>
+                <th className="px-2 py-2 print:p-0.5">Priority</th>
+                <th className="px-2 py-2 print:p-0.5">Notes</th>
                 <th className="w-16 px-2 py-2 print:hidden" />
               </tr>
             </thead>
             <tbody>
               {day.repack.map((row) => (
                 <tr key={row.id} className="border-t border-black/10 dark:border-white/10">
-                  <td className="min-w-[6rem] px-1 py-1">
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.reference ?? ""}
                       onBlur={(e) => handleRepackSave(row.id, { reference: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[8rem] px-1 py-1">
+                  <td className="min-w-[8rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.pack_format ?? ""}
                       onBlur={(e) => handleRepackSave(row.id, { pack_format: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[5rem] px-1 py-1">
+                  <td className="min-w-[5rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.priority ?? ""}
                       onBlur={(e) => handleRepackSave(row.id, { priority: e.target.value })}
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[10rem] px-1 py-1">
+                  <td className="min-w-[10rem] px-1 py-1 print:min-w-0 print:p-0.5">
                     <input
                       defaultValue={row.notes ?? ""}
                       onBlur={(e) => handleRepackSave(row.id, { notes: e.target.value })}

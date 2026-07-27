@@ -217,26 +217,31 @@ export async function renderPriceSheetPng(opts: {
   message: string;
   blocks: CanvasBlock[];
   scale?: number;
+  direction?: "row" | "column";
 }): Promise<Blob> {
-  const { title, message, blocks, scale = 2 } = opts;
+  const { title, message, blocks, scale = 2, direction = "row" } = opts;
   const measureCanvas = document.createElement("canvas");
   const mctx = measureCanvas.getContext("2d");
   if (!mctx) throw new Error("Canvas is not supported in this browser");
 
   const blockColWidths = blocks.map((b) => measureBlockColWidths(mctx, b));
   const blockWidths = blockColWidths.map((widths) => widths.reduce((a, b) => a + b, 0));
+  const blockHeights = blocks.map((b) => BLOCK_TITLE_H + COL_HEADER_H + b.rows.length * ROW_H);
 
-  const contentWidth = blockWidths.reduce((a, b) => a + b, 0) + BLOCK_GAP * Math.max(0, blocks.length - 1);
-  const canvasWidth = Math.max(contentWidth, 400);
+  const canvasWidth =
+    direction === "row"
+      ? Math.max(blockWidths.reduce((a, b) => a + b, 0) + BLOCK_GAP * Math.max(0, blocks.length - 1), 400)
+      : Math.max(...blockWidths, 400);
 
   mctx.font = CANVAS_FONT_MESSAGE;
   const messageLines = message ? wrapText(mctx, message, canvasWidth - CELL_PAD_X * 4) : [];
   const messageBoxHeight = messageLines.length > 0 ? messageLines.length * LINE_H + 16 : 0;
   const titleAreaHeight = 34 + (messageBoxHeight > 0 ? messageBoxHeight + 10 : 0);
 
-  const tableAreaHeight = Math.max(
-    ...blocks.map((b) => BLOCK_TITLE_H + COL_HEADER_H + b.rows.length * ROW_H),
-  );
+  const tableAreaHeight =
+    direction === "row"
+      ? Math.max(...blockHeights)
+      : blockHeights.reduce((a, b) => a + b, 0) + BLOCK_GAP * Math.max(0, blocks.length - 1);
   const canvasHeight = titleAreaHeight + tableAreaHeight + 16;
 
   const canvas = document.createElement("canvas");
@@ -268,11 +273,18 @@ export async function renderPriceSheetPng(opts: {
     y += messageBoxHeight + 10;
   }
 
-  let x = 0;
-  blocks.forEach((block, i) => {
-    drawBlock(ctx, block, x, y, blockColWidths[i]);
-    x += blockWidths[i] + BLOCK_GAP;
-  });
+  if (direction === "row") {
+    let x = 0;
+    blocks.forEach((block, i) => {
+      drawBlock(ctx, block, x, y, blockColWidths[i]);
+      x += blockWidths[i] + BLOCK_GAP;
+    });
+  } else {
+    blocks.forEach((block, i) => {
+      drawBlock(ctx, block, 0, y, blockColWidths[i]);
+      y += blockHeights[i] + BLOCK_GAP;
+    });
+  }
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
