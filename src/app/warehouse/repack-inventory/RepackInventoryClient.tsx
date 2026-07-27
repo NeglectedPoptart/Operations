@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate, todayISO } from "@/lib/dates";
 import type { RepackAdjustment, RepackItem } from "@/lib/types";
 import {
@@ -254,6 +255,7 @@ export default function RepackInventoryClient({
   initialItems: RepackItem[];
   initialAdjustments: RepackAdjustment[];
 }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [adjustments, setAdjustments] = useState(initialAdjustments);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -279,7 +281,7 @@ export default function RepackInventoryClient({
   }
 
   async function handleDeleteAdjustment(id: string) {
-    if (!confirm("Delete this entry? The item's current stock will be adjusted back.")) return;
+    if (!(await confirm("Delete this entry? The item's current stock will be adjusted back."))) return;
     const row = adjustments.find((a) => a.id === id);
     setAdjustments((prev) => prev.filter((a) => a.id !== id));
     if (row) bumpStock(row.item_id, -row.qty);
@@ -303,7 +305,7 @@ export default function RepackInventoryClient({
   }
 
   async function handleDeleteItem(id: string) {
-    if (!confirm("Delete this item and all of its history? This can't be undone.")) return;
+    if (!(await confirm("Delete this item and all of its history? This can't be undone."))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     setAdjustments((prev) => prev.filter((a) => a.item_id !== id));
     await deleteRepackItem(id).catch(() => {});

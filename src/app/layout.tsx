@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Rajdhani } from "next/font/google";
+import ConfirmProvider from "@/components/ConfirmProvider";
 import NavBar from "@/components/NavBar";
 import { createClient } from "@/lib/supabase/server";
 import type { Role } from "@/lib/roles";
@@ -54,10 +55,12 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${rajdhani.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
-        <NavBar role={role} />
-        <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
-          {children}
-        </main>
+        <ConfirmProvider>
+          <NavBar role={role} />
+          <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+            {children}
+          </main>
+        </ConfirmProvider>
       </body>
     </html>
   );

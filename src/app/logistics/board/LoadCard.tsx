@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { deleteLoad, updateLoadRateConSent, updateLoadReady, updateLoadStatus } from "./actions";
 import { LOAD_STATUSES, type Load, type LoadStatus } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
@@ -15,13 +16,14 @@ export default function LoadCard({
   dateFirst?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
+  const confirm = useConfirm();
 
   function handleStatusChange(status: LoadStatus) {
     startTransition(() => updateLoadStatus(load.id, status));
   }
 
-  function handleDelete() {
-    if (!confirm("Delete this load?")) return;
+  async function handleDelete() {
+    if (!(await confirm("Delete this load?"))) return;
     startTransition(() => deleteLoad(load.id));
   }
 

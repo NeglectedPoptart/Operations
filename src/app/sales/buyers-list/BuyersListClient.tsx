@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { parseBuyersListPaste, type ParsedBuyersItem } from "@/lib/buyersListParse";
 import { buildMonospaceTable, copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import type { BuyersListItem } from "@/lib/types";
@@ -28,6 +29,7 @@ function buyersListRowValues(item: BuyersListItem): string[] {
 }
 
 export default function BuyersListClient({ initialItems }: { initialItems: BuyersListItem[] }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [showPaste, setShowPaste] = useState(initialItems.length === 0);
   const [pasteText, setPasteText] = useState("");
@@ -70,7 +72,7 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Remove this item from the Buyers List?")) return;
+    if (!(await confirm("Remove this item from the Buyers List?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteBuyersListItem(id).catch(() => {});
   }
@@ -167,7 +169,11 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   }
 
   async function handleClearAll() {
-    if (!confirm(`Clear all ${items.length} item${items.length === 1 ? "" : "s"} from the Buyers List? This can't be undone.`)) {
+    if (
+      !(await confirm(
+        `Clear all ${items.length} item${items.length === 1 ? "" : "s"} from the Buyers List? This can't be undone.`,
+      ))
+    ) {
       return;
     }
     setClearing(true);

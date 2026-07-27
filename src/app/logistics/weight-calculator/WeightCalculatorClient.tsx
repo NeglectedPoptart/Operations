@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 interface Row {
   id: number;
@@ -145,6 +146,7 @@ function DropSection({
 }
 
 export default function WeightCalculatorClient() {
+  const confirm = useConfirm();
   const [palletWeight, setPalletWeight] = useState("40");
   const [rows1, setRows1] = useState<Row[]>([makeRow(), makeRow(), makeRow()]);
   const [rows2, setRows2] = useState<Row[]>([makeRow(), makeRow(), makeRow()]);
@@ -163,8 +165,8 @@ export default function WeightCalculatorClient() {
 
   const grandTotal = computeGross(rows1) + computeGross(rows2);
 
-  function clearAll() {
-    if (!confirm("Clear both drop sections?")) return;
+  async function clearAll() {
+    if (!(await confirm("Clear both drop sections?"))) return;
     setRows1([makeRow(), makeRow(), makeRow()]);
     setRows2([makeRow(), makeRow(), makeRow()]);
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import type { LocalInbound } from "@/lib/types";
 import { addLocalInboundRow, deleteLocalInboundRow, updateLocalInboundRow } from "./actions";
 
@@ -177,6 +178,7 @@ export default function LocalInboundsClient({
   initialItems: LocalInbound[];
   entryDate: string;
 }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [addingPending, setAddingPending] = useState(false);
   const [addingLoadingDirect, setAddingLoadingDirect] = useState(false);
@@ -210,7 +212,7 @@ export default function LocalInboundsClient({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this row?")) return;
+    if (!(await confirm("Delete this row?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteLocalInboundRow(id).catch(() => {});
   }

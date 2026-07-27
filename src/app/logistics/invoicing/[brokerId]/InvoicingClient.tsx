@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { parsePastedInvoices, type ParsedInvoiceRow } from "@/lib/invoicingParse";
@@ -148,6 +149,7 @@ export default function InvoicingClient({
   broker: Broker;
   initialItems: InvoiceStatement[];
 }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
@@ -183,7 +185,7 @@ export default function InvoicingClient({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this invoice row?")) return;
+    if (!(await confirm("Delete this invoice row?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteInvoiceStatement(id, broker.id).catch(() => {});
   }

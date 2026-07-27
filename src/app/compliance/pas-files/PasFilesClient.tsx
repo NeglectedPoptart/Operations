@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
@@ -32,6 +33,7 @@ export default function PasFilesClient({
   initialItems: PasFile[];
   existingPendingKeys: string[];
 }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [pendingKeys, setPendingKeys] = useState(() => new Set(existingPendingKeys));
   const [showPaste, setShowPaste] = useState(initialItems.length === 0);
@@ -118,7 +120,7 @@ export default function PasFilesClient({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this row? (Only do this once the invoice is settled.)")) return;
+    if (!(await confirm("Delete this row? (Only do this once the invoice is settled.)"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deletePasFileRow(id).catch(() => {});
   }

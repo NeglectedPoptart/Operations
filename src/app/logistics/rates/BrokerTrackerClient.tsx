@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { formatWeekLabel, nextWeekStart, prevWeekStart as prevWeek, currentWeekStart } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
@@ -197,6 +198,7 @@ export default function BrokerTrackerClient({
   initialPrevSubmission: RateSubmission | null;
   currentUserEmail: string;
 }) {
+  const confirm = useConfirm();
   const [lanes, setLanes] = useState(initialLanes);
   const [brokers, setBrokers] = useState(initialBrokers);
   const [weekStart, setWeekStart] = useState(initialWeekStart);
@@ -314,7 +316,7 @@ export default function BrokerTrackerClient({
   }
 
   async function handleUnlockWeek() {
-    if (!confirm("Unlock this week's rates for editing?")) return;
+    if (!(await confirm("Unlock this week's rates for editing?"))) return;
     await unlockWeek(weekStart);
     setSubmissionCache((prev) => ({ ...prev, [weekStart]: null }));
   }
@@ -347,16 +349,16 @@ export default function BrokerTrackerClient({
   }
 
   async function handleDeleteLane(id: string) {
-    if (!confirm("Delete this lane?")) return;
+    if (!(await confirm("Delete this lane?"))) return;
     await deleteLane(id);
     setLanes((prev) => prev.filter((l) => l.id !== id));
   }
 
   async function handleDeleteBroker(id: string, name: string) {
     if (
-      !confirm(
+      !(await confirm(
         `Delete ${name}? This removes their rate history and their whole Invoicing list too - it deletes everywhere. Past loads keep showing but lose the broker tag.`,
-      )
+      ))
     ) {
       return;
     }

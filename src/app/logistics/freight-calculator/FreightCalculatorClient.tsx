@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 
 interface Row {
   id: number;
@@ -20,6 +21,7 @@ function formatMoney(n: number) {
 }
 
 export default function FreightCalculatorClient() {
+  const confirm = useConfirm();
   const [totalFreight, setTotalFreight] = useState("");
   const [rows, setRows] = useState<Row[]>([makeRow(), makeRow(), makeRow()]);
 
@@ -50,8 +52,8 @@ export default function FreightCalculatorClient() {
     setRows((prev) => prev.filter((r) => r.id !== id));
   }
 
-  function clearAll() {
-    if (!confirm("Clear the total freight and all rows?")) return;
+  async function clearAll() {
+    if (!(await confirm("Clear the total freight and all rows?"))) return;
     setTotalFreight("");
     setRows([makeRow(), makeRow(), makeRow()]);
   }

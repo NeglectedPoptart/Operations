@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { parsePastedOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
 import { formatDate } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
@@ -236,6 +237,7 @@ function CashListSection({
 }
 
 export default function OldAgeClient({ initialItems }: { initialItems: OldAgeItem[] }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const nextStepSummary = useMemo(() => summarizeByNextStep(items), [items]);
   const commoditySummary = useMemo(() => summarizeByCommodity(items), [items]);
@@ -305,7 +307,7 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this row?")) return;
+    if (!(await confirm("Delete this row?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteOldAgeItem(id).catch(() => {});
   }

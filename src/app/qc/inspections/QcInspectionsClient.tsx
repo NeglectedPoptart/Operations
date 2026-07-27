@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import type { QcInspection } from "@/lib/types";
 import { addQcInspectionRow, deleteQcInspectionRow, updateQcInspectionRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
 export default function QcInspectionsClient({ initialItems }: { initialItems: QcInspection[] }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [adding, setAdding] = useState(false);
   const [filterDate, setFilterDate] = useState("");
@@ -39,7 +41,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this row?")) return;
+    if (!(await confirm("Delete this row?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteQcInspectionRow(id).catch(() => {});
   }

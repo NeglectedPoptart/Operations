@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { AM_HOLDOVER_STATUSES, type AmHoldover, type AmHoldoverStatus } from "@/lib/types";
@@ -13,6 +14,7 @@ export default function AmHoldoversClient({
   initialDate: string;
   initialEntries: AmHoldover[];
 }) {
+  const confirm = useConfirm();
   const [date, setDate] = useState(initialDate);
   const [cache, setCache] = useState<Record<string, AmHoldover[]>>(() => ({
     [initialDate]: initialEntries,
@@ -72,7 +74,7 @@ export default function AmHoldoversClient({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this row?")) return;
+    if (!(await confirm("Delete this row?"))) return;
     setCache((prev) => ({ ...prev, [date]: (prev[date] ?? []).filter((e) => e.id !== id) }));
     await deleteHoldoverRow(id).catch(() => {});
   }

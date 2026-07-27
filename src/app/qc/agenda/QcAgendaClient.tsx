@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
 import {
@@ -186,6 +187,7 @@ export default function QcAgendaClient({
   initialFloorAging: QcAgendaFloorAging[];
   initialRepack: QcAgendaRepack[];
 }) {
+  const confirm = useConfirm();
   const [date, setDate] = useState(initialDate);
   const [cache, setCache] = useState<Record<string, DayData>>(() => ({
     [initialDate]: {
@@ -248,7 +250,7 @@ export default function QcAgendaClient({
   }
 
   async function handleInboundDelete(id: string) {
-    if (!confirm("Delete this row?")) return;
+    if (!(await confirm("Delete this row?"))) return;
     patchDay({ inbounds: day.inbounds.filter((r) => r.id !== id) });
     await deleteInboundRow(id).catch(() => {});
   }
@@ -293,7 +295,7 @@ export default function QcAgendaClient({
   }
 
   async function handleRepackDelete(id: string) {
-    if (!confirm("Delete this row?")) return;
+    if (!(await confirm("Delete this row?"))) return;
     patchDay({ repack: day.repack.filter((r) => r.id !== id) });
     await deleteRepackRow(id).catch(() => {});
   }

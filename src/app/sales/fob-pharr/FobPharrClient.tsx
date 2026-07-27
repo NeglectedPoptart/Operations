@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
   buildWhatsAppSection,
@@ -459,6 +460,7 @@ export default function FobPharrClient({
   initialItems: FobItem[];
   initialFreightRates: FobFreightRate[];
 }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [rates, setRates] = useState(initialFreightRates);
   const [copied, setCopied] = useState(false);
@@ -495,7 +497,7 @@ export default function FobPharrClient({
   }
 
   async function handleDeleteItem(id: string) {
-    if (!confirm("Delete this item?")) return;
+    if (!(await confirm("Delete this item?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteFobItem(id).catch(() => {});
   }
@@ -516,7 +518,7 @@ export default function FobPharrClient({
   }
 
   async function handleDeleteRate(id: string) {
-    if (!confirm("Delete this lane?")) return;
+    if (!(await confirm("Delete this lane?"))) return;
     setRates((prev) => prev.filter((r) => r.id !== id));
     await deleteFreightRate(id).catch(() => {});
   }

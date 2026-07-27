@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { WORKFLOW_SECTIONS, type WorkflowSection, type WorkflowStatus, type WorkflowTask } from "@/lib/types";
 import {
   createWorkflowTask,
@@ -166,6 +167,7 @@ function SectionTable({
 }
 
 export default function WorkflowClient({ initialTasks }: { initialTasks: WorkflowTask[] }) {
+  const confirm = useConfirm();
   const [tasks, setTasks] = useState(initialTasks);
   const [resetting, setResetting] = useState(false);
 
@@ -192,8 +194,8 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
     updateWorkflowTaskNotes(id, notes).catch(() => {});
   }
 
-  function handleDelete(id: string) {
-    if (!confirm("Delete this task?")) return;
+  async function handleDelete(id: string) {
+    if (!(await confirm("Delete this task?"))) return;
     setTasks((prev) => prev.filter((t) => t.id !== id));
     deleteWorkflowTask(id).catch(() => {});
   }
@@ -204,7 +206,7 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
   }
 
   async function handleResetDay() {
-    if (!confirm("Reset all tasks back to Pending and clear notes? Today-only tasks will be removed.")) return;
+    if (!(await confirm("Reset all tasks back to Pending and clear notes? Today-only tasks will be removed."))) return;
     setResetting(true);
     try {
       await resetWorkflowDay();

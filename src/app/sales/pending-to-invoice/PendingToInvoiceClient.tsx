@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { daysSince, formatDate } from "@/lib/dates";
 import type { PendingToInvoiceItem } from "@/lib/types";
 import { clearInvoicingItems, deletePendingToInvoiceItem } from "./actions";
@@ -85,6 +86,7 @@ function PendingTable({
 }
 
 export default function PendingToInvoiceClient({ initialItems }: { initialItems: PendingToInvoiceItem[] }) {
+  const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [clearing, setClearing] = useState(false);
 
@@ -92,14 +94,18 @@ export default function PendingToInvoiceClient({ initialItems }: { initialItems:
   const invoicing = items.filter(isInvoicing);
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this row? (Only do this once it's been invoiced.)")) return;
+    if (!(await confirm("Delete this row? (Only do this once it's been invoiced.)"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deletePendingToInvoiceItem(id).catch(() => {});
   }
 
   async function handleClearInvoicing() {
     if (invoicing.length === 0) return;
-    if (!confirm(`Clear all ${invoicing.length} row${invoicing.length === 1 ? "" : "s"} from the Invoicing list? This can't be undone.`)) {
+    if (
+      !(await confirm(
+        `Clear all ${invoicing.length} row${invoicing.length === 1 ? "" : "s"} from the Invoicing list? This can't be undone.`,
+      ))
+    ) {
       return;
     }
     setClearing(true);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { addMonths, formatDate, formatMonthLabel, mondayOf, monthEnd, todayISO } from "@/lib/dates";
 import type { CalloutApproved, CalloutEntry, PtoRequest } from "@/lib/types";
@@ -57,6 +58,7 @@ export default function CalloutSheetClient({
   calloutTypeOptions: string[];
   initialUpcomingPto: PtoRequest[];
 }) {
+  const confirm = useConfirm();
   const [month, setMonth] = useState(initialMonth);
   const [cache, setCache] = useState<Record<string, CalloutEntry[]>>(() => ({
     [initialMonth]: initialEntries,
@@ -149,7 +151,7 @@ export default function CalloutSheetClient({
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this entry?")) return;
+    if (!(await confirm("Delete this entry?"))) return;
     setCache((prev) => ({ ...prev, [month]: (prev[month] ?? []).filter((e) => e.id !== id) }));
     await deleteCalloutEntry(id).catch(() => {});
   }
