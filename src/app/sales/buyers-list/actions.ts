@@ -107,3 +107,12 @@ export async function deleteBuyersListItem(id: string) {
   if (error) throw new Error(error.message);
   revalidateAll();
 }
+
+// Manual reset - the list otherwise only ever grows/merges on import, so
+// this is the one way to wipe it clean (e.g. starting a new buying cycle).
+export async function clearBuyersList() {
+  const supabase = await createClient();
+  const { error } = await supabase.from("buyers_list_items").delete().not("id", "is", null);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}

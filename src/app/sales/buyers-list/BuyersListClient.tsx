@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { parseBuyersListPaste, type ParsedBuyersItem } from "@/lib/buyersListParse";
 import type { BuyersListItem } from "@/lib/types";
-import { deleteBuyersListItem, importBuyersListItems, updateBuyersListNotes } from "./actions";
+import { clearBuyersList, deleteBuyersListItem, importBuyersListItems, updateBuyersListNotes } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -14,6 +14,7 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   const [previewItems, setPreviewItems] = useState<ParsedBuyersItem[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   function handlePreview() {
     const result = parseBuyersListPaste(pasteText);
@@ -56,16 +57,38 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
     updateBuyersListNotes(id, notes).catch(() => {});
   }
 
+  async function handleClearAll() {
+    if (!confirm(`Clear all ${items.length} item${items.length === 1 ? "" : "s"} from the Buyers List? This can't be undone.`)) {
+      return;
+    }
+    setClearing(true);
+    try {
+      await clearBuyersList();
+      setItems([]);
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Buyers List</h1>
-        <button
-          onClick={() => setShowPaste((s) => !s)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-        >
-          {showPaste ? "Hide paste box" : "Paste from Excel"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowPaste((s) => !s)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showPaste ? "Hide paste box" : "Paste from Excel"}
+          </button>
+          <button
+            onClick={handleClearAll}
+            disabled={clearing || items.length === 0}
+            className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+          >
+            {clearing ? "Clearing..." : "Clear All"}
+          </button>
+        </div>
       </div>
 
       {showPaste && (
