@@ -126,7 +126,7 @@ export interface AmHoldover {
 
 // Warehouse: Local Inbounds -----------------------------------------------------
 
-export type LocalInboundStatus = "pending" | "arrived";
+export type LocalInboundStatus = "pending" | "loading_direct" | "arrived";
 
 export interface LocalInbound {
   id: string;
@@ -213,6 +213,8 @@ export interface OldAgeItem {
   age: number | null;
   next_step: OldAgeNextStep | null;
   notes: string | null;
+  cash_list: boolean;
+  cash_price: number | null;
   created_at: string;
   updated_at: string;
 }

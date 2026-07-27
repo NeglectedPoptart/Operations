@@ -9,11 +9,15 @@ function revalidateAll() {
   revalidatePath("/");
 }
 
-export async function addLocalInboundRow(entryDate: string, nextPosition: number) {
+export async function addLocalInboundRow(
+  entryDate: string,
+  nextPosition: number,
+  status: LocalInbound["status"] = "pending",
+) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("local_inbounds")
-    .insert({ entry_date: entryDate, position: nextPosition })
+    .insert({ entry_date: entryDate, position: nextPosition, status })
     .select()
     .single();
   if (error) throw new Error(error.message);

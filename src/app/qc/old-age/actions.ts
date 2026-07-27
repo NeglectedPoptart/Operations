@@ -71,6 +71,8 @@ export async function updateOldAgeItem(
     age?: number | null;
     next_step?: OldAgeNextStep | null;
     notes?: string | null;
+    cash_list?: boolean;
+    cash_price?: number | null;
   },
 ) {
   const supabase = await createClient();

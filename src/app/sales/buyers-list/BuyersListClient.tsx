@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { parseBuyersListPaste, type ParsedBuyersItem } from "@/lib/buyersListParse";
 import type { BuyersListItem } from "@/lib/types";
-import { clearBuyersList, deleteBuyersListItem, importBuyersListItems, updateBuyersListNotes } from "./actions";
+import {
+  clearBuyersList,
+  deleteBuyersListItem,
+  importBuyersListItems,
+  updateBuyersListNotes,
+  updateBuyersListQty,
+} from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -55,6 +61,13 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   function handleNotesSave(id: string, notes: string) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, notes } : i)));
     updateBuyersListNotes(id, notes).catch(() => {});
+  }
+
+  function handleQtySave(id: string, value: string) {
+    const qty = Number(value);
+    if (value.trim() === "" || !Number.isFinite(qty)) return;
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, qty_needed: qty } : i)));
+    updateBuyersListQty(id, qty).catch(() => {});
   }
 
   async function handleClearAll() {
@@ -194,8 +207,14 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
                 <td className="px-2 py-1.5">{item.pstyle}</td>
                 <td className="px-2 py-1.5">{item.size}</td>
                 <td className="px-2 py-1.5">{item.label}</td>
-                <td className="px-2 py-1.5 font-semibold text-red-600 dark:text-red-400">
-                  {item.qty_needed.toLocaleString()}
+                <td className="min-w-[6rem] px-1 py-1">
+                  <input
+                    type="number"
+                    step="any"
+                    defaultValue={item.qty_needed}
+                    onBlur={(e) => handleQtySave(item.id, e.target.value)}
+                    className={`${field} font-semibold text-red-600`}
+                  />
                 </td>
                 <td className="px-1 py-1">
                   <input

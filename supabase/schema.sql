@@ -216,7 +216,7 @@ create table if not exists local_inbounds (
   loading_warehouse text,
   eta text,
   notes text,
-  status text not null default 'pending' check (status in ('pending', 'arrived')),
+  status text not null default 'pending' check (status in ('pending', 'loading_direct', 'arrived')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -265,6 +265,10 @@ create table if not exists old_age_items (
   next_step text
     check (next_step in ('pending_qc', 'cash_sale', 'repack', 'as_is', 'dump_donate', 'moved')),
   notes text,
+  -- Quick flag (independent of next_step) that pulls a row into the Cash
+  -- List section at the top of the page; cash_price is only used there.
+  cash_list boolean not null default false,
+  cash_price numeric,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

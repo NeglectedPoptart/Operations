@@ -101,6 +101,13 @@ export async function updateBuyersListNotes(id: string, notes: string) {
   revalidateAll();
 }
 
+export async function updateBuyersListQty(id: string, qtyNeeded: number) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("buyers_list_items").update({ qty_needed: qtyNeeded }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
 export async function deleteBuyersListItem(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("buyers_list_items").delete().eq("id", id);

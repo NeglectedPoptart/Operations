@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { parsePastedOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
 import { formatDate } from "@/lib/dates";
+import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { summarizeByCommodity, summarizeByNextStep } from "@/lib/oldAgeSummary";
 import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeNextStep } from "@/lib/types";
 import { addOldAgeRow, deleteOldAgeItem, importOldAgeItems, updateOldAgeItem } from "./actions";
@@ -10,10 +11,183 @@ import HorizontalBarChart from "@/components/HorizontalBarChart";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
+function formatMoney(n: number | null): string {
+  return n === null ? "" : `$${n.toFixed(2)}`;
+}
+
+const CASH_LIST_HEADERS = ["Document", "Received", "Description", "PStyle", "Size", "Qty", "Age", "Price", "Notes"];
+function cashListRowValues(item: OldAgeItem): string[] {
+  return [
+    item.document ?? "",
+    formatDate(item.received_date),
+    item.description ?? "",
+    item.pack_style ?? "",
+    item.size ?? "",
+    item.qty !== null ? String(item.qty) : "",
+    item.age !== null ? String(item.age) : "",
+    formatMoney(item.cash_price),
+    item.notes ?? "",
+  ];
+}
+
+function CashListSection({
+  items,
+  onPriceSave,
+  onNotesSave,
+  onRemove,
+}: {
+  items: OldAgeItem[];
+  onPriceSave: (id: string, price: number | null) => void;
+  onNotesSave: (id: string, notes: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
+
+  if (items.length === 0) return null;
+
+  async function handleCopyEmail() {
+    const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
+    const headCell = `${cell}font-weight:bold;background:#dddddd;`;
+    const rows = items
+      .map(
+        (item) =>
+          `<tr>${cashListRowValues(item)
+            .map((c) => `<td style="${cell}">${escapeHtml(c)}</td>`)
+            .join("")}</tr>`,
+      )
+      .join("");
+    const html = `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;">
+        <tr><td colspan="${CASH_LIST_HEADERS.length}" style="background:#8DC63F;color:#000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">Cash List</td></tr>
+        <tr>${CASH_LIST_HEADERS.map((h) => `<td style="${headCell}">${escapeHtml(h)}</td>`).join("")}</tr>
+        ${rows}
+      </table>`;
+    const text = [
+      "Cash List",
+      CASH_LIST_HEADERS.join("\t"),
+      ...items.map((item) => cashListRowValues(item).join("\t")),
+    ].join("\n");
+
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        {
+          title: "Cash List",
+          headerColor: "#8DC63F",
+          columnHeaders: CASH_LIST_HEADERS,
+          rows: items.map((item) => ({ cells: cashListRowValues(item) })),
+        },
+      ];
+      const blob = await renderPriceSheetPng({ title: "Cash List", message: "", blocks });
+      const result = await copyOrDownloadPng(blob, "cash-list.png");
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-green-300 bg-green-50/50 p-4 dark:border-green-800 dark:bg-green-950/20">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Cash List ({items.length})</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={handleCopyEmail}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+          >
+            {copied ? "Copied!" : "Copy for Email"}
+          </button>
+          <button
+            onClick={handleCopyImage}
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-800"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded border border-black/10 dark:border-white/10">
+        <table className="w-full text-sm">
+          <thead className="bg-black/5 text-left dark:bg-white/5">
+            <tr>
+              <th className="px-2 py-1.5">Document</th>
+              <th className="px-2 py-1.5">Received</th>
+              <th className="px-2 py-1.5">Description</th>
+              <th className="px-2 py-1.5">PStyle</th>
+              <th className="px-2 py-1.5">Size</th>
+              <th className="px-2 py-1.5">Qty</th>
+              <th className="px-2 py-1.5">Age</th>
+              <th className="px-2 py-1.5">Price</th>
+              <th className="px-2 py-1.5">Notes</th>
+              <th className="px-2 py-1.5" />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
+                <td className="px-2 py-1.5">{item.document}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(item.received_date)}</td>
+                <td className="px-2 py-1.5">{item.description}</td>
+                <td className="px-2 py-1.5">{item.pack_style}</td>
+                <td className="px-2 py-1.5">{item.size}</td>
+                <td className="px-2 py-1.5">{item.qty}</td>
+                <td className="px-2 py-1.5">{item.age}</td>
+                <td className="min-w-[6rem] px-1 py-1">
+                  <input
+                    type="number"
+                    step="any"
+                    defaultValue={item.cash_price ?? ""}
+                    onBlur={(e) => onPriceSave(item.id, e.target.value.trim() === "" ? null : Number(e.target.value))}
+                    className={`${field} font-semibold`}
+                  />
+                </td>
+                <td className="min-w-[10rem] px-1 py-1">
+                  <input
+                    defaultValue={item.notes ?? ""}
+                    onBlur={(e) => onNotesSave(item.id, e.target.value)}
+                    className={field}
+                  />
+                </td>
+                <td className="px-2 py-1.5">
+                  <button
+                    onClick={() => onRemove(item.id)}
+                    className="text-xs font-medium text-red-600 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function OldAgeClient({ initialItems }: { initialItems: OldAgeItem[] }) {
   const [items, setItems] = useState(initialItems);
   const nextStepSummary = useMemo(() => summarizeByNextStep(items), [items]);
   const commoditySummary = useMemo(() => summarizeByCommodity(items), [items]);
+  const cashListItems = useMemo(() => items.filter((i) => i.cash_list), [items]);
   const [showPaste, setShowPaste] = useState(initialItems.length === 0);
   const [pasteText, setPasteText] = useState("");
   const [previewRows, setPreviewRows] = useState<ParsedOldAgeRow[] | null>(null);
@@ -66,8 +240,9 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
-  async function handleFieldSave(id: string, patch: { notes?: string }) {
-    await updateOldAgeItem(id, patch).catch(() => {});
+  function handleFieldSave(id: string, patch: { notes?: string }) {
+    updateLocal(id, patch);
+    updateOldAgeItem(id, patch).catch(() => {});
   }
 
   async function handleNextStepChange(id: string, nextStep: OldAgeNextStep) {
@@ -79,6 +254,16 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
     if (!confirm("Delete this row?")) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteOldAgeItem(id).catch(() => {});
+  }
+
+  async function handleCashListToggle(id: string, cashList: boolean) {
+    updateLocal(id, { cash_list: cashList });
+    await updateOldAgeItem(id, { cash_list: cashList }).catch(() => {});
+  }
+
+  async function handleCashPriceSave(id: string, price: number | null) {
+    updateLocal(id, { cash_price: price });
+    await updateOldAgeItem(id, { cash_price: price }).catch(() => {});
   }
 
   return (
@@ -105,6 +290,13 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
           </div>
         </div>
       )}
+
+      <CashListSection
+        items={cashListItems}
+        onPriceSave={handleCashPriceSave}
+        onNotesSave={(id, notes) => handleFieldSave(id, { notes })}
+        onRemove={(id) => handleCashListToggle(id, false)}
+      />
 
       {showPaste && (
         <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
@@ -201,6 +393,7 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
               <th className="px-2 py-2">Age</th>
               <th className="px-2 py-2">Next Step</th>
               <th className="px-2 py-2">Notes</th>
+              <th className="px-2 py-2">Cash List</th>
               <th className="w-16 px-2 py-2" />
             </tr>
           </thead>
@@ -235,6 +428,14 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
                     className={field}
                   />
                 </td>
+                <td className="px-2 py-1.5 text-center">
+                  <input
+                    type="checkbox"
+                    checked={item.cash_list}
+                    onChange={(e) => handleCashListToggle(item.id, e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                </td>
                 <td className="px-2 py-1.5">
                   <button
                     onClick={() => handleDelete(item.id)}
@@ -247,7 +448,7 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={11} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No items yet - paste in the Old Age report from Excel above.
                 </td>
               </tr>
