@@ -25,6 +25,28 @@ function statusLabel(status: InvoiceStatus | null): string {
   return "-";
 }
 
+type ImageFilter = "all" | "pending" | "done" | "overdue";
+
+const IMAGE_FILTERS: { value: ImageFilter; label: string }[] = [
+  { value: "all", label: "All Items" },
+  { value: "pending", label: "Pending" },
+  { value: "done", label: "Done" },
+  { value: "overdue", label: `Over ${OVERDUE_DAYS} Days` },
+];
+
+function matchesImageFilter(item: InvoiceStatement, filter: ImageFilter, age: number | null): boolean {
+  switch (filter) {
+    case "pending":
+      return item.status === "pending";
+    case "done":
+      return item.status === "done";
+    case "overdue":
+      return age !== null && age > OVERDUE_DAYS;
+    default:
+      return true;
+  }
+}
+
 const INVOICE_HEADERS = ["Invoice #", "Date", "Customer PO", "Amount", "Age", "Status", "Notes"];
 function invoiceRowValues(item: InvoiceStatement): string[] {
   const age = daysSince(item.invoice_date);
@@ -133,6 +155,7 @@ export default function InvoicingClient({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const [imageFilter, setImageFilter] = useState<ImageFilter>("all");
 
   function updateLocal(id: string, patch: Partial<InvoiceStatement>) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -196,19 +219,25 @@ export default function InvoicingClient({
 
   async function handleCopyImage() {
     try {
+      const filterLabel = IMAGE_FILTERS.find((f) => f.value === imageFilter)?.label ?? "All Items";
+      const filtered = items.filter((item) => matchesImageFilter(item, imageFilter, daysSince(item.invoice_date)));
       const blocks: CanvasBlock[] = [
         {
-          title: `${broker.name} - Invoicing`,
+          title: `${broker.name} - Invoicing (${filterLabel})`,
           headerColor: "#8DC63F",
           columnHeaders: INVOICE_HEADERS,
           rows:
-            items.length > 0
-              ? items.map((item) => ({ cells: invoiceRowValues(item) }))
-              : [{ cells: ["Nothing on this list.", "", "", "", "", "", ""] }],
+            filtered.length > 0
+              ? filtered.map((item) => ({ cells: invoiceRowValues(item) }))
+              : [{ cells: ["Nothing matches this filter.", "", "", "", "", "", ""] }],
         },
       ];
-      const blob = await renderPriceSheetPng({ title: `${broker.name} - Invoicing`, message: "", blocks });
-      const result = await copyOrDownloadPng(blob, `${broker.name.toLowerCase()}-invoicing.png`);
+      const blob = await renderPriceSheetPng({
+        title: `${broker.name} - Invoicing (${filterLabel})`,
+        message: "",
+        blocks,
+      });
+      const result = await copyOrDownloadPng(blob, `${broker.name.toLowerCase()}-invoicing-${imageFilter}.png`);
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
       setTimeout(() => setImageStatus(null), 2500);
     } catch {
@@ -220,7 +249,19 @@ export default function InvoicingClient({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{broker.name} - Invoicing</h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={imageFilter}
+            onChange={(e) => setImageFilter(e.target.value as ImageFilter)}
+            title="Which rows to include when copying as an image"
+            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+          >
+            {IMAGE_FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
           <button
             onClick={handleCopyImage}
             className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
