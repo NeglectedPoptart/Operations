@@ -91,6 +91,49 @@ export async function importBuyersListItems(items: ParsedBuyersItem[]): Promise<
   return (finalRows ?? []) as BuyersListItem[];
 }
 
+// Manual single-row add, for a shortage that isn't on the Excel inventory
+// report at all (e.g. a buyer just knows they need something) - always
+// appended at the end, no merge-by-key against existing rows like the
+// paste import does.
+export async function addBuyersListItem(item: {
+  comm: string;
+  variety: string;
+  pstyle: string;
+  size: string;
+  label: string;
+  qtyNeeded: number;
+  notes: string | null;
+}): Promise<BuyersListItem> {
+  const supabase = await createClient();
+  const { data: maxRow } = await supabase
+    .from("buyers_list_items")
+    .select("position")
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextPosition = ((maxRow as { position: number } | null)?.position ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from("buyers_list_items")
+    .insert({
+      whse: "",
+      comm: item.comm,
+      variety: item.variety,
+      pstyle: item.pstyle,
+      size: item.size,
+      label: item.label,
+      qty_needed: item.qtyNeeded,
+      notes: item.notes,
+      position: nextPosition,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+
+  revalidateAll();
+  return data as BuyersListItem;
+}
+
 export async function updateBuyersListNotes(id: string, notes: string) {
   const supabase = await createClient();
   const { error } = await supabase

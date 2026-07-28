@@ -6,6 +6,7 @@ import { parseBuyersListPaste, type ParsedBuyersItem } from "@/lib/buyersListPar
 import { buildMonospaceTable, copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import type { BuyersListItem } from "@/lib/types";
 import {
+  addBuyersListItem,
   clearBuyersList,
   deleteBuyersListItem,
   importBuyersListItems,
@@ -32,10 +33,12 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [showPaste, setShowPaste] = useState(initialItems.length === 0);
+  const [showAddLine, setShowAddLine] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [previewItems, setPreviewItems] = useState<ParsedBuyersItem[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [addingLine, setAddingLine] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
@@ -69,6 +72,26 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   function handleCancelPreview() {
     setPreviewItems(null);
     setParseError(null);
+  }
+
+  async function handleAddLine(formData: FormData) {
+    const comm = String(formData.get("comm") ?? "").trim();
+    const variety = String(formData.get("variety") ?? "").trim();
+    const pstyle = String(formData.get("pstyle") ?? "").trim();
+    const size = String(formData.get("size") ?? "").trim();
+    const label = String(formData.get("label") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+    const qtyNeeded = Number(formData.get("qtyNeeded"));
+    if (!comm || !Number.isFinite(qtyNeeded) || qtyNeeded <= 0) return;
+
+    setAddingLine(true);
+    try {
+      const newItem = await addBuyersListItem({ comm, variety, pstyle, size, label, qtyNeeded, notes: notes || null });
+      setItems((prev) => [...prev, newItem]);
+      setShowAddLine(false);
+    } finally {
+      setAddingLine(false);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -215,6 +238,12 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
             {showPaste ? "Hide paste box" : "Paste from Excel"}
           </button>
           <button
+            onClick={() => setShowAddLine((s) => !s)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showAddLine ? "Hide add line" : "Add Line"}
+          </button>
+          <button
             onClick={handleClearAll}
             disabled={clearing || items.length === 0}
             className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
@@ -302,6 +331,61 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {showAddLine && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Add a single shortage that isn&apos;t on the Excel inventory report - e.g. something a buyer just
+            knows they need.
+          </p>
+          <form action={handleAddLine} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Comm</span>
+              <input name="comm" required className={field} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Var</span>
+              <input name="variety" className={field} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">PStyle</span>
+              <input name="pstyle" className={field} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Size</span>
+              <input name="size" className={field} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Label</span>
+              <input name="label" className={field} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Qty Needed</span>
+              <input name="qtyNeeded" type="number" step="any" required className={field} />
+            </label>
+            <label className="col-span-2 flex flex-col gap-1 text-sm sm:col-span-2">
+              <span className="font-medium">Notes</span>
+              <input name="notes" className={field} />
+            </label>
+            <div className="col-span-2 flex items-end gap-2 sm:col-span-4">
+              <button
+                type="submit"
+                disabled={addingLine}
+                className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+              >
+                {addingLine ? "Adding..." : "Add to Buyers List"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddLine(false)}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
