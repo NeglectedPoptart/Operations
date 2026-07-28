@@ -486,17 +486,17 @@ export default function BrokerTrackerClient({
         <table className="w-full text-xs">
           <thead className="bg-black/5 text-left dark:bg-white/5">
             <tr>
-              <th className="px-2 py-2">Lane</th>
+              <th className="sticky left-0 z-10 bg-black/5 px-2 py-2 dark:bg-neutral-900">Lane</th>
               {brokers.map((b) => (
                 <th key={b.id} className="px-1 py-2">
                   {b.name}
                 </th>
               ))}
-              <th className="px-1.5 py-2">Prev Wk</th>
-              <th className="px-1.5 py-2">Curr Wk</th>
-              <th className="px-1.5 py-2">Hi</th>
-              <th className="px-1.5 py-2">Lo</th>
-              {showManage && <th className="px-1.5 py-2" />}
+              <th className="px-1 py-2">Prev Wk</th>
+              <th className="px-1 py-2">Curr Wk</th>
+              <th className="px-1 py-2">Hi</th>
+              <th className="px-1 py-2">Lo</th>
+              {showManage && <th className="px-1 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -505,7 +505,7 @@ export default function BrokerTrackerClient({
               const prevStat = prevStats.get(lane.id);
               return (
                 <tr key={lane.id} className="border-t border-black/10 dark:border-white/10">
-                  <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-2 py-1.5 font-medium dark:bg-neutral-950">
                     {lane.from_hub} → {lane.destination}
                   </td>
                   {brokers.map((broker) => (
@@ -516,26 +516,26 @@ export default function BrokerTrackerClient({
                         disabled={locked}
                         defaultValue={rateOf(lane.id, broker.id) ?? ""}
                         onBlur={(e) => handleRateChange(lane.id, broker.id, e.target.value)}
-                        className="w-16 rounded border border-gray-300 bg-white px-1 py-1 text-black disabled:bg-gray-100 disabled:text-black/50"
+                        className="w-14 rounded border border-gray-300 bg-white px-1 py-1 text-black disabled:bg-gray-100 disabled:text-black/50"
                       />
                     </td>
                   ))}
-                  <td className="px-1.5 py-1.5 whitespace-nowrap">{money(prevStat?.avg ?? null)}</td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap font-medium">{money(stat?.avg ?? null)}</td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap">
+                  <td className="px-1 py-1.5 whitespace-nowrap">{money(prevStat?.avg ?? null)}</td>
+                  <td className="px-1 py-1.5 whitespace-nowrap font-medium">{money(stat?.avg ?? null)}</td>
+                  <td className="px-1 py-1.5">
                     {stat?.hi ? (
                       <>
-                        <div>{money(stat.hi.rate)}</div>
+                        <div className="whitespace-nowrap">{money(stat.hi.rate)}</div>
                         <div className="text-black/40">{stat.hi.brokerName}</div>
                       </>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className="px-1.5 py-1.5 whitespace-nowrap">
+                  <td className="px-1 py-1.5">
                     {stat?.lo ? (
                       <>
-                        <div>{money(stat.lo.rate)}</div>
+                        <div className="whitespace-nowrap">{money(stat.lo.rate)}</div>
                         <div className="text-black/40">{stat.lo.brokerName}</div>
                       </>
                     ) : (
@@ -543,7 +543,7 @@ export default function BrokerTrackerClient({
                     )}
                   </td>
                   {showManage && (
-                    <td className="px-1.5 py-1.5">
+                    <td className="px-1 py-1.5">
                       <button
                         onClick={() => handleDeleteLane(lane.id)}
                         className="font-medium text-red-600 hover:underline"
