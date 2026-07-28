@@ -1,4 +1,4 @@
-export type Role = "admin" | "operations" | "warehouse_qc" | "sales" | "accounting";
+export type Role = "admin" | "operations" | "warehouse_qc" | "sales" | "accounting" | "buyer";
 
 export const ROLES: { value: Role; label: string }[] = [
   { value: "admin", label: "Admin" },
@@ -6,18 +6,20 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "warehouse_qc", label: "Warehouse/QC" },
   { value: "sales", label: "Sales" },
   { value: "accounting", label: "Accounting" },
+  { value: "buyer", label: "Buyer" },
 ];
 
-export type Tab = "logistics" | "warehouse" | "qc" | "sales" | "management" | "compliance";
+export type Tab = "logistics" | "warehouse" | "qc" | "sales" | "management" | "compliance" | "buyers";
 
 // What each role can open, besides Home (which is open to every
 // authenticated role - see the Draft Changes / permission levels round).
 const ROLE_TABS: Record<Role, Tab[]> = {
-  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance"],
-  operations: ["logistics", "warehouse", "qc", "sales", "compliance"],
+  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers"],
+  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers"],
   warehouse_qc: ["warehouse", "qc"],
-  sales: ["sales", "qc"],
+  sales: ["sales", "qc", "buyers"],
   accounting: ["logistics", "qc", "sales", "compliance"],
+  buyer: ["warehouse", "qc", "sales", "buyers"],
 };
 
 export function tabsForRole(role: Role | null): Tab[] {
@@ -38,5 +40,6 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/sales")) return "sales";
   if (pathname.startsWith("/management")) return "management";
   if (pathname.startsWith("/compliance")) return "compliance";
+  if (pathname.startsWith("/buyers")) return "buyers";
   return null;
 }

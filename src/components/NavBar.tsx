@@ -38,7 +38,6 @@ const NAV: NavCategory[] = [
     items: [
       { href: "/warehouse/am-holdovers", label: "AM Holdovers" },
       { href: "/warehouse/repack-inventory", label: "Repack Inventory" },
-      { href: "/warehouse/local-inbounds", label: "Local Inbounds" },
       { href: "/warehouse/cold-inventory", label: "Cold Inventory" },
     ],
   },
@@ -56,11 +55,20 @@ const NAV: NavCategory[] = [
     tab: "sales",
     items: [
       { href: "/sales/fob-pharr", label: "FOB - Pharr" },
-      { href: "/sales/buyers-list", label: "Buyers List" },
       { href: "/sales/delivered/houston", label: "Houston Delivered" },
       { href: "/sales/delivered/dallas", label: "Dallas Delivered" },
       { href: "/sales/delivered/east-coast", label: "East Coast Delivered" },
       { href: "/sales/pending-to-invoice", label: "Pending to Invoice" },
+    ],
+  },
+  {
+    label: "Buyers",
+    tab: "buyers",
+    items: [
+      { href: "/buyers/price-sheets", label: "Price Sheets" },
+      { href: "/buyers/vendor-catalog", label: "Vendor Catalog" },
+      { href: "/buyers/buyers-list", label: "Buyers List" },
+      { href: "/buyers/local-inbounds", label: "Local Inbounds" },
     ],
   },
   {

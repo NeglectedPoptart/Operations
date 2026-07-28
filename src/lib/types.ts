@@ -459,6 +459,36 @@ export interface BuyersListItem {
   updated_at: string;
 }
 
+// Buyers: Price Sheets + Vendor Catalog ----------------------------------------
+
+export interface Vendor {
+  id: string;
+  name: string;
+  is_unknown: boolean;
+  sheet_date: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PriceSheetItem {
+  id: string;
+  vendor_id: string;
+  category: string;
+  item_label: string;
+  size: string | null;
+  price: number | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VendorCommodity {
+  vendor_id: string;
+  category: string;
+  first_seen_at: string;
+}
+
 // Management: User Roles -------------------------------------------------------
 
 export interface Profile {

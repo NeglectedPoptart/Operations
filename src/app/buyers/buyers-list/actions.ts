@@ -6,7 +6,7 @@ import type { BuyersListItem } from "@/lib/types";
 import type { ParsedBuyersItem } from "@/lib/buyersListParse";
 
 function revalidateAll() {
-  revalidatePath("/sales/buyers-list");
+  revalidatePath("/buyers/buyers-list");
 }
 
 function keyOf(i: { whse: string; comm: string; variety: string; pstyle: string; size: string; label: string }) {

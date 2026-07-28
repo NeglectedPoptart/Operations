@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { LocalInbound } from "@/lib/types";
 
 function revalidateAll() {
-  revalidatePath("/warehouse/local-inbounds");
+  revalidatePath("/buyers/local-inbounds");
   revalidatePath("/");
 }
 
