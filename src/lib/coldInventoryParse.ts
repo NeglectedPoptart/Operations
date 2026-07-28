@@ -153,7 +153,10 @@ export function isBroccoli(commodity: string): boolean {
 
 export function isCarrotOrCelery(commodity: string): boolean {
   const c = commodity.toLowerCase();
-  return c.includes("carrot") || c.includes("celery");
+  // "celnkd" ("celery naked") is this warehouse's abbreviated form for some
+  // celery items - doesn't contain "celery" as a substring, so it needs its
+  // own check alongside the fully-spelled-out ones.
+  return c.includes("carrot") || c.includes("celery") || c.includes("celnkd");
 }
 
 export function isLettuce(commodity: string): boolean {
