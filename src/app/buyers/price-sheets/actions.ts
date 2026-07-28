@@ -1,9 +1,32 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { PDFParse } from "pdf-parse";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedPriceSheetItem } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
+
+// Pulls the plain text layer out of an uploaded PDF so it can run through
+// the exact same parsePriceSheetPaste() + editable preview as a WhatsApp
+// paste. Only works as well as the PDF's underlying text stream: a
+// word-processor-style sheet extracts in clean reading order, but a
+// graphic/flyer layout with absolutely-positioned table cells (common for
+// vendor "quote sheet" flyers) extracts scrambled - there's no reliable way
+// to detect that ahead of time, so this always returns whatever text comes
+// out and lets the same editable preview be the catch for a bad result.
+export async function extractPdfText(formData: FormData): Promise<string> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) throw new Error("No file received.");
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return result.text;
+  } finally {
+    await parser.destroy();
+  }
+}
 
 function revalidateAll() {
   revalidatePath("/buyers/price-sheets");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
@@ -10,19 +10,30 @@ import {
   createVendor,
   deletePriceSheetItem,
   deleteVendor,
+  extractPdfText,
   importPriceSheet,
   updatePriceSheetItem,
 } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
-const PRICE_SHEET_HEADERS = ["Category", "Item", "Size", "Price"];
+// The saved sheet's Item cell folds size into the label so the table doesn't
+// need a separate column ("25 lbs" becomes part of "Bell Pepper 25 lbs") -
+// blur handlers below persist that combined text back into item_label and
+// clear size, so it stays folded in going forward.
+const cellInput =
+  "min-w-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium text-black transition-colors hover:bg-black/[0.04] focus:border-green-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-500 dark:text-white dark:hover:bg-white/[0.06] dark:focus:bg-black/40";
+const PRICE_SHEET_HEADERS = ["Category", "Item", "Price"];
 
 function formatMoney(n: number | null): string {
   return n === null ? "CALL" : `$${n.toFixed(2)}`;
 }
 
+function combinedItemLabel(item: Pick<PriceSheetItem, "item_label" | "size">): string {
+  return item.size ? `${item.item_label} ${item.size}` : item.item_label;
+}
+
 function priceSheetRowValues(item: Pick<PriceSheetItem, "category" | "item_label" | "size" | "price">): string[] {
-  return [item.category, item.item_label, item.size ?? "", formatMoney(item.price)];
+  return [item.category, combinedItemLabel(item), formatMoney(item.price)];
 }
 
 interface EditableRow extends ParsedPriceSheetItem {
@@ -125,7 +136,7 @@ function VendorSection({
       )
       .join("");
     const html = `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;">
-      <tr><td colspan="4" style="background:#8DC63F;color:#000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(sheetLabel)}</td></tr>
+      <tr><td colspan="3" style="background:#8DC63F;color:#000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(sheetLabel)}</td></tr>
       <tr>${PRICE_SHEET_HEADERS.map((h) => `<td style="${headCell}">${escapeHtml(h)}</td>`).join("")}</tr>
       ${rows}
     </table>`;
@@ -162,7 +173,7 @@ function VendorSection({
           rows:
             items.length > 0
               ? items.map((item) => ({ cells: priceSheetRowValues(item) }))
-              : [{ cells: ["Nothing on this sheet.", "", "", ""] }],
+              : [{ cells: ["Nothing on this sheet.", "", ""] }],
         },
       ];
       const blob = await renderPriceSheetPng({ title: vendor.name, message: "", blocks });
@@ -206,60 +217,71 @@ function VendorSection({
       {items.length === 0 ? (
         <p className="text-sm text-black/40 dark:text-white/40">Nothing on this sheet yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded border border-black/10 dark:border-white/10">
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 text-left dark:bg-white/5">
-              <tr>
-                <th className="px-2 py-1.5">Category</th>
-                <th className="px-2 py-1.5">Item</th>
-                <th className="px-2 py-1.5">Size</th>
-                <th className="px-2 py-1.5">Price</th>
-                <th className="w-16 px-2 py-1.5" />
+        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+          <table className="border-collapse text-sm">
+            <thead>
+              <tr className="bg-black/[0.03] dark:bg-white/[0.05]">
+                <th className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+                  Category
+                </th>
+                <th className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+                  Item
+                </th>
+                <th className="px-3 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+                  Price
+                </th>
+                <th className="px-2 py-1.5" />
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
-                  <td className="min-w-[7rem] px-1 py-1">
-                    <input
-                      list="price-sheet-categories"
-                      defaultValue={item.category}
-                      onBlur={(e) => onFieldSave(item.id, { category: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[9rem] px-1 py-1">
-                    <input
-                      defaultValue={item.item_label}
-                      onBlur={(e) => onFieldSave(item.id, { item_label: e.target.value })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[5rem] px-1 py-1">
-                    <input
-                      defaultValue={item.size ?? ""}
-                      onBlur={(e) => onFieldSave(item.id, { size: e.target.value || null })}
-                      className={field}
-                    />
-                  </td>
-                  <td className="min-w-[5rem] px-1 py-1">
-                    <input
-                      type="number"
-                      step="any"
-                      defaultValue={item.price ?? ""}
-                      onBlur={(e) =>
-                        onFieldSave(item.id, { price: e.target.value.trim() === "" ? null : Number(e.target.value) })
-                      }
-                      className={`${field} font-semibold`}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button onClick={() => onDeleteItem(item.id)} className="text-xs font-medium text-red-600 hover:underline">
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {items.map((item) => {
+                const label = combinedItemLabel(item);
+                return (
+                  <tr
+                    key={item.id}
+                    className="border-t border-black/5 hover:bg-black/[0.02] dark:border-white/5 dark:hover:bg-white/[0.03]"
+                  >
+                    <td className="px-1 py-0.5">
+                      <input
+                        list="price-sheet-categories"
+                        defaultValue={item.category}
+                        size={Math.max(item.category.length, 4)}
+                        onBlur={(e) => onFieldSave(item.id, { category: e.target.value })}
+                        className={cellInput}
+                      />
+                    </td>
+                    <td className="px-1 py-0.5">
+                      <input
+                        defaultValue={label}
+                        size={Math.max(label.length, 6)}
+                        onBlur={(e) => onFieldSave(item.id, { item_label: e.target.value, size: null })}
+                        className={cellInput}
+                      />
+                    </td>
+                    <td className="px-1 py-0.5">
+                      <input
+                        type="number"
+                        step="any"
+                        defaultValue={item.price ?? ""}
+                        size={Math.max(String(item.price ?? "").length, 4)}
+                        onBlur={(e) =>
+                          onFieldSave(item.id, { price: e.target.value.trim() === "" ? null : Number(e.target.value) })
+                        }
+                        className={`${cellInput} text-right tabular-nums`}
+                      />
+                    </td>
+                    <td className="px-2 py-0.5">
+                      <button
+                        onClick={() => onDeleteItem(item.id)}
+                        title="Delete row"
+                        className="text-black/30 hover:text-red-600 dark:text-white/30 dark:hover:text-red-400"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -287,6 +309,7 @@ export default function PriceSheetsClient({
   const [previewDate, setPreviewDate] = useState(todayISO());
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
 
   const itemsByVendor = useMemo(() => {
     const map = new Map<string, PriceSheetItem[]>();
@@ -297,9 +320,9 @@ export default function PriceSheetsClient({
     return map;
   }, [items]);
 
-  function handlePreview() {
+  function handlePreview(text: string = pasteText) {
     setParseError(null);
-    const result = parsePriceSheetPaste(pasteText);
+    const result = parsePriceSheetPaste(text);
     if (result.error) {
       setParseError(result.error);
       setPreviewRows(null);
@@ -309,6 +332,25 @@ export default function PriceSheetsClient({
     if (result.sheetDateGuess) setPreviewDate(result.sheetDateGuess);
     if (vendorMode === "new" && result.vendorNameGuess && !newVendorName) {
       setNewVendorName(result.vendorNameGuess);
+    }
+  }
+
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPdf(true);
+    setParseError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const text = await extractPdfText(formData);
+      setPasteText(text);
+      handlePreview(text);
+    } catch {
+      setParseError("Couldn't read that PDF - it may be password protected or corrupted. Try pasting the text instead.");
+    } finally {
+      setUploadingPdf(false);
     }
   }
 
@@ -465,10 +507,20 @@ export default function PriceSheetsClient({
             placeholder="Paste the price sheet text here..."
             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="cursor-pointer rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+              {uploadingPdf ? "Reading PDF..." : "Or upload a PDF"}
+              <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+            </label>
+            <span className="text-xs text-black/40 dark:text-white/40">
+              Works best for text-based PDFs - a graphic/flyer-style layout may extract out of order, so check the
+              preview carefully.
+            </span>
+          </div>
           {parseError && <p className="text-sm text-red-600">{parseError}</p>}
           {!previewRows && (
             <button
-              onClick={handlePreview}
+              onClick={() => handlePreview()}
               disabled={pasteText.trim() === ""}
               className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
             >

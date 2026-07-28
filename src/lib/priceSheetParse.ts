@@ -152,8 +152,16 @@ export function parsePriceSheetPaste(raw: string): ParsePriceSheetResult {
       const { rest: labelRest, size: labelSize } = extractSize(cleanedLabel);
 
       const size = labelSize || headerSize;
-      const itemLabel = labelRest || headerRest || "Item";
       const rawCategory = classify(line);
+      // A per-line label that's just a grade/size code ("Xxl", "140's")
+      // carries no commodity identity on its own - prepend the header's
+      // descriptive text ("ROMAS # 1 - GREENHOUSE", "RED BELL PEPPERS") so
+      // the item still says what it is, same signal already used for the
+      // category fallback below. When the line names its own commodity
+      // ("SERRANO @ 22.00"), skip the header - it may be stale leftover
+      // from an earlier section this line has nothing to do with.
+      const itemLabel =
+        rawCategory === "Other" ? [headerRest, labelRest].filter(Boolean).join(" ") || "Item" : labelRest || "Item";
       const category = rawCategory !== "Other" ? rawCategory : classify(headerText);
 
       items.push({
