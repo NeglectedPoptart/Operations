@@ -37,6 +37,76 @@ function priceSheetRowValues(item: Pick<PriceSheetItem, "category" | "item_label
   return [item.category, combinedItemLabel(item), formatMoney(item.price)];
 }
 
+interface CommodityStat {
+  category: string;
+  low: number;
+  high: number;
+  average: number;
+  count: number;
+}
+
+// Across every vendor's CURRENT sheet (not history) - "call" items (no
+// number) are skipped since there's nothing to compute against, same as
+// how they're excluded from copy/image totals elsewhere.
+function computeCommodityStats(items: PriceSheetItem[]): CommodityStat[] {
+  const pricesByCategory = new Map<string, number[]>();
+  for (const item of items) {
+    if (item.price === null) continue;
+    const category = item.category.trim();
+    if (!category) continue;
+    if (!pricesByCategory.has(category)) pricesByCategory.set(category, []);
+    pricesByCategory.get(category)!.push(item.price);
+  }
+  return Array.from(pricesByCategory.entries())
+    .map(([category, prices]) => ({
+      category,
+      low: Math.min(...prices),
+      high: Math.max(...prices),
+      average: prices.reduce((a, b) => a + b, 0) / prices.length,
+      count: prices.length,
+    }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+}
+
+function CommoditySummary({ items }: { items: PriceSheetItem[] }) {
+  const stats = useMemo(() => computeCommodityStats(items), [items]);
+  if (stats.length === 0) return null;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
+      <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Commodity Summary</h2>
+      <p className="text-xs text-black/50 dark:text-white/50">
+        Hi/Lo/Average across every vendor&apos;s current sheet, per category - updates live as sheets are
+        pasted, uploaded, or edited.
+      </p>
+      <div className="max-h-96 overflow-auto rounded border border-black/10 dark:border-white/10">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-black/5 text-left dark:bg-neutral-900">
+            <tr>
+              <th className="px-3 py-1.5">Category</th>
+              <th className="px-3 py-1.5 text-right">Low</th>
+              <th className="px-3 py-1.5 text-right">High</th>
+              <th className="px-3 py-1.5 text-right">Average</th>
+              <th className="px-3 py-1.5 text-right">Quotes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((s) => (
+              <tr key={s.category} className="border-t border-black/10 dark:border-white/10">
+                <td className="px-3 py-1.5 font-medium">{s.category}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">${s.low.toFixed(2)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">${s.high.toFixed(2)}</td>
+                <td className="px-3 py-1.5 text-right font-semibold tabular-nums">${s.average.toFixed(2)}</td>
+                <td className="px-3 py-1.5 text-right text-black/50 dark:text-white/50">{s.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 interface EditableRow extends ParsedPriceSheetItem {
   key: number;
 }
@@ -579,6 +649,8 @@ export default function PriceSheetsClient({
       )}
 
       <PriceComparisonImport vendors={vendors} onComplete={handleComparisonImportComplete} />
+
+      <CommoditySummary items={items} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {vendors.map((vendor) => (
