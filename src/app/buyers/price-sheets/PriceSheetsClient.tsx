@@ -344,11 +344,16 @@ export default function PriceSheetsClient({
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const text = await extractPdfText(formData);
-      setPasteText(text);
-      handlePreview(text);
-    } catch {
-      setParseError("Couldn't read that PDF - it may be password protected or corrupted. Try pasting the text instead.");
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setParseError(`Couldn't read that PDF (${result.error}). It may be password protected or corrupted - try pasting the text instead.`);
+        return;
+      }
+      setPasteText(result.text);
+      handlePreview(result.text);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try pasting the text instead.`);
     } finally {
       setUploadingPdf(false);
     }
@@ -554,7 +559,7 @@ export default function PriceSheetsClient({
         </div>
       )}
 
-      <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {vendors.map((vendor) => (
           <VendorSection
             key={vendor.id}

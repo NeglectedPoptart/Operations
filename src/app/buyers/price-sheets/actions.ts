@@ -14,17 +14,26 @@ import type { PriceSheetItem, Vendor } from "@/lib/types";
 // vendor "quote sheet" flyers) extracts scrambled - there's no reliable way
 // to detect that ahead of time, so this always returns whatever text comes
 // out and lets the same editable preview be the catch for a bad result.
-export async function extractPdfText(formData: FormData): Promise<string> {
+//
+// Returns a discriminated result instead of throwing: Next.js redacts a
+// thrown Error's message from a Server Action in production by default, so
+// a real failure (e.g. a bundling issue with a native dependency) would
+// otherwise show up client-side as an opaque, undiagnosable message.
+export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
   const file = formData.get("file");
-  if (!(file instanceof Blob)) throw new Error("No file received.");
+  if (!(file instanceof Blob)) return { error: "No file received." };
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const parser = new PDFParse({ data: buffer });
   try {
-    const result = await parser.getText();
-    return result.text;
-  } finally {
-    await parser.destroy();
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return { text: result.text };
+    } finally {
+      await parser.destroy();
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
   }
 }
 
