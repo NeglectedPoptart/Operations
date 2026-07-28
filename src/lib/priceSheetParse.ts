@@ -47,6 +47,44 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 
 export const PRODUCE_CATEGORIES = [...Object.keys(CATEGORY_KEYWORDS), "Other"];
 
+// Free-text category sources (the Price Comparison Excel import trusts the
+// sheet's own "Category" column verbatim, per an earlier deliberate call -
+// see priceComparisonParse.ts) end up with plural/singular variants of the
+// same commodity this app already tracks under one name elsewhere ("Tomato"
+// vs "Tomatoes"). This is deliberately a short, explicit alias table rather
+// than a generic pluralizer: PRODUCE_CATEGORIES itself isn't consistently
+// singular or plural (it's "Carrots"/"Beets" but "Tomato"/"Onion"), so
+// blindly stripping a trailing "s" would rename those correctly-plural ones
+// to the wrong form. It also deliberately does NOT touch broader/narrower
+// relationships (e.g. an Excel sheet's umbrella "Peppers" column covering
+// jalapeño/poblano/serrano/bell-pepper together isn't the same commodity as
+// this app's specific "Bell Pepper" category, so it's left alone).
+const CATEGORY_ALIASES: Record<string, string> = {
+  tomatoes: "Tomato",
+  onions: "Onion",
+  cucumbers: "Cucumber",
+  lemons: "Lemon",
+  tomatillos: "Tomatillo",
+  squashes: "Squash",
+  jalapenos: "Jalapeno",
+  "jalapeños": "Jalapeno",
+  poblanos: "Poblano",
+  serranos: "Serrano",
+  lettuces: "Lettuce",
+  cauliflowers: "Cauliflower",
+  celeries: "Celery",
+  broccolis: "Broccoli",
+  carrot: "Carrots",
+  beet: "Beets",
+  "bell peppers": "Bell Pepper",
+};
+
+export function normalizeCategory(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  return CATEGORY_ALIASES[trimmed.toLowerCase()] ?? trimmed;
+}
+
 const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 
 // Word keywords are checked across every category before any emoji keyword

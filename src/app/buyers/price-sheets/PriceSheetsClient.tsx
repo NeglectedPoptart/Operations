@@ -4,7 +4,7 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { parsePriceSheetPaste, PRODUCE_CATEGORIES, type ParsedPriceSheetItem } from "@/lib/priceSheetParse";
+import { normalizeCategory, parsePriceSheetPaste, PRODUCE_CATEGORIES, type ParsedPriceSheetItem } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
 import {
   createVendor,
@@ -37,71 +37,209 @@ function priceSheetRowValues(item: Pick<PriceSheetItem, "category" | "item_label
   return [item.category, combinedItemLabel(item), formatMoney(item.price)];
 }
 
-interface CommodityStat {
-  category: string;
+interface ItemStat {
+  itemLabel: string;
   low: number;
   high: number;
   average: number;
   count: number;
 }
 
-// Across every vendor's CURRENT sheet (not history) - "call" items (no
-// number) are skipped since there's nothing to compute against, same as
-// how they're excluded from copy/image totals elsewhere.
-function computeCommodityStats(items: PriceSheetItem[]): CommodityStat[] {
-  const pricesByCategory = new Map<string, number[]>();
+// "call" items (no number) are skipped since there's nothing to compute
+// against, same as how they're excluded from copy/image totals elsewhere.
+// Grouped by item label (case-insensitive, first-seen casing wins) within
+// the given category, so e.g. "Cucumber, Plain" and "Cucumber, Select" get
+// their own Hi/Lo/Average instead of being blended into one Cucumber-wide
+// number.
+function computeCategoryItemStats(items: PriceSheetItem[], category: string): ItemStat[] {
+  const target = normalizeCategory(category).toLowerCase();
+  const byKey = new Map<string, { display: string; prices: number[] }>();
   for (const item of items) {
     if (item.price === null) continue;
-    const category = item.category.trim();
-    if (!category) continue;
-    if (!pricesByCategory.has(category)) pricesByCategory.set(category, []);
-    pricesByCategory.get(category)!.push(item.price);
+    if (normalizeCategory(item.category).toLowerCase() !== target) continue;
+    const display = combinedItemLabel(item).trim();
+    if (!display) continue;
+    const key = display.toLowerCase();
+    if (!byKey.has(key)) byKey.set(key, { display, prices: [] });
+    byKey.get(key)!.prices.push(item.price);
   }
-  return Array.from(pricesByCategory.entries())
-    .map(([category, prices]) => ({
-      category,
+  return Array.from(byKey.values())
+    .map(({ display, prices }) => ({
+      itemLabel: display,
       low: Math.min(...prices),
       high: Math.max(...prices),
       average: prices.reduce((a, b) => a + b, 0) / prices.length,
       count: prices.length,
     }))
-    .sort((a, b) => a.category.localeCompare(b.category));
+    .sort((a, b) => a.itemLabel.localeCompare(b.itemLabel));
 }
 
+// Distinct categories currently priced anywhere, most-quoted first (used to
+// seed sensible Top 5 defaults) - normalized the same way item stats are, so
+// "Tomato"/"Tomatoes" count as the same category here too.
+function computeCategoryCounts(items: PriceSheetItem[]): { category: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    if (item.price === null) continue;
+    const category = normalizeCategory(item.category);
+    if (!category) continue;
+    counts.set(category, (counts.get(category) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function CommodityBreakdown({ category, items }: { category: string; items: PriceSheetItem[] }) {
+  const rows = useMemo(() => computeCategoryItemStats(items, category), [items, category]);
+  return (
+    <div className="space-y-1">
+      <h4 className="text-sm font-semibold">{normalizeCategory(category)}</h4>
+      {rows.length === 0 ? (
+        <p className="text-xs text-black/40 dark:text-white/40">No priced quotes for this category yet.</p>
+      ) : (
+        <div className="overflow-x-auto rounded border border-black/10 dark:border-white/10">
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left dark:bg-white/5">
+              <tr>
+                <th className="px-3 py-1.5">Item</th>
+                <th className="px-3 py-1.5 text-right">Low</th>
+                <th className="px-3 py-1.5 text-right">High</th>
+                <th className="px-3 py-1.5 text-right">Average</th>
+                <th className="px-3 py-1.5 text-right">Quotes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.itemLabel} className="border-t border-black/10 dark:border-white/10">
+                  <td className="px-3 py-1.5 font-medium">{r.itemLabel}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">${r.low.toFixed(2)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">${r.high.toFixed(2)}</td>
+                  <td className="px-3 py-1.5 text-right font-semibold tabular-nums">${r.average.toFixed(2)}</td>
+                  <td className="px-3 py-1.5 text-right text-black/50 dark:text-white/50">{r.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TOP_PICKS_STORAGE_KEY = "priceSheets.topCategories";
+
 function CommoditySummary({ items }: { items: PriceSheetItem[] }) {
-  const stats = useMemo(() => computeCommodityStats(items), [items]);
-  if (stats.length === 0) return null;
+  const categoryCounts = useMemo(() => computeCategoryCounts(items), [items]);
+  const categoryNames = useMemo(
+    () => [...categoryCounts].map((c) => c.category).sort((a, b) => a.localeCompare(b)),
+    [categoryCounts],
+  );
+
+  // Lazy initializer runs once on mount only - reads a saved pick from
+  // localStorage, or seeds from whatever's most-quoted right now. Later
+  // changes to `items` (edits, new imports) never override a pick the user
+  // already made.
+  const [topPicks, setTopPicks] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(TOP_PICKS_STORAGE_KEY) ?? "null");
+        if (Array.isArray(saved) && saved.length === 5 && saved.every((p) => typeof p === "string")) return saved;
+      } catch {
+        // ignore malformed/blocked storage, fall through to computed defaults
+      }
+    }
+    const defaults = categoryCounts.slice(0, 5).map((c) => c.category);
+    while (defaults.length < 5) defaults.push("");
+    return defaults;
+  });
+
+  function setPick(index: number, value: string) {
+    setTopPicks((prev) => {
+      const next = prev.map((p, i) => (i === index ? value : p));
+      try {
+        window.localStorage.setItem(TOP_PICKS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore - localStorage may be unavailable (private browsing, etc.)
+      }
+      return next;
+    });
+  }
+
+  const [lookupInput, setLookupInput] = useState("");
+  const [lookupCategory, setLookupCategory] = useState<string | null>(null);
+
+  function handleLookup() {
+    const trimmed = lookupInput.trim();
+    if (trimmed) setLookupCategory(trimmed);
+  }
+
+  if (categoryNames.length === 0) return null;
 
   return (
-    <div className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
-      <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Commodity Summary</h2>
-      <p className="text-xs text-black/50 dark:text-white/50">
-        Hi/Lo/Average across every vendor&apos;s current sheet, per category - updates live as sheets are
-        pasted, uploaded, or edited.
-      </p>
-      <div className="max-h-96 overflow-auto rounded border border-black/10 dark:border-white/10">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-black/5 text-left dark:bg-neutral-900">
-            <tr>
-              <th className="px-3 py-1.5">Category</th>
-              <th className="px-3 py-1.5 text-right">Low</th>
-              <th className="px-3 py-1.5 text-right">High</th>
-              <th className="px-3 py-1.5 text-right">Average</th>
-              <th className="px-3 py-1.5 text-right">Quotes</th>
-            </tr>
-          </thead>
-          <tbody>
-            {stats.map((s) => (
-              <tr key={s.category} className="border-t border-black/10 dark:border-white/10">
-                <td className="px-3 py-1.5 font-medium">{s.category}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">${s.low.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right tabular-nums">${s.high.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right font-semibold tabular-nums">${s.average.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-right text-black/50 dark:text-white/50">{s.count}</td>
-              </tr>
+    <div className="space-y-4 rounded-lg border border-black/10 p-4 dark:border-white/10">
+      <div>
+        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Top 5 Commodities</h2>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Pick 5 categories to track - broken down by item, Hi/Lo/Average across every vendor&apos;s current
+          sheet.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {topPicks.map((pick, i) => (
+          <select
+            key={i}
+            value={pick}
+            onChange={(e) => setPick(i, e.target.value)}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+          >
+            <option value="">-- Select category {i + 1} --</option>
+            {categoryNames.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        ))}
+      </div>
+      <div className="space-y-4">
+        {topPicks.filter(Boolean).map((category) => (
+          <CommodityBreakdown key={category} category={category} items={items} />
+        ))}
+        {topPicks.every((p) => !p) && (
+          <p className="text-xs text-black/40 dark:text-white/40">Pick up to 5 categories above to see them here.</p>
+        )}
+      </div>
+
+      <div className="space-y-3 border-t border-black/10 pt-4 dark:border-white/10">
+        <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Look up another commodity</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            list="price-sheet-summary-categories"
+            value={lookupInput}
+            onChange={(e) => setLookupInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleLookup();
+              }
+            }}
+            placeholder="Type a category..."
+            className="w-56 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+          />
+          <datalist id="price-sheet-summary-categories">
+            {categoryNames.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <button
+            onClick={handleLookup}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+          >
+            Show
+          </button>
+        </div>
+        {lookupCategory && <CommodityBreakdown category={lookupCategory} items={items} />}
       </div>
     </div>
   );

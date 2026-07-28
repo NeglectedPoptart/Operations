@@ -8,6 +8,8 @@
 // (ExcelJS reading merged cells, or a plain unmerged sheet) may already
 // repeat it themselves.
 
+import { normalizeCategory } from "./priceSheetParse";
+
 export interface ComparisonItem {
   category: string;
   itemLabel: string;
@@ -77,7 +79,7 @@ export function parsePriceComparisonSheet(grid: string[][]): ParsePriceCompariso
     }
     if (Object.keys(pricesByColumn).length === 0) continue; // no vendor quoted this row at all
 
-    items.push({ category: currentCategory, itemLabel, pricesByColumn });
+    items.push({ category: normalizeCategory(currentCategory), itemLabel, pricesByColumn });
   }
 
   if (items.length === 0) {
