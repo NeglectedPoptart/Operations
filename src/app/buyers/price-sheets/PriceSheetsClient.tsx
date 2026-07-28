@@ -14,6 +14,7 @@ import {
   importPriceSheet,
   updatePriceSheetItem,
 } from "./actions";
+import PriceComparisonImport from "./PriceComparisonImport";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 // The saved sheet's Item cell folds size into the label so the table doesn't
@@ -432,6 +433,23 @@ export default function PriceSheetsClient({
     await deleteVendor(id).catch(() => {});
   }
 
+  function handleComparisonImportComplete(
+    newVendors: Vendor[],
+    updates: { vendorId: string; items: PriceSheetItem[]; sheetDate: string }[],
+  ) {
+    if (newVendors.length > 0) {
+      setVendors((prev) => [...prev, ...newVendors].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    const updatedVendorIds = new Set(updates.map((u) => u.vendorId));
+    setItems((prev) => [...prev.filter((i) => !updatedVendorIds.has(i.vendor_id)), ...updates.flatMap((u) => u.items)]);
+    if (updates.length > 0) {
+      const sheetDateByVendorId = new Map(updates.map((u) => [u.vendorId, u.sheetDate]));
+      setVendors((prev) =>
+        prev.map((v) => (sheetDateByVendorId.has(v.id) ? { ...v, sheet_date: sheetDateByVendorId.get(v.id)! } : v)),
+      );
+    }
+  }
+
   return (
     <div className="space-y-6">
       <datalist id="price-sheet-categories">
@@ -558,6 +576,8 @@ export default function PriceSheetsClient({
           )}
         </div>
       )}
+
+      <PriceComparisonImport vendors={vendors} onComplete={handleComparisonImportComplete} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {vendors.map((vendor) => (

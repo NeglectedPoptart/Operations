@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import ExcelJS from "exceljs";
 // unpdf wraps pdf.js specifically for serverless/edge runtimes - unlike
 // using pdfjs-dist directly, it doesn't need a separate worker script
 // resolved from disk at runtime, which is what actually broke PDF upload in
@@ -34,6 +35,37 @@ export async function extractPdfText(formData: FormData): Promise<{ text: string
     const pdf = await getDocumentProxy(data);
     const { text } = await extractText(pdf, { mergePages: true });
     return { text };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Reads an uploaded .xlsx into a plain 0-indexed string grid so
+// parsePriceComparisonSheet() (a pure, library-agnostic function) can work
+// on it client-side. ExcelJS resolves merged cells to their master value
+// automatically (e.g. a "Category" merged down several rows reads back on
+// every one of those rows), and unlike the native canvas binary that broke
+// PDF upload, it has no such dependency of its own.
+export async function extractExcelGrid(formData: FormData): Promise<{ grid: string[][] } | { error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) return { error: "No file received." };
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await file.arrayBuffer());
+    const sheet = workbook.worksheets[0];
+    if (!sheet) return { error: "This workbook has no sheets." };
+
+    const grid: string[][] = [];
+    sheet.eachRow({ includeEmpty: true }, (row) => {
+      const cells: string[] = [];
+      for (let c = 1; c <= sheet.columnCount; c++) {
+        const value = row.getCell(c).value;
+        cells.push(value == null ? "" : String(value));
+      }
+      grid.push(cells);
+    });
+    return { grid };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
