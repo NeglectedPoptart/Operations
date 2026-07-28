@@ -1,7 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { PDFParse } from "pdf-parse";
+// The legacy Node build talks straight to the text layer - no browser DOM,
+// no worker thread, and (unlike the "pdf-parse" wrapper package) no hard
+// dependency on a native canvas binary, which is what broke PDF upload in
+// the deployed app: that binary got dropped during Vercel's serverless
+// bundling even though local `next dev` had no trouble finding it.
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedPriceSheetItem } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
@@ -17,21 +22,22 @@ import type { PriceSheetItem, Vendor } from "@/lib/types";
 //
 // Returns a discriminated result instead of throwing: Next.js redacts a
 // thrown Error's message from a Server Action in production by default, so
-// a real failure (e.g. a bundling issue with a native dependency) would
-// otherwise show up client-side as an opaque, undiagnosable message.
+// a real failure would otherwise show up client-side as an opaque,
+// undiagnosable message.
 export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
   const file = formData.get("file");
   if (!(file instanceof Blob)) return { error: "No file received." };
 
   try {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parser = new PDFParse({ data: buffer });
-    try {
-      const result = await parser.getText();
-      return { text: result.text };
-    } finally {
-      await parser.destroy();
+    const data = new Uint8Array(await file.arrayBuffer());
+    const doc = await pdfjsLib.getDocument({ data }).promise;
+    let text = "";
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map((item) => ("str" in item ? item.str : "")).join(" ") + "\n";
     }
+    return { text };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
