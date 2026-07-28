@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-// The legacy Node build talks straight to the text layer - no browser DOM,
-// no worker thread, and (unlike the "pdf-parse" wrapper package) no hard
-// dependency on a native canvas binary, which is what broke PDF upload in
-// the deployed app: that binary got dropped during Vercel's serverless
-// bundling even though local `next dev` had no trouble finding it.
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+// unpdf wraps pdf.js specifically for serverless/edge runtimes - unlike
+// using pdfjs-dist directly, it doesn't need a separate worker script
+// resolved from disk at runtime, which is what actually broke PDF upload in
+// the deployed app (a "pdf-parse" native binary dropped during Vercel's
+// bundling, then a pdfjs-dist worker-file path Vercel's tracer couldn't
+// follow - neither shows up when running locally via `next dev`).
+import { extractText, getDocumentProxy } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedPriceSheetItem } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
@@ -30,13 +31,8 @@ export async function extractPdfText(formData: FormData): Promise<{ text: string
 
   try {
     const data = new Uint8Array(await file.arrayBuffer());
-    const doc = await pdfjsLib.getDocument({ data }).promise;
-    let text = "";
-    for (let i = 1; i <= doc.numPages; i++) {
-      const page = await doc.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map((item) => ("str" in item ? item.str : "")).join(" ") + "\n";
-    }
+    const pdf = await getDocumentProxy(data);
+    const { text } = await extractText(pdf, { mergePages: true });
     return { text };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
