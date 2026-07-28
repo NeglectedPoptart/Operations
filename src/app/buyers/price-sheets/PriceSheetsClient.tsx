@@ -451,7 +451,8 @@ export default function PriceSheetsClient({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-2 sm:px-4">
+      <div className="mx-auto max-w-[110rem] space-y-6">
       <datalist id="price-sheet-categories">
         {PRODUCE_CATEGORIES.map((c) => (
           <option key={c} value={c} />
@@ -593,6 +594,7 @@ export default function PriceSheetsClient({
         {vendors.length === 0 && (
           <p className="text-sm text-black/40 dark:text-white/40">No vendors yet - paste a price sheet above to add one.</p>
         )}
+      </div>
       </div>
     </div>
   );
