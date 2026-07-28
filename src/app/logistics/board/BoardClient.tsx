@@ -26,7 +26,15 @@ export default function BoardClient({
   return (
     <div className="space-y-8">
       {LOAD_STATUSES.map((section) => {
-        const sectionLoads = loads.filter((l) => l.status === section.value);
+        const rawSectionLoads = loads.filter((l) => l.status === section.value);
+        // Completed loads read newest-first - everything else keeps the
+        // server's oldest-first order (loads are fetched sorted ascending by
+        // loading_date, which is what "Pending to Load"'s day-by-day
+        // grouping below expects).
+        const sectionLoads =
+          section.value === "complete"
+            ? [...rawSectionLoads].sort((a, b) => (b.loading_date ?? "").localeCompare(a.loading_date ?? ""))
+            : rawSectionLoads;
         return (
           <section key={section.value}>
             <div className="mb-3 flex items-center justify-between border-b-2 border-green-600 pb-2">
