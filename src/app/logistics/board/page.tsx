@@ -15,9 +15,10 @@ export default async function BoardPage() {
   ] = await Promise.all([
     supabase
       .from("loads")
-      .select("*, brokers(id, name), load_stops(*)")
+      .select("*, brokers(id, name), load_stops(*), load_pickups(*)")
       .order("loading_date", { ascending: true })
-      .order("position", { foreignTable: "load_stops", ascending: true }),
+      .order("position", { foreignTable: "load_stops", ascending: true })
+      .order("position", { foreignTable: "load_pickups", ascending: true }),
     supabase.from("brokers").select("*").order("name", { ascending: true }),
     supabase.from("hubs").select("*").order("name", { ascending: true }),
     supabase.from("destination_cities").select("*").order("city", { ascending: true }),

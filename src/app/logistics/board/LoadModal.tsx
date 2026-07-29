@@ -5,6 +5,7 @@ import { createDestinationCity, createHub, createLoad, updateLoad } from "./acti
 import { splitDestinationLabel, validateCityStateLabel } from "@/lib/destination";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LockedCombobox from "@/components/LockedCombobox";
+import PickupsEditor, { type PickupFormState } from "./PickupsEditor";
 import StopsEditor, { emptyStop, type StopFormState } from "./StopsEditor";
 
 function stopsFromLoad(load: Load | null): StopFormState[] {
@@ -19,6 +20,17 @@ function stopsFromLoad(load: Load | null): StopFormState[] {
       delivery_date: s.delivery_date ?? "",
       delivery_time: s.delivery_time ?? "",
       appointment: s.appointment ?? "",
+    }));
+}
+
+function pickupsFromLoad(load: Load | null): PickupFormState[] {
+  if (!load) return [];
+  return [...load.load_pickups]
+    .sort((a, b) => a.position - b.position)
+    .map((p) => ({
+      pu_number: p.pu_number ?? "",
+      vendor: p.vendor ?? "",
+      location: p.location ?? "",
     }));
 }
 
@@ -40,6 +52,7 @@ export default function LoadModal({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [stops, setStops] = useState<StopFormState[]>(() => stopsFromLoad(load));
+  const [pickups, setPickups] = useState<PickupFormState[]>(() => pickupsFromLoad(load));
   const [source, setSource] = useState(load?.source ?? "");
   const [hubOptions, setHubOptions] = useState(initialHubOptions);
   const [cityOptions, setCityOptions] = useState(initialCityOptions);
@@ -61,6 +74,7 @@ export default function LoadModal({
       return { ...rest, destination_city: city, destination_state: state };
     });
     formData.set("stops_json", JSON.stringify(stopsForSave));
+    formData.set("pickups_json", JSON.stringify(pickups));
     startTransition(async () => {
       try {
         if (load) {
@@ -133,6 +147,8 @@ export default function LoadModal({
               ))}
             </select>
           </div>
+
+          <PickupsEditor pickups={pickups} onChange={setPickups} />
 
           <StopsEditor
             stops={stops}

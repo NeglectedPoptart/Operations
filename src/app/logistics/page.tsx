@@ -39,15 +39,17 @@ export default async function HomePage() {
   ] = await Promise.all([
     supabase
       .from("loads")
-      .select("*, brokers(id, name), load_stops(*)")
+      .select("*, brokers(id, name), load_stops(*), load_pickups(*)")
       .eq("loading_date", today)
-      .order("position", { foreignTable: "load_stops", ascending: true }),
+      .order("position", { foreignTable: "load_stops", ascending: true })
+      .order("position", { foreignTable: "load_pickups", ascending: true }),
     supabase
       .from("loads")
-      .select("*, brokers(id, name), load_stops(*)")
+      .select("*, brokers(id, name), load_stops(*), load_pickups(*)")
       .eq("status", "pending_to_load")
       .order("loading_date", { ascending: true })
-      .order("position", { foreignTable: "load_stops", ascending: true }),
+      .order("position", { foreignTable: "load_stops", ascending: true })
+      .order("position", { foreignTable: "load_pickups", ascending: true }),
     supabase
       .from("load_stops")
       .select("*, loads!inner(id, source, rate, notes, rate_con_sent, brokers(id, name))")
@@ -56,9 +58,10 @@ export default async function HomePage() {
       .order("delivery_time", { ascending: true }),
     supabase
       .from("loads")
-      .select("*, brokers(id, name), load_stops(*)")
+      .select("*, brokers(id, name), load_stops(*), load_pickups(*)")
       .eq("status", "on_the_road")
-      .order("position", { foreignTable: "load_stops", ascending: true }),
+      .order("position", { foreignTable: "load_stops", ascending: true })
+      .order("position", { foreignTable: "load_pickups", ascending: true }),
     supabase
       .from("load_stops")
       .select("*, loads!inner(status)", { count: "exact", head: true })

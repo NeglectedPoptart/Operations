@@ -72,6 +72,18 @@ export interface LoadStop {
   appointment: string | null;
 }
 
+// An extra pickup beyond the load's primary one (loads.source is always the
+// truck's originating hub/pickup) - e.g. a second grower's warehouse the
+// same truck stops at before crossing to deliver.
+export interface LoadPickup {
+  id: string;
+  load_id: string;
+  position: number;
+  pu_number: string | null;
+  vendor: string | null;
+  location: string | null;
+}
+
 export interface Load {
   id: string;
   loading_date: string | null;
@@ -87,6 +99,7 @@ export interface Load {
   created_at: string;
   updated_at: string;
   load_stops: LoadStop[];
+  load_pickups: LoadPickup[];
 }
 
 export interface BrokerRateEntry {

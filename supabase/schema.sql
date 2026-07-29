@@ -170,6 +170,20 @@ create table if not exists load_stops (
 create index if not exists load_stops_load_id_idx on load_stops (load_id);
 create index if not exists load_stops_delivery_date_idx on load_stops (delivery_date);
 
+-- A single truck can pick up from more than one place before delivering.
+-- loads.source (the hub) stays the truck's primary/originating pickup -
+-- this table is only for EXTRA pickups beyond that.
+create table if not exists load_pickups (
+  id uuid primary key default gen_random_uuid(),
+  load_id uuid not null references loads (id) on delete cascade,
+  position int not null default 1,
+  pu_number text,
+  vendor text,
+  location text
+);
+
+create index if not exists load_pickups_load_id_idx on load_pickups (load_id);
+
 -- Weekly broker rate quotes, one row per lane + broker + week -------------
 create table if not exists broker_rate_entries (
   id uuid primary key default gen_random_uuid(),
@@ -712,6 +726,7 @@ alter table hubs enable row level security;
 alter table destination_cities enable row level security;
 alter table loads enable row level security;
 alter table load_stops enable row level security;
+alter table load_pickups enable row level security;
 alter table broker_rate_entries enable row level security;
 alter table rate_submissions enable row level security;
 alter table am_holdovers enable row level security;
@@ -756,6 +771,10 @@ create policy "authenticated full access" on loads
 
 drop policy if exists "authenticated full access" on load_stops;
 create policy "authenticated full access" on load_stops
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on load_pickups;
+create policy "authenticated full access" on load_pickups
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "authenticated full access" on broker_rate_entries;

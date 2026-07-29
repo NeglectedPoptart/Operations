@@ -24,6 +24,12 @@ interface StopInput {
   appointment: string | null;
 }
 
+interface PickupInput {
+  pu_number: string | null;
+  vendor: string | null;
+  location: string | null;
+}
+
 function str(formData: FormData, key: string): string | null {
   const v = formData.get(key);
   if (v === null) return null;
@@ -78,6 +84,23 @@ function stopsFromForm(formData: FormData): StopInput[] {
   }));
 }
 
+function pickupsFromForm(formData: FormData): PickupInput[] {
+  const raw = formData.get("pickups_json");
+  if (typeof raw !== "string" || !raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((p) => ({
+    pu_number: cleanStr(p?.pu_number),
+    vendor: cleanStr(p?.vendor),
+    location: cleanStr(p?.location),
+  }));
+}
+
 function revalidateAll() {
   revalidatePath("/logistics/board");
   revalidatePath("/logistics");
@@ -92,6 +115,16 @@ async function replaceStops(supabase: SupabaseClient, loadId: string, stops: Sto
 
   const rows = stops.map((s, i) => ({ load_id: loadId, position: i + 1, ...s }));
   const { error } = await supabase.from("load_stops").insert(rows);
+  if (error) throw new Error(error.message);
+}
+
+async function replacePickups(supabase: SupabaseClient, loadId: string, pickups: PickupInput[]) {
+  const { error: deleteError } = await supabase.from("load_pickups").delete().eq("load_id", loadId);
+  if (deleteError) throw new Error(deleteError.message);
+  if (pickups.length === 0) return;
+
+  const rows = pickups.map((p, i) => ({ load_id: loadId, position: i + 1, ...p }));
+  const { error } = await supabase.from("load_pickups").insert(rows);
   if (error) throw new Error(error.message);
 }
 
@@ -120,11 +153,13 @@ export async function createLoad(formData: FormData): Promise<string> {
   const supabase = await createClient();
   const fields = loadFieldsFromForm(formData);
   const stops = stopsFromForm(formData);
+  const pickups = pickupsFromForm(formData);
 
   const { data, error } = await supabase.from("loads").insert(fields).select().single();
   if (error) throw new Error(error.message);
 
   await replaceStops(supabase, data.id, stops);
+  await replacePickups(supabase, data.id, pickups);
   await ensureLane(supabase, fields.source, stops);
   revalidateAll();
   return data.id;
@@ -134,11 +169,13 @@ export async function updateLoad(id: string, formData: FormData) {
   const supabase = await createClient();
   const fields = loadFieldsFromForm(formData);
   const stops = stopsFromForm(formData);
+  const pickups = pickupsFromForm(formData);
 
   const { error } = await supabase.from("loads").update(fields).eq("id", id);
   if (error) throw new Error(error.message);
 
   await replaceStops(supabase, id, stops);
+  await replacePickups(supabase, id, pickups);
   await ensureLane(supabase, fields.source, stops);
   revalidateAll();
 }
