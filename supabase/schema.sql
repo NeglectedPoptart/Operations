@@ -267,15 +267,34 @@ create table if not exists old_age_items (
   qty numeric,
   age integer,
   next_step text
-    check (next_step in ('pending_qc', 'cash_sale', 'repack', 'as_is', 'dump_donate', 'moved')),
+    check (next_step in ('pending_qc', 'cash_sale', 'repack', 'as_is', 'dump_donate', 'moved', 'partial_moved')),
   notes text,
   -- Quick flag (independent of next_step) that pulls a row into the Cash
   -- List section at the top of the page; cash_price is only used there.
   cash_list boolean not null default false,
   cash_price numeric,
+  -- Running total moved out so far when next_step is "Partial Moved" - kept
+  -- in sync from old_age_moves by a trigger, same pattern as Repack
+  -- Inventory's current_stock/repack_adjustments.
+  qty_moved numeric not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- One row per partial move logged against an Old Age item (which order took
+-- how much). qty_moved on the parent row is kept in sync by a trigger
+-- further down, not written here directly.
+create table if not exists old_age_moves (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references old_age_items (id) on delete cascade,
+  entry_date date not null default current_date,
+  order_reference text,
+  qty numeric not null,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists old_age_moves_item_id_idx on old_age_moves (item_id);
 
 -- Warehouse: Cold Inventory - pasted from the cold storage pivot report
 -- (Manifest x Commodity/Size -> Sum of On Hand Cases). Each paste fully
@@ -633,6 +652,32 @@ create trigger old_age_items_set_updated_at
   before update on old_age_items
   for each row execute function set_updated_at();
 
+create or replace function apply_old_age_move()
+returns trigger as $$
+begin
+  update old_age_items set qty_moved = qty_moved + new.qty where id = new.item_id;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists old_age_moves_apply_insert on old_age_moves;
+create trigger old_age_moves_apply_insert
+  after insert on old_age_moves
+  for each row execute function apply_old_age_move();
+
+create or replace function reverse_old_age_move()
+returns trigger as $$
+begin
+  update old_age_items set qty_moved = qty_moved - old.qty where id = old.item_id;
+  return old;
+end;
+$$ language plpgsql;
+
+drop trigger if exists old_age_moves_reverse_delete on old_age_moves;
+create trigger old_age_moves_reverse_delete
+  after delete on old_age_moves
+  for each row execute function reverse_old_age_move();
+
 drop trigger if exists fob_items_set_updated_at on fob_items;
 create trigger fob_items_set_updated_at
   before update on fob_items
@@ -674,6 +719,7 @@ alter table local_inbounds enable row level security;
 alter table repack_items enable row level security;
 alter table repack_adjustments enable row level security;
 alter table old_age_items enable row level security;
+alter table old_age_moves enable row level security;
 alter table workflow_tasks enable row level security;
 alter table employees enable row level security;
 alter table callout_types enable row level security;
@@ -738,6 +784,10 @@ create policy "authenticated full access" on repack_adjustments
 
 drop policy if exists "authenticated full access" on old_age_items;
 create policy "authenticated full access" on old_age_items
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated full access" on old_age_moves;
+create policy "authenticated full access" on old_age_moves
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "authenticated full access" on workflow_tasks;

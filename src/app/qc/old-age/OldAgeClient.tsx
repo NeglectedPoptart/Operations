@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { parsePastedOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
-import { formatDate } from "@/lib/dates";
+import { formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
 import { summarizeByCommodity, summarizeByNextStep, type BarDatum } from "@/lib/oldAgeSummary";
-import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeNextStep } from "@/lib/types";
-import { addOldAgeRow, deleteOldAgeItem, importOldAgeItems, updateOldAgeItem } from "./actions";
+import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeMove, type OldAgeNextStep } from "@/lib/types";
+import { addOldAgeMove, addOldAgeRow, deleteOldAgeItem, deleteOldAgeMove, importOldAgeItems, updateOldAgeItem } from "./actions";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -99,6 +99,125 @@ function buildPlainTextSection(title: string, headers: string[], rows: string[][
 function toCanvasRows(rows: string[][], colCount: number): MonoRow[] {
   if (rows.length === 0) return [{ cells: ["Nothing here.", ...Array(colCount - 1).fill("")] }];
   return rows.map((cells) => ({ cells }));
+}
+
+// Ledger for one "Partial Moved" item, plus a small form to log the next
+// order and how much it's taking - same running-total pattern as Repack
+// Inventory's per-item history panel.
+function MovesHistory({
+  item,
+  moves,
+  onAdd,
+  onDelete,
+}: {
+  item: OldAgeItem;
+  moves: OldAgeMove[];
+  onAdd: (orderReference: string, qty: number, entryDate: string, notes: string) => Promise<void>;
+  onDelete: (id: string) => void;
+}) {
+  const [orderReference, setOrderReference] = useState("");
+  const [qty, setQty] = useState("");
+  const [entryDate, setEntryDate] = useState(todayISO());
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const remaining = item.qty !== null ? item.qty - item.qty_moved : null;
+
+  async function handleAdd() {
+    const n = Number(qty);
+    if (!orderReference.trim() || !Number.isFinite(n) || n === 0) return;
+    setSaving(true);
+    try {
+      await onAdd(orderReference.trim(), n, entryDate, notes);
+      setOrderReference("");
+      setQty("");
+      setNotes("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 bg-black/5 p-4 dark:bg-white/5">
+      <p className="text-sm font-medium">
+        {item.qty ?? 0} total · {item.qty_moved} moved so far
+        {remaining !== null && <span className="text-black/60 dark:text-white/60"> · {remaining} remaining</span>}
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-sm">
+          Date
+          <input
+            type="date"
+            value={entryDate}
+            onChange={(e) => setEntryDate(e.target.value)}
+            className={`${field} mt-1`}
+          />
+        </label>
+        <label className="text-sm">
+          Order #
+          <input
+            value={orderReference}
+            onChange={(e) => setOrderReference(e.target.value)}
+            placeholder="Order/PO #"
+            className={`${field} mt-1 w-32`}
+          />
+        </label>
+        <label className="text-sm">
+          Qty taking
+          <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className={`${field} mt-1 w-28`} />
+        </label>
+        <label className="flex-1 text-sm">
+          Notes
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} className={`${field} mt-1`} />
+        </label>
+        <button
+          onClick={handleAdd}
+          disabled={saving}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+        >
+          {saving ? "Adding..." : "Add"}
+        </button>
+      </div>
+
+      <div className="overflow-x-auto rounded border border-black/10 dark:border-white/10">
+        <table className="w-full text-sm">
+          <thead className="bg-black/5 text-left dark:bg-white/10">
+            <tr>
+              <th className="px-2 py-1">Date</th>
+              <th className="px-2 py-1">Order #</th>
+              <th className="px-2 py-1">Qty</th>
+              <th className="px-2 py-1">Notes</th>
+              <th className="w-16 px-2 py-1" />
+            </tr>
+          </thead>
+          <tbody>
+            {moves.map((m) => (
+              <tr key={m.id} className="border-t border-black/10 bg-white dark:border-white/10 dark:bg-neutral-900">
+                <td className="whitespace-nowrap px-2 py-1">{formatDate(m.entry_date)}</td>
+                <td className="px-2 py-1">{m.order_reference}</td>
+                <td className={`px-2 py-1 font-medium ${m.qty < 0 ? "text-red-600" : "text-green-600"}`}>
+                  {m.qty > 0 ? `+${m.qty}` : m.qty}
+                </td>
+                <td className="px-2 py-1">{m.notes}</td>
+                <td className="px-2 py-1">
+                  <button onClick={() => onDelete(m.id)} className="text-xs font-medium text-red-600 hover:underline">
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {moves.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-2 py-3 text-center text-black/40 dark:text-white/40">
+                  No moves logged yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function CashListSection({
@@ -236,9 +355,17 @@ function CashListSection({
   );
 }
 
-export default function OldAgeClient({ initialItems }: { initialItems: OldAgeItem[] }) {
+export default function OldAgeClient({
+  initialItems,
+  initialMoves,
+}: {
+  initialItems: OldAgeItem[];
+  initialMoves: OldAgeMove[];
+}) {
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
+  const [moves, setMoves] = useState(initialMoves);
+  const [expandedMovesId, setExpandedMovesId] = useState<string | null>(null);
   const nextStepSummary = useMemo(() => summarizeByNextStep(items), [items]);
   const commoditySummary = useMemo(() => summarizeByCommodity(items), [items]);
   const cashListItems = useMemo(() => items.filter((i) => i.cash_list), [items]);
@@ -303,13 +430,34 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
 
   async function handleNextStepChange(id: string, nextStep: OldAgeNextStep) {
     updateLocal(id, { next_step: nextStep });
+    if (nextStep === "partial_moved") setExpandedMovesId(id);
     await updateOldAgeItem(id, { next_step: nextStep }).catch(() => {});
+  }
+
+  async function handleQtySave(id: string, qty: number | null) {
+    updateLocal(id, { qty });
+    await updateOldAgeItem(id, { qty }).catch(() => {});
   }
 
   async function handleDelete(id: string) {
     if (!(await confirm("Delete this row?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
+    setMoves((prev) => prev.filter((m) => m.item_id !== id));
     await deleteOldAgeItem(id).catch(() => {});
+  }
+
+  async function handleAddMove(itemId: string, orderReference: string, qty: number, entryDate: string, notes: string) {
+    const row = (await addOldAgeMove(itemId, entryDate, orderReference, qty, notes)) as OldAgeMove;
+    setMoves((prev) => [row, ...prev]);
+    updateLocal(itemId, { qty_moved: (items.find((i) => i.id === itemId)?.qty_moved ?? 0) + qty });
+  }
+
+  async function handleDeleteMove(id: string) {
+    if (!(await confirm("Delete this move? The item's moved total will be adjusted back."))) return;
+    const row = moves.find((m) => m.id === id);
+    setMoves((prev) => prev.filter((m) => m.id !== id));
+    if (row) updateLocal(row.item_id, { qty_moved: (items.find((i) => i.id === row.item_id)?.qty_moved ?? 0) - row.qty });
+    await deleteOldAgeMove(id).catch(() => {});
   }
 
   async function handleCashListToggle(id: string, cashList: boolean) {
@@ -550,54 +698,96 @@ export default function OldAgeClient({ initialItems }: { initialItems: OldAgeIte
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="px-2 py-1.5">{item.document}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(item.received_date)}</td>
-                <td className="px-2 py-1.5">{item.description}</td>
-                <td className="px-2 py-1.5">{item.pack_style}</td>
-                <td className="px-2 py-1.5">{item.size}</td>
-                <td className="px-2 py-1.5">{item.qty}</td>
-                <td className="px-2 py-1.5">{item.age}</td>
-                <td className="px-1 py-1">
-                  <select
-                    value={item.next_step ?? ""}
-                    onChange={(e) => handleNextStepChange(item.id, e.target.value as OldAgeNextStep)}
-                    className={field}
-                  >
-                    <option value="">--</option>
-                    {OLD_AGE_NEXT_STEPS.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-1 py-1">
-                  <input
-                    defaultValue={item.notes ?? ""}
-                    onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
-                    className={field}
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={item.cash_list}
-                    onChange={(e) => handleCashListToggle(item.id, e.target.checked)}
-                    className="h-4 w-4"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="text-xs font-medium text-red-600 hover:underline"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {items.map((item) => {
+              const isPartialMoved = item.next_step === "partial_moved";
+              const expanded = expandedMovesId === item.id;
+              const remaining = item.qty !== null ? item.qty - item.qty_moved : null;
+              return (
+                <Fragment key={item.id}>
+                  <tr className="border-t border-black/10 dark:border-white/10">
+                    <td className="px-2 py-1.5">{item.document}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(item.received_date)}</td>
+                    <td className="px-2 py-1.5">{item.description}</td>
+                    <td className="px-2 py-1.5">{item.pack_style}</td>
+                    <td className="px-2 py-1.5">{item.size}</td>
+                    <td className="min-w-[5rem] px-1 py-1">
+                      <input
+                        type="number"
+                        step="any"
+                        defaultValue={item.qty ?? ""}
+                        onBlur={(e) =>
+                          handleQtySave(item.id, e.target.value.trim() === "" ? null : Number(e.target.value))
+                        }
+                        className={field}
+                      />
+                      {isPartialMoved && remaining !== null && (
+                        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">{remaining} left</p>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">{item.age}</td>
+                    <td className="px-1 py-1">
+                      <select
+                        value={item.next_step ?? ""}
+                        onChange={(e) => handleNextStepChange(item.id, e.target.value as OldAgeNextStep)}
+                        className={field}
+                      >
+                        <option value="">--</option>
+                        {OLD_AGE_NEXT_STEPS.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-1 py-1">
+                      <input
+                        defaultValue={item.notes ?? ""}
+                        onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
+                        className={field}
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={item.cash_list}
+                        onChange={(e) => handleCashListToggle(item.id, e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      {isPartialMoved && (
+                        <button
+                          onClick={() => setExpandedMovesId(expanded ? null : item.id)}
+                          className="mr-2 text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+                        >
+                          {expanded ? "Hide moves" : "Moves"}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        className="text-xs font-medium text-red-600 hover:underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                  {isPartialMoved && expanded && (
+                    <tr>
+                      <td colSpan={11} className="p-0">
+                        <MovesHistory
+                          item={item}
+                          moves={moves.filter((m) => m.item_id === item.id)}
+                          onAdd={(orderReference, qty, entryDate, notes) =>
+                            handleAddMove(item.id, orderReference, qty, entryDate, notes)
+                          }
+                          onDelete={handleDeleteMove}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
             {items.length === 0 && (
               <tr>
                 <td colSpan={11} className="px-3 py-4 text-center text-black/40 dark:text-white/40">

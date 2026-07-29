@@ -190,7 +190,7 @@ export interface RepackAdjustment {
   created_at: string;
 }
 
-export type OldAgeNextStep = "pending_qc" | "cash_sale" | "repack" | "as_is" | "dump_donate" | "moved";
+export type OldAgeNextStep = "pending_qc" | "cash_sale" | "repack" | "as_is" | "dump_donate" | "moved" | "partial_moved";
 
 export const OLD_AGE_NEXT_STEPS: { value: OldAgeNextStep; label: string }[] = [
   { value: "pending_qc", label: "Pending QC" },
@@ -199,6 +199,7 @@ export const OLD_AGE_NEXT_STEPS: { value: OldAgeNextStep; label: string }[] = [
   { value: "as_is", label: "As Is" },
   { value: "dump_donate", label: "Dump/Donate" },
   { value: "moved", label: "Moved" },
+  { value: "partial_moved", label: "Partial Moved" },
 ];
 
 export interface OldAgeItem {
@@ -215,8 +216,24 @@ export interface OldAgeItem {
   notes: string | null;
   cash_list: boolean;
   cash_price: number | null;
+  // Running total moved out so far - kept in sync from old_age_moves by a
+  // trigger, same as Repack Inventory's current_stock.
+  qty_moved: number;
   created_at: string;
   updated_at: string;
+}
+
+// qty is signed the same way as RepackAdjustment: positive = moved out,
+// negative = a correction/reversal. order_reference is the order/PO this
+// portion is going toward.
+export interface OldAgeMove {
+  id: string;
+  item_id: string;
+  entry_date: string;
+  order_reference: string | null;
+  qty: number;
+  notes: string | null;
+  created_at: string;
 }
 
 // Management: Workflow ------------------------------------------------------

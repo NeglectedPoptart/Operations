@@ -87,3 +87,31 @@ export async function deleteOldAgeItem(id: string) {
   if (error) throw new Error(error.message);
   revalidateAll();
 }
+
+// A single move logged against one item ("Partial Moved" ledger) - which
+// order took how much. qty_moved on the parent row is kept in sync by the
+// apply_old_age_move trigger, not here.
+export async function addOldAgeMove(
+  itemId: string,
+  entryDate: string,
+  orderReference: string,
+  qty: number,
+  notes: string,
+) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("old_age_moves")
+    .insert({ item_id: itemId, entry_date: entryDate, order_reference: orderReference || null, qty, notes: notes || null })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return data;
+}
+
+export async function deleteOldAgeMove(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("old_age_moves").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
