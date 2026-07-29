@@ -1,6 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+// Same unpdf-based extraction as the Price Sheets PDF import - see that
+// file's comment for why unpdf specifically (serverless-safe, no separate
+// worker file to resolve at runtime).
+import { extractText, getDocumentProxy } from "unpdf";
+import zipcodes from "zipcodes";
 import { createClient } from "@/lib/supabase/server";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
 import { splitDestinationLabel } from "@/lib/destination";
@@ -111,7 +116,7 @@ async function ensureLane(supabase: SupabaseClient, source: string | null, stops
   await supabase.from("lanes").insert({ from_hub: source, destination: label });
 }
 
-export async function createLoad(formData: FormData) {
+export async function createLoad(formData: FormData): Promise<string> {
   const supabase = await createClient();
   const fields = loadFieldsFromForm(formData);
   const stops = stopsFromForm(formData);
@@ -122,6 +127,7 @@ export async function createLoad(formData: FormData) {
   await replaceStops(supabase, data.id, stops);
   await ensureLane(supabase, fields.source, stops);
   revalidateAll();
+  return data.id;
 }
 
 export async function updateLoad(id: string, formData: FormData) {
@@ -207,4 +213,34 @@ export async function createDestinationCity(label: string) {
   const { error } = await supabase.from("destination_cities").insert({ city, state });
   if (error && error.code !== "23505") throw new Error(error.message);
   revalidateAll();
+}
+
+// Pulls the plain text layer out of an uploaded rate confirmation PDF so it
+// can run through parseRateConfirmationText() + an editable preview, same
+// discriminated-result shape as Price Sheets' extractPdfText (a thrown Error
+// message gets redacted by Next.js in production, so a real failure needs a
+// value the client can actually show).
+export async function extractRateConfirmationText(formData: FormData): Promise<{ text: string } | { error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) return { error: "No file received." };
+
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await getDocumentProxy(data);
+    const { text } = await extractText(pdf, { mergePages: true });
+    return { text };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Offline zip -> city/state lookup (the "zipcodes" package ships all US
+// zips, no external API call) so the destination combobox can be pre-filled
+// even though the Ship To address on the PDF often only has a zip, not a
+// spelled-out city name. Kept server-only since the package's data file is a
+// few MB - no reason to ship that to the client bundle.
+export async function lookupZipCityState(zip: string): Promise<{ city: string; state: string } | null> {
+  const info = zipcodes.lookup(zip);
+  if (!info) return null;
+  return { city: info.city, state: info.state };
 }

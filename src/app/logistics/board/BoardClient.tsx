@@ -6,6 +6,7 @@ import { groupByLoadingDate } from "@/lib/loadGrouping";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
+import RateConfirmationImport from "./RateConfirmationImport";
 
 export default function BoardClient({
   loads,
@@ -25,6 +26,8 @@ export default function BoardClient({
 
   return (
     <div className="space-y-8">
+      <RateConfirmationImport brokers={brokers} hubOptions={hubOptions} cityOptions={cityOptions} />
+
       {LOAD_STATUSES.map((section) => {
         const rawSectionLoads = loads.filter((l) => l.status === section.value);
         // Completed loads read newest-first - everything else keeps the
