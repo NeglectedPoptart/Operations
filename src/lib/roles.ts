@@ -1,4 +1,4 @@
-export type Role = "admin" | "operations" | "warehouse_qc" | "sales" | "accounting" | "buyer";
+export type Role = "admin" | "operations" | "warehouse_qc" | "sales" | "accounting" | "buyer" | "executive";
 
 export const ROLES: { value: Role; label: string }[] = [
   { value: "admin", label: "Admin" },
@@ -7,6 +7,7 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "sales", label: "Sales" },
   { value: "accounting", label: "Accounting" },
   { value: "buyer", label: "Buyer" },
+  { value: "executive", label: "Executive" },
 ];
 
 export type Tab = "logistics" | "warehouse" | "qc" | "sales" | "management" | "compliance" | "buyers";
@@ -20,6 +21,8 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   sales: ["sales", "qc", "buyers"],
   accounting: ["logistics", "qc", "sales", "compliance"],
   buyer: ["warehouse", "qc", "sales", "buyers"],
+  // Sees everything except Logistics and Management.
+  executive: ["warehouse", "qc", "sales", "compliance", "buyers"],
 };
 
 export function tabsForRole(role: Role | null): Tab[] {

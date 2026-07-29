@@ -15,7 +15,11 @@ create table if not exists profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
   role text not null default 'sales'
-    check (role in ('admin', 'operations', 'warehouse_qc', 'sales', 'accounting', 'buyer')),
+    check (role in ('admin', 'operations', 'warehouse_qc', 'sales', 'accounting', 'buyer', 'executive')),
+  -- Last calendar date (business timezone) this user dismissed their daily
+  -- Warehouse/QC login reminder - lets it show once per day per account
+  -- regardless of device/browser.
+  last_reminder_seen_date date,
   created_at timestamptz not null default now()
 );
 
