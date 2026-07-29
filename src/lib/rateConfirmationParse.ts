@@ -20,6 +20,7 @@ export interface ParsedRateConfirmation {
   deliveryDate: string | null;
   rate: number | null;
   notes: string | null;
+  appointment: string | null;
 }
 
 function escapeRegExp(s: string): string {
@@ -30,11 +31,26 @@ function isoDate(month: string, day: string, year: string): string {
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+const DAY_ABBREVIATIONS = new Set([
+  "mon", "tue", "tues", "wed", "thu", "thur", "thurs", "fri", "sat", "sun",
+]);
+
+// "Delivery PO #: SAT 342236" -> the day-of-week is just noting when it's
+// due, not part of the PO itself - "342236" is the actual number.
+function stripLeadingDayAbbreviation(value: string): string {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length > 1 && DAY_ABBREVIATIONS.has(parts[0].toLowerCase().replace(/\.$/, ""))) {
+    return parts.slice(1).join(" ");
+  }
+  return value.trim();
+}
+
 export function parseRateConfirmationText(text: string, knownHubs: string[] = []): ParsedRateConfirmation {
   const normalized = text.replace(/\r\n/g, "\n");
 
   const orderNumber = normalized.match(/Sales Order #:\s*(\S+)/)?.[1]?.replace(/^0+(?=\d)/, "") ?? null;
-  const poNumber = normalized.match(/Delivery PO #:\s*(\S+)/)?.[1] ?? null;
+  const rawPoNumber = normalized.match(/Delivery PO #:\s*([^\n]+)/)?.[1]?.trim() ?? null;
+  const poNumber = rawPoNumber ? stripLeadingDayAbbreviation(rawPoNumber) : null;
 
   let brokerName: string | null = null;
   const brokerBlock = normalized.match(/Truck Driver Phone #:\s*\n([\s\S]*?)\nShip To:/);
@@ -81,24 +97,39 @@ export function parseRateConfirmationText(text: string, knownHubs: string[] = []
       return city ? new RegExp(`\\b${escapeRegExp(city)}\\b`, "i").test(normalized) : false;
     }) ?? null;
 
-  // Best-effort pickup/handling instructions - grabbed by matching their own
-  // distinctive wording anywhere in the text, since these lines are not
-  // reliably adjacent to any label in the extraction. Appointment Time is
-  // deliberately not attempted: it's a blank field on the template, and
-  // whatever text follows its label in the raw stream is unrelated
-  // boilerplate, not an appointment value.
-  const noteLines: string[] = [];
-  for (const pattern of [
-    /Temp\s+[\d.]+\S*/i,
-    /Delivery\s+\w+,?\s*\d{1,2}\/\d{1,2}\s*@\s*\S+/i,
-    /Please Make Sure[^\n]*/i,
-    /Wash out[^\n]*/i,
-    /Driver Must Call[^\n]*/i,
-  ]) {
-    const m = normalized.match(pattern);
-    if (m) noteLines.push(m[0].trim());
-  }
+  // The "Instructions:" label is directly adjacent to the load-specific
+  // handling notes (Temp, delivery day/time, etc.) and "Order #" always
+  // follows right after - unlike everything else on this template, this
+  // block's own content never gets split up in the extraction. A separate,
+  // always-identical boilerplate paragraph ("Wash out & pre-cool...",
+  // "Driver Must Call...", the carrier-notify legal sentence) lives
+  // elsewhere in the stream and is deliberately NOT captured here - it's the
+  // same on every rate confirmation and isn't load-specific.
+  const instructionsBlock = normalized.match(/Instructions:\s*\n([\s\S]*?)\nOrder #/)?.[1] ?? "";
+  const noteLines = instructionsBlock
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const notes = noteLines.length > 0 ? noteLines.join("\n") : null;
 
-  return { orderNumber, poNumber, brokerName, clientName, destinationZip, source, loadingDate, deliveryDate, rate, notes };
+  // A delivery appointment is often noted here as "Delivery <day/date> -
+  // <time>" rather than filled into the template's own (always blank)
+  // "Appointment Time:" field - pull the trailing time back out as the
+  // appointment value.
+  const appointment =
+    instructionsBlock.match(/Delivery[^\n]*?(\d{1,4}(?::\d{2})?\s*(?:am|pm))/i)?.[1]?.toLowerCase() ?? null;
+
+  return {
+    orderNumber,
+    poNumber,
+    brokerName,
+    clientName,
+    destinationZip,
+    source,
+    loadingDate,
+    deliveryDate,
+    rate,
+    notes,
+    appointment,
+  };
 }

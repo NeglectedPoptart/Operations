@@ -45,6 +45,7 @@ interface ReviewState {
   poNumber: string;
   clientName: string;
   destination: string;
+  appointment: string;
   rateConSent: boolean;
 }
 
@@ -129,6 +130,7 @@ export default function RateConfirmationImport({
         poNumber: parsed.poNumber ?? "",
         clientName: parsed.clientName ?? "",
         destination,
+        appointment: parsed.appointment ?? "",
         rateConSent: true,
       });
 
@@ -186,7 +188,7 @@ export default function RateConfirmationImport({
             destination_state: state || null,
             delivery_date: review.deliveryDate || null,
             delivery_time: null,
-            appointment: null,
+            appointment: review.appointment || null,
           },
         ]),
       );
@@ -350,6 +352,15 @@ export default function RateConfirmationImport({
                     type="date"
                     value={review.deliveryDate}
                     onChange={(e) => updateReview({ deliveryDate: e.target.value })}
+                    className={field}
+                  />
+                </div>
+                <div>
+                  <label className={label}>Appointment</label>
+                  <input
+                    value={review.appointment}
+                    onChange={(e) => updateReview({ appointment: e.target.value })}
+                    placeholder="e.g. 830am"
                     className={field}
                   />
                 </div>
