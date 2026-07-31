@@ -1,12 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
+import { escapeHtml } from "@/lib/fobPricing";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
 import { addPasFileRow, deletePasFileRow, importPendingList, updatePasFileRow } from "./actions";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
+
+const PAS_FILE_HEADERS = [
+  "Order No",
+  "Customer",
+  "PO",
+  "Slp",
+  "Ship Date",
+  "Days",
+  "Ship Qty",
+  "FOB Amt",
+  "Status",
+  "Order Type",
+  "Last Contact",
+  "Update",
+  "Highlight",
+];
+
+function highlightLabel(highlight: PasHighlight): string {
+  return PAS_HIGHLIGHTS.find((h) => h.value === highlight)?.label ?? "";
+}
+
+function pasFileRowValues(item: PasFile): string[] {
+  return [
+    item.order_no,
+    item.customer ?? "",
+    item.po ?? "",
+    item.slp ?? "",
+    formatDate(item.ship_date),
+    daysSince(item.ship_date)?.toString() ?? "",
+    item.ship_qty !== null ? String(item.ship_qty) : "",
+    item.fob_amt !== null ? `$${item.fob_amt.toFixed(2)}` : "",
+    item.status ?? "",
+    item.order_type ?? "",
+    item.last_contact ?? "",
+    item.update_notes ?? "",
+    highlightLabel(item.highlight),
+  ];
+}
+
+// Same table-copy pattern as Old Age's Cash List / Copy All - a bordered
+// HTML table (for pasting into an email with formatting intact) plus a
+// tab-separated plain-text fallback.
+function buildTableHtml(title: string, headers: string[], rows: string[][]): string {
+  const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
+  const headCell = `${cell}font-weight:bold;background:#dddddd;`;
+  const bodyRows =
+    rows.length > 0
+      ? rows.map((r) => `<tr>${r.map((c) => `<td style="${cell}">${escapeHtml(c)}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${headers.length}" style="${cell}text-align:center;color:#666666;">Nothing here.</td></tr>`;
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;">
+    <tr><td colspan="${headers.length}" style="background:#8DC63F;color:#000000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
+    <tr>${headers.map((h) => `<td style="${headCell}">${escapeHtml(h)}</td>`).join("")}</tr>
+    ${bodyRows}
+  </table>`;
+}
+
+function buildPlainTextTable(title: string, headers: string[], rows: string[][]): string {
+  const lines = [title, headers.join("\t")];
+  if (rows.length === 0) lines.push("Nothing here.");
+  for (const r of rows) lines.push(r.join("\t"));
+  return lines.join("\n");
+}
 
 // Every cell in a row is a white input butted up against its neighbors, so a
 // background tint on the <tr> itself is only visible in the thin gaps
@@ -42,8 +105,43 @@ export default function PasFilesClient({
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [filterRed, setFilterRed] = useState(false);
+  const [filterYellow, setFilterYellow] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const existingKeys = new Set(items.map((i) => matchKey(i.order_no, i.po ?? "")));
+
+  // No boxes checked = no filter (show everything); otherwise show only the
+  // checked highlight(s).
+  const filterActive = filterRed || filterYellow;
+  const visibleItems = useMemo(
+    () =>
+      filterActive
+        ? items.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"))
+        : items,
+    [items, filterActive, filterRed, filterYellow],
+  );
+
+  async function handleCopyEmail() {
+    const html = buildTableHtml("PAS Files", PAS_FILE_HEADERS, visibleItems.map(pasFileRowValues));
+    const text = buildPlainTextTable("PAS Files", PAS_FILE_HEADERS, visibleItems.map(pasFileRowValues));
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
 
   const summaryData = [
     { label: "Total PAS Files", value: items.length },
@@ -132,12 +230,21 @@ export default function PasFilesClient({
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">PAS Files</h1>
-          <button
-            onClick={() => setShowPaste((s) => !s)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-          >
-            {showPaste ? "Hide paste box" : "Paste from Excel"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleCopyEmail}
+              disabled={visibleItems.length === 0}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {copied ? "Copied!" : "Copy for Email"}
+            </button>
+            <button
+              onClick={() => setShowPaste((s) => !s)}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {showPaste ? "Hide paste box" : "Paste from Excel"}
+            </button>
+          </div>
         </div>
 
         <p className="rounded-md bg-black/5 px-3 py-2 text-xs text-black/60 dark:bg-white/5 dark:text-white/60">
@@ -147,6 +254,23 @@ export default function PasFilesClient({
 
         <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
           <HorizontalBarChart data={summaryData} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
+          <span className="font-medium text-black/60 dark:text-white/60">Filter:</span>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterRed} onChange={(e) => setFilterRed(e.target.checked)} />
+            Escalated (Red)
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterYellow} onChange={(e) => setFilterYellow(e.target.checked)} />
+            Needs Contact (Yellow)
+          </label>
+          {filterActive && (
+            <span className="text-xs text-black/40 dark:text-white/40">
+              Showing {visibleItems.length} of {items.length}
+            </span>
+          )}
         </div>
 
         {showPaste && (
@@ -263,7 +387,7 @@ export default function PasFilesClient({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {visibleItems.map((item) => {
                 const rowField = rowFieldClass(item.highlight);
                 return (
                   <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
@@ -375,10 +499,12 @@ export default function PasFilesClient({
                   </tr>
                 );
               })}
-              {items.length === 0 && (
+              {visibleItems.length === 0 && (
                 <tr>
                   <td colSpan={14} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                    No PAS files yet - paste in today&apos;s export from Excel above.
+                    {items.length === 0
+                      ? "No PAS files yet - paste in today's export from Excel above."
+                      : "No rows match the current filter."}
                   </td>
                 </tr>
               )}
