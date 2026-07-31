@@ -107,6 +107,58 @@ function buildTableHtml(title: string, headerColor: string, headers: string[], r
   </table>`;
 }
 
+// Same horizontal-bar look as the on-screen HorizontalBarChart, rebuilt with
+// a nested nowrap table for the bar track/fill so it survives an email
+// client's HTML paste (flexbox and % widths on plain divs don't render
+// reliably in Outlook - a table with explicit cell widths does).
+function buildBarChartHtml(title: string, headerColor: string, data: BarDatum[]): string {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const font = "font-family:Calibri,Arial,sans-serif;";
+  const rows =
+    data.length > 0
+      ? data
+          .map((d) => {
+            const pct = Math.max(Math.round((d.value / max) * 100), 2);
+            return `<tr>
+              <td style="padding:4px 6px;width:130px;${font}font-size:12.5px;color:#000000;">${escapeHtml(d.label)}</td>
+              <td style="padding:4px 6px;">
+                <table cellpadding="0" cellspacing="0" style="width:220px;background-color:#e5e5e5;">
+                  <tr>
+                    <td style="width:${pct}%;background-color:#16a34a;height:16px;line-height:16px;font-size:1px;">&nbsp;</td>
+                    ${pct < 100 ? `<td style="width:${100 - pct}%;height:16px;line-height:16px;font-size:1px;">&nbsp;</td>` : ""}
+                  </tr>
+                </table>
+              </td>
+              <td style="padding:4px 6px;width:50px;text-align:right;${font}font-size:12.5px;font-weight:bold;color:#000000;">${escapeHtml(d.value.toLocaleString())}</td>
+            </tr>`;
+          })
+          .join("")
+      : `<tr><td style="padding:4px 6px;${font}text-align:center;color:#666666;">No data yet.</td></tr>`;
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;${font}margin-bottom:14px;">
+    <tr><td colspan="3" style="background:${headerColor};color:#000000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
+    ${rows}
+  </table>`;
+}
+
+// Plain-text fallback for clients that reject the HTML clipboard payload -
+// approximates the same bars with block characters.
+function buildBarChartText(title: string, data: BarDatum[]): string[] {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const barWidth = 20;
+  const lines = [title];
+  if (data.length === 0) {
+    lines.push("No data yet.");
+  } else {
+    for (const d of data) {
+      const filled = Math.max(1, Math.round((d.value / max) * barWidth));
+      const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
+      lines.push(`${d.label.padEnd(16)} ${bar} ${d.value.toLocaleString()}`);
+    }
+  }
+  lines.push("");
+  return lines;
+}
+
 function buildPlainTextSection(title: string, headers: string[], rows: string[][]): string[] {
   const lines = [title, headers.join("\t")];
   if (rows.length === 0) lines.push("Nothing here.");
@@ -492,16 +544,16 @@ export default function OldAgeClient({
   async function handleCopyAllEmail() {
     const html = `<div style="font-family:Calibri,Arial,sans-serif;background:#ffffff;">
         <div style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;color:#000000;">Old Age Report</div>
-        ${buildTableHtml("Next Step Summary", "#8DC63F", NEXT_STEP_HEADERS, nextStepSummary.map(nextStepRowValues))}
-        ${buildTableHtml("Qty by Commodity", "#8DC63F", COMMODITY_HEADERS, commoditySummary.map(commodityRowValues))}
+        ${buildBarChartHtml("Next Step Summary", "#8DC63F", nextStepSummary)}
+        ${buildBarChartHtml("Qty by Commodity", "#8DC63F", commoditySummary)}
         ${cashListItems.length > 0 ? buildTableHtml("Cash List", "#FFA726", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues)) : ""}
         ${buildTableHtml("Full List", "#64B5F6", FULL_LIST_HEADERS, items.map((item) => fullListRowValues(item, moves)))}
       </div>`;
     const text = [
       "Old Age Report",
       "",
-      ...buildPlainTextSection("Next Step Summary", NEXT_STEP_HEADERS, nextStepSummary.map(nextStepRowValues)),
-      ...buildPlainTextSection("Qty by Commodity", COMMODITY_HEADERS, commoditySummary.map(commodityRowValues)),
+      ...buildBarChartText("Next Step Summary", nextStepSummary),
+      ...buildBarChartText("Qty by Commodity", commoditySummary),
       ...(cashListItems.length > 0
         ? buildPlainTextSection("Cash List", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues))
         : []),
