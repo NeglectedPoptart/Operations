@@ -47,17 +47,36 @@ const FULL_LIST_HEADERS = [
   "Notes",
   "Cash List",
 ];
-function fullListRowValues(item: OldAgeItem): string[] {
+// "#123 (30), #456 (20)" - which orders took how much of this item, in the
+// same order the Moves ledger shows them.
+function movesSummary(item: OldAgeItem, moves: OldAgeMove[]): string {
+  return moves
+    .filter((m) => m.item_id === item.id)
+    .map((m) => `#${m.order_reference ?? "?"} (${m.qty})`)
+    .join(", ");
+}
+
+// Once something's been moved, the qty that matters for this export is what's
+// LEFT - the original total is still worth keeping, just as a "(was X)"
+// aside rather than the headline number.
+function fullListQtyDisplay(item: OldAgeItem): string {
+  if (item.qty === null) return "";
+  if (item.qty_moved <= 0) return String(item.qty);
+  return `${item.qty - item.qty_moved} (was ${item.qty})`;
+}
+
+function fullListRowValues(item: OldAgeItem, moves: OldAgeMove[]): string[] {
+  const moved = movesSummary(item, moves);
   return [
     item.document ?? "",
     formatDate(item.received_date),
     item.description ?? "",
     item.pack_style ?? "",
     item.size ?? "",
-    item.qty !== null ? String(item.qty) : "",
+    fullListQtyDisplay(item),
     item.age !== null ? String(item.age) : "",
     nextStepLabel(item.next_step),
-    item.notes ?? "",
+    [item.notes, moved ? `Moved: ${moved}` : null].filter(Boolean).join(" — "),
     item.cash_list ? "Yes" : "",
   ];
 }
@@ -476,7 +495,7 @@ export default function OldAgeClient({
         ${buildTableHtml("Next Step Summary", "#8DC63F", NEXT_STEP_HEADERS, nextStepSummary.map(nextStepRowValues))}
         ${buildTableHtml("Qty by Commodity", "#8DC63F", COMMODITY_HEADERS, commoditySummary.map(commodityRowValues))}
         ${cashListItems.length > 0 ? buildTableHtml("Cash List", "#FFA726", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues)) : ""}
-        ${buildTableHtml("Full List", "#64B5F6", FULL_LIST_HEADERS, items.map(fullListRowValues))}
+        ${buildTableHtml("Full List", "#64B5F6", FULL_LIST_HEADERS, items.map((item) => fullListRowValues(item, moves)))}
       </div>`;
     const text = [
       "Old Age Report",
@@ -486,7 +505,7 @@ export default function OldAgeClient({
       ...(cashListItems.length > 0
         ? buildPlainTextSection("Cash List", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues))
         : []),
-      ...buildPlainTextSection("Full List", FULL_LIST_HEADERS, items.map(fullListRowValues)),
+      ...buildPlainTextSection("Full List", FULL_LIST_HEADERS, items.map((item) => fullListRowValues(item, moves))),
     ].join("\n");
 
     try {
@@ -536,7 +555,7 @@ export default function OldAgeClient({
           title: "Full List",
           headerColor: "#64B5F6",
           columnHeaders: FULL_LIST_HEADERS,
-          rows: toCanvasRows(items.map(fullListRowValues), FULL_LIST_HEADERS.length),
+          rows: toCanvasRows(items.map((item) => fullListRowValues(item, moves)), FULL_LIST_HEADERS.length),
         },
       ];
       const blob = await renderPriceSheetPng({ title: "Old Age Report", message: "", blocks, direction: "column" });
@@ -714,14 +733,15 @@ export default function OldAgeClient({
                       <input
                         type="number"
                         step="any"
-                        defaultValue={item.qty ?? ""}
-                        onBlur={(e) =>
-                          handleQtySave(item.id, e.target.value.trim() === "" ? null : Number(e.target.value))
-                        }
+                        defaultValue={remaining ?? ""}
+                        onBlur={(e) => {
+                          const entered = e.target.value.trim() === "" ? null : Number(e.target.value);
+                          handleQtySave(item.id, entered === null ? null : entered + item.qty_moved);
+                        }}
                         className={field}
                       />
-                      {isPartialMoved && remaining !== null && (
-                        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">{remaining} left</p>
+                      {item.qty_moved > 0 && (
+                        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">was {item.qty}</p>
                       )}
                     </td>
                     <td className="px-2 py-1.5">{item.age}</td>
