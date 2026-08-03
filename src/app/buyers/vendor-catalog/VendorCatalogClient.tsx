@@ -57,6 +57,30 @@ export default function VendorCatalogClient({
     return PRODUCE_CATEGORIES.filter((c) => c.toLowerCase().includes(q));
   }, [search]);
 
+  const itemsByVendor = useMemo(() => {
+    const map = new Map<string, PriceSheetItem[]>();
+    for (const item of items) {
+      if (!map.has(item.vendor_id)) map.set(item.vendor_id, []);
+      map.get(item.vendor_id)!.push(item);
+    }
+    return map;
+  }, [items]);
+
+  // price_sheet_items is a full-replace snapshot per vendor (whatever their
+  // last paste was) - there's no history to keep beyond that, so "priced
+  // today total or last time" is just this same item list either way, with
+  // vendor.sheet_date telling you which case you're looking at.
+  const allVendors = useMemo(
+    () =>
+      [...vendors]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((vendor) => {
+          const vendorItems = itemsByVendor.get(vendor.id) ?? [];
+          return { vendor, vendorItems, isCurrent: vendor.sheet_date === today };
+        }),
+    [vendors, itemsByVendor, today],
+  );
+
   const sellersForSelected = useMemo(() => {
     if (!selectedCategory) return [];
     const vendorIds = vendorIdsByCategory.get(selectedCategory) ?? [];
@@ -106,6 +130,60 @@ export default function VendorCatalogClient({
         })}
         {filteredCategories.length === 0 && (
           <p className="col-span-full text-sm text-black/40 dark:text-white/40">No matching commodity.</p>
+        )}
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">All Vendors</h2>
+        {allVendors.length === 0 ? (
+          <p className="text-sm text-black/40 dark:text-white/40">No vendors entered yet.</p>
+        ) : (
+          <div className="divide-y divide-black/10 dark:divide-white/10">
+            {allVendors.map(({ vendor, vendorItems, isCurrent }) => (
+              <div key={vendor.id} className="group relative py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-medium">{vendor.name}</span>
+                  <span className="text-xs text-black/50 dark:text-white/50">
+                    <span className={isCurrent ? "text-green-700 dark:text-green-400" : "text-amber-700 dark:text-amber-400"}>
+                      {vendor.sheet_date ? `Updated ${formatDate(vendor.sheet_date)}` : "No sheet yet"}
+                    </span>
+                    {" · "}
+                    {vendorItems.length} item{vendorItems.length === 1 ? "" : "s"} priced
+                  </span>
+                </div>
+
+                {vendorItems.length > 0 && (
+                  <div className="invisible absolute left-0 top-full z-20 w-80 max-w-[90vw] rounded-md border border-black/10 bg-white p-2 opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 dark:border-white/10 dark:bg-neutral-900">
+                    {!isCurrent && (
+                      <p className="mb-1.5 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                        ⚠ Last pricing as of {formatDate(vendor.sheet_date)} - not from today
+                      </p>
+                    )}
+                    <div className="max-h-64 overflow-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-black/5 text-left dark:bg-white/10">
+                          <tr>
+                            <th className="px-1 py-0.5">Item</th>
+                            <th className="px-1 py-0.5">Size</th>
+                            <th className="px-1 py-0.5">Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {vendorItems.map((item) => (
+                            <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
+                              <td className="px-1 py-0.5">{item.item_label}</td>
+                              <td className="px-1 py-0.5">{item.size ?? ""}</td>
+                              <td className="px-1 py-0.5">{formatMoney(item.price)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
