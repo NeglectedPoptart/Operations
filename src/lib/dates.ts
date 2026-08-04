@@ -12,6 +12,19 @@ export function todayISO(): string {
   }).format(new Date());
 }
 
+// Same business-timezone conversion as todayISO(), but for an arbitrary
+// timestamptz value (e.g. a row's updated_at) instead of "now" - used to
+// check whether something happened "today" without assuming UTC midnight
+// lines up with the business day.
+export function isoDateOf(timestamp: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(timestamp));
+}
+
 export function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
