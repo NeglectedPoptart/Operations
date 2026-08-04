@@ -28,24 +28,25 @@ export interface PendingNotification {
   senderEmail: string | null;
 }
 
-interface NotificationJoinRow {
+interface NotificationRow {
   id: string;
-  notifications: {
-    id: string;
-    tab_label: string;
-    subtab_label: string;
-    page_path: string;
-    message: string;
-    updated_by: string | null;
-    last_edited_at: string | null;
-    created_at: string;
-    created_by: string | null;
-  } | null;
+  tab_label: string;
+  subtab_label: string;
+  page_path: string;
+  message: string;
+  updated_by: string | null;
+  last_edited_at: string | null;
+  created_at: string;
+  created_by: string | null;
 }
 
 // Polled from the global NotificationPopup - unacknowledged notifications
 // addressed to the current user, oldest first so they work through them in
-// the order they were sent.
+// the order they were sent. Deliberately two flat queries instead of one
+// embedded select (notification_recipients -> notifications) - an embed
+// depends on PostgREST having picked up the FK relationship for these
+// brand-new tables, which can lag behind a migration run by hand in the SQL
+// Editor; a failure there would silently look identical to "nothing sent."
 export async function getPendingNotifications(): Promise<PendingNotification[]> {
   const supabase = await createClient();
   const {
@@ -53,38 +54,53 @@ export async function getPendingNotifications(): Promise<PendingNotification[]> 
   } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const { data, error } = await supabase
+  const { data: recipientRows, error: recipientsError } = await supabase
     .from("notification_recipients")
-    .select(
-      "id, notifications(id, tab_label, subtab_label, page_path, message, updated_by, last_edited_at, created_at, created_by)",
-    )
+    .select("id, notification_id")
     .eq("user_id", user.id)
     .is("acknowledged_at", null);
-  if (error || !data) return [];
+  if (recipientsError) {
+    console.error("getPendingNotifications: notification_recipients query failed:", recipientsError.message);
+    return [];
+  }
+  if (!recipientRows || recipientRows.length === 0) return [];
 
-  const rows = data as unknown as NotificationJoinRow[];
-  const senderIds = [...new Set(rows.map((r) => r.notifications?.created_by).filter((id): id is string => Boolean(id)))];
+  const notificationIds = recipientRows.map((r) => r.notification_id as string);
+  const { data: notifications, error: notificationsError } = await supabase
+    .from("notifications")
+    .select("id, tab_label, subtab_label, page_path, message, updated_by, last_edited_at, created_at, created_by")
+    .in("id", notificationIds);
+  if (notificationsError) {
+    console.error("getPendingNotifications: notifications query failed:", notificationsError.message);
+    return [];
+  }
+
+  const rows = (notifications ?? []) as NotificationRow[];
+  const notificationById = new Map(rows.map((n) => [n.id, n]));
+  const senderIds = [...new Set(rows.map((n) => n.created_by).filter((id): id is string => Boolean(id)))];
   const { data: senders } = senderIds.length > 0
     ? await supabase.from("profiles").select("id, email").in("id", senderIds)
     : { data: [] as { id: string; email: string | null }[] };
   const senderEmailById = new Map((senders ?? []).map((s) => [s.id as string, s.email as string | null]));
 
-  return rows
-    .filter((r): r is NotificationJoinRow & { notifications: NonNullable<NotificationJoinRow["notifications"]> } =>
-      Boolean(r.notifications),
-    )
-    .map((r) => ({
-      recipientId: r.id,
-      notificationId: r.notifications.id,
-      tabLabel: r.notifications.tab_label,
-      subtabLabel: r.notifications.subtab_label,
-      pagePath: r.notifications.page_path,
-      message: r.notifications.message,
-      updatedBy: r.notifications.updated_by,
-      lastEditedAt: r.notifications.last_edited_at,
-      createdAt: r.notifications.created_at,
-      senderEmail: r.notifications.created_by ? senderEmailById.get(r.notifications.created_by) ?? null : null,
-    }))
+  return recipientRows
+    .map((r) => {
+      const n = notificationById.get(r.notification_id as string);
+      if (!n) return null;
+      return {
+        recipientId: r.id as string,
+        notificationId: n.id,
+        tabLabel: n.tab_label,
+        subtabLabel: n.subtab_label,
+        pagePath: n.page_path,
+        message: n.message,
+        updatedBy: n.updated_by,
+        lastEditedAt: n.last_edited_at,
+        createdAt: n.created_at,
+        senderEmail: n.created_by ? senderEmailById.get(n.created_by) ?? null : null,
+      };
+    })
+    .filter((x): x is PendingNotification => x !== null)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
 }
 
@@ -96,10 +112,11 @@ export async function acknowledgeNotification(recipientId: string) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return;
-  await supabase
+  const { error } = await supabase
     .from("notification_recipients")
     .update({ acknowledged_at: new Date().toISOString() })
     .eq("id", recipientId)
     .eq("user_id", user.id);
+  if (error) console.error("acknowledgeNotification failed:", error.message);
   revalidatePath("/management/notifications");
 }
