@@ -1,6 +1,6 @@
 import type { Lane } from "./types";
 
-// Parses pasted lane/rate text from a broker's pricing email - three input
+// Parses pasted lane/rate text from a broker's pricing email - four input
 // shapes are supported, auto-detected line by line:
 //
 //  A) The original recurring block format:
@@ -21,16 +21,28 @@ import type { Lane } from "./types";
 //     apply. The destination column is kept whole rather than split into
 //     city/state, since multi-drop labels like "Houston, TX (2 Drop)" or
 //     "Jessup, MD & Bronx, NY" aren't a single city/state pair.
+//  D) A "<Hub> to" header (no state, any case) followed by bare "City: $rate"
+//     lines (no state either):
+//       Salinas to
+//       Clackamas: $4500
+//       Denver: $6500
 //
 // Header lines ("From"/"To"/"State"/"Source City") and blank rows are
 // discarded naturally - a line only ever becomes a result once it matches
-// one of the three shapes above.
+// one of the four shapes above.
 //
 // One quirk (format A/B): some all-caps destinations (e.g. "MD/PA" for a
 // split-state pool load) look identical in casing to a hub name. Those are
 // disambiguated by checking against destination cities already on file for
 // any hub - so an all-caps line is only treated as a new hub if it isn't
 // already a known destination city.
+//
+// Formats A, B, and D can all supply a hub or destination as a bare city
+// name with no state ("SALINAS", "Salinas to", "Clackamas: $4500"). Those
+// get resolved against existingLanes (matched by city, case-insensitive) to
+// the full "City, ST" form already on file, so they line up with the
+// existing lane instead of spawning a same-city duplicate - a bare name is
+// only kept as-is when no matching lane city is found.
 export interface ParsedRateLine {
   hub: string;
   destination: string;
@@ -39,6 +51,22 @@ export interface ParsedRateLine {
 
 function isAllCapsToken(s: string): boolean {
   return /[A-Z]/.test(s) && !/[a-z]/.test(s);
+}
+
+// Only resolves labels shaped like a plain "City, ST" - compound multi-drop
+// destinations ("Houston, TX (2 Drop)", "Jessup, MD & Bronx, NY") are left
+// out of the lookup rather than mapped from some arbitrary substring city.
+const SIMPLE_CITY_STATE_RE = /^([A-Za-z .]+),\s*([A-Za-z]{2})$/;
+
+function buildCityLookup(labels: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const label of labels) {
+    const m = label.trim().match(SIMPLE_CITY_STATE_RE);
+    if (!m) continue;
+    const city = m[1].trim().toUpperCase();
+    if (!map.has(city)) map.set(city, label.trim());
+  }
+  return map;
 }
 
 // Format A's second line: just a state code (or "MD/PA" style split) then
@@ -50,6 +78,16 @@ const STATE_ONLY_RATE_RE = /^([A-Za-z/]+)\s*\$\s*([\d,]+(?:\.\d+)?)\s*$/;
 // off (non-greedy + backtracking handles multi-word cities like "South
 // Plainfield" correctly, since the state/rate suffix has to match in full).
 const CITY_STATE_RATE_RE = /^(.+?)\s+([A-Za-z]{2})\s*:?\s*\$\s*([\d,]+(?:\.\d+)?)\s*$/;
+
+// Format D's destination line: "City: $rate" with no state at all - the
+// colon (no space before it) is what tells this apart from format B's
+// "City ST: $rate", which always has a space before its state token.
+const CITY_ONLY_RATE_RE = /^(.+?)\s*:\s*\$\s*([\d,]+(?:\.\d+)?)\s*$/;
+
+// Format D's header: "<Hub> to", any case, nothing else on the line - an
+// optional leading "And " is swallowed too, since a second/third hub in the
+// same paste is often introduced as "And Pharr to" rather than just "Pharr to".
+const HUB_TO_RE = /^(?:and\s+)?([A-Za-z .]+?)\s+to$/i;
 
 // Format C's hub column always looks like "City, ST" - used both to split
 // out the hub and to reject non-data rows (a "Source City" header has no
@@ -85,6 +123,10 @@ export function parseRateEmail(raw: string, existingLanes: Lane[]): ParsedRateLi
   const knownDestinationCities = new Set(
     existingLanes.map((l) => l.destination.split(",")[0].trim().toUpperCase()),
   );
+  const hubCityLookup = buildCityLookup(existingLanes.map((l) => l.from_hub));
+  const destCityLookup = buildCityLookup(existingLanes.map((l) => l.destination));
+  const resolveHub = (raw: string) => hubCityLookup.get(raw.trim().toUpperCase()) ?? raw.trim();
+  const resolveDestination = (raw: string) => destCityLookup.get(raw.trim().toUpperCase()) ?? raw.trim();
 
   const lines = raw
     .split(/\r?\n/)
@@ -127,8 +169,26 @@ export function parseRateEmail(raw: string, existingLanes: Lane[]): ParsedRateLi
       continue;
     }
 
+    const cityOnlyRateMatch = line.match(CITY_ONLY_RATE_RE);
+    if (cityOnlyRateMatch && currentHub) {
+      results.push({
+        hub: currentHub,
+        destination: resolveDestination(cityOnlyRateMatch[1]),
+        rate: parseFloat(cityOnlyRateMatch[2].replace(/,/g, "")),
+      });
+      pendingCity = null;
+      continue;
+    }
+
+    const hubToMatch = line.match(HUB_TO_RE);
+    if (hubToMatch) {
+      currentHub = resolveHub(hubToMatch[1]);
+      pendingCity = null;
+      continue;
+    }
+
     if (isAllCapsToken(line) && !knownDestinationCities.has(line.toUpperCase())) {
-      currentHub = line;
+      currentHub = resolveHub(line);
       pendingCity = null;
     } else {
       pendingCity = line;
