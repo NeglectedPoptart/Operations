@@ -17,7 +17,20 @@ export default function NotificationPopup() {
     let cancelled = false;
 
     async function poll() {
-      const pending = await getPendingNotifications().catch(() => []);
+      let pending: PendingNotification[];
+      try {
+        pending = await getPendingNotifications();
+      } catch (err) {
+        console.error("NotificationPopup: poll failed", err);
+        // A tab left open across a deploy is still running the old JS
+        // bundle, whose server action calls reference a stale build ID -
+        // Next.js rejects those with a "failed to find Server Action /
+        // older or newer deployment" error. Reloading picks up the current
+        // bundle instead of leaving the tab silently stuck forever.
+        const message = err instanceof Error ? err.message : String(err);
+        if (/server action|deployment/i.test(message)) window.location.reload();
+        return;
+      }
       if (cancelled) return;
       const fresh = pending.filter((p) => !knownIds.current.has(p.recipientId));
       if (fresh.length === 0) return;
@@ -39,7 +52,9 @@ export default function NotificationPopup() {
   async function respond(navigateTo?: string) {
     setBusy(true);
     setQueue((prev) => prev.slice(1));
-    await acknowledgeNotification(current.recipientId).catch(() => {});
+    await acknowledgeNotification(current.recipientId).catch((err) => {
+      console.error("NotificationPopup: acknowledge failed", err);
+    });
     setBusy(false);
     if (navigateTo) router.push(navigateTo);
   }
