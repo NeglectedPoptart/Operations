@@ -527,3 +527,32 @@ export interface Profile {
   role: Role;
   created_at: string;
 }
+
+// Management: Notifications ----------------------------------------------------
+
+export type NotificationTargetType = "user" | "role";
+
+export interface AppNotification {
+  id: string;
+  tab_label: string;
+  subtab_label: string;
+  page_path: string;
+  message: string;
+  updated_by: string | null;
+  last_edited_at: string | null;
+  target_type: NotificationTargetType;
+  target_role: Role | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface NotificationRecipient {
+  id: string;
+  notification_id: string;
+  user_id: string;
+  acknowledged_at: string | null;
+}
+
+export interface SentNotification extends AppNotification {
+  notification_recipients: NotificationRecipient[];
+}

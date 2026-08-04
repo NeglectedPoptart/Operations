@@ -137,6 +137,26 @@ export function formatDateSlash(dateStr: string | null): string {
   return `${mm}/${dd}/${d.getUTCFullYear()}`;
 }
 
+// Full date + time of day (business timezone) for a timestamptz value, e.g.
+// "Aug 4, 2026, 3:45 PM" - used where a bare date isn't precise enough (last
+// edited / sent / acknowledged times on the Notifications page and popup).
+export function formatTimestamp(ts: string | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const datePart = d.toLocaleDateString("en-US", {
+    timeZone: APP_TIMEZONE,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+  const timePart = d.toLocaleTimeString("en-US", {
+    timeZone: APP_TIMEZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${datePart}, ${timePart}`;
+}
+
 // Same MM/DD/YYYY style as formatDateSlash, but for a full timestamptz
 // value (e.g. "last activity") rather than a plain date - reads the date in
 // the business timezone instead of assuming midnight UTC.

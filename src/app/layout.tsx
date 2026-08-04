@@ -3,6 +3,7 @@ import { Rajdhani } from "next/font/google";
 import ConfirmProvider from "@/components/ConfirmProvider";
 import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
+import NotificationPopup from "@/components/NotificationPopup";
 import { todayISO } from "@/lib/dates";
 import { getDailyReminderCheck, type DailyReminderCheck } from "@/lib/dailyReminders";
 import { createClient } from "@/lib/supabase/server";
@@ -70,6 +71,7 @@ export default async function RootLayout({
         <ConfirmProvider>
           <NavBar role={role} />
           {reminderCheck && <DailyReminderModal check={reminderCheck} />}
+          {user && <NotificationPopup />}
           <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
             {children}
           </main>

@@ -78,6 +78,7 @@ const NAV: NavCategory[] = [
       { href: "/management/workflow", label: "Workflow" },
       { href: "/management/callout-sheet", label: "Callout Sheet" },
       { href: "/management/users", label: "User Roles" },
+      { href: "/management/notifications", label: "Notifications" },
     ],
   },
   {
