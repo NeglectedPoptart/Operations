@@ -569,3 +569,28 @@ export interface PushToken {
   created_at: string;
   updated_at: string;
 }
+
+// Marketing -----------------------------------------------------------------
+
+export interface MarketingFile {
+  id: string;
+  file_name: string;
+  storage_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  label: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export type MarketingTaskStatus = "pending" | "done";
+
+export interface MarketingTask {
+  id: string;
+  position: number;
+  name: string;
+  status: MarketingTaskStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}

@@ -86,6 +86,11 @@ const NAV: NavCategory[] = [
     tab: "compliance",
     items: [{ href: "/compliance/pas-files", label: "PAS Files" }],
   },
+  {
+    label: "Marketing",
+    tab: "marketing",
+    items: [{ href: "/marketing/assets", label: "Brand Assets" }],
+  },
 ];
 
 export default function NavBar({ role }: { role: Role | null }) {

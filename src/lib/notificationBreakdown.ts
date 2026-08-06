@@ -82,6 +82,11 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
     label: "Compliance",
     subtabs: [{ label: "PAS Files", href: "/compliance/pas-files" }],
   },
+  {
+    tab: "marketing",
+    label: "Marketing",
+    subtabs: [{ label: "Brand Assets", href: "/marketing/assets" }],
+  },
 ];
 
 async function maxUpdatedAt(supabase: SupabaseServerClient, table: string): Promise<string | null> {
@@ -108,6 +113,16 @@ async function maxUpdatedAtWhere(
     .limit(1)
     .maybeSingle();
   return (data as { updated_at: string } | null)?.updated_at ?? null;
+}
+
+async function maxCreatedAt(supabase: SupabaseServerClient, table: string): Promise<string | null> {
+  const { data } = await supabase
+    .from(table)
+    .select("created_at")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as { created_at: string } | null)?.created_at ?? null;
 }
 
 function latestOf(...values: (string | null)[]): string | null {
@@ -144,6 +159,8 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     calloutEntries,
     ptoRequests,
     pasFiles,
+    marketingFiles,
+    marketingTasks,
   ] = await Promise.all([
     maxUpdatedAt(supabase, "loads"),
     maxUpdatedAt(supabase, "invoice_statements"),
@@ -169,6 +186,8 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     maxUpdatedAt(supabase, "callout_entries"),
     maxUpdatedAt(supabase, "pto_requests"),
     maxUpdatedAt(supabase, "pas_files"),
+    maxCreatedAt(supabase, "marketing_files"),
+    maxUpdatedAt(supabase, "marketing_tasks"),
   ]);
 
   return {
@@ -197,5 +216,6 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/management/callout-sheet": latestOf(calloutEntries, ptoRequests),
     "/management/users": null, // role changes aren't timestamped
     "/compliance/pas-files": pasFiles,
+    "/marketing/assets": latestOf(marketingFiles, marketingTasks),
   };
 }

@@ -10,19 +10,19 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "executive", label: "Executive" },
 ];
 
-export type Tab = "logistics" | "warehouse" | "qc" | "sales" | "management" | "compliance" | "buyers";
+export type Tab = "logistics" | "warehouse" | "qc" | "sales" | "management" | "compliance" | "buyers" | "marketing";
 
 // What each role can open, besides Home (which is open to every
 // authenticated role - see the Draft Changes / permission levels round).
 const ROLE_TABS: Record<Role, Tab[]> = {
-  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers"],
-  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers"],
+  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing"],
+  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing"],
   warehouse_qc: ["warehouse", "qc"],
-  sales: ["sales", "qc", "buyers"],
+  sales: ["sales", "qc", "buyers", "marketing"],
   accounting: ["logistics", "qc", "sales", "compliance"],
   buyer: ["warehouse", "qc", "sales", "buyers"],
   // Sees everything except Logistics and Management.
-  executive: ["warehouse", "qc", "sales", "compliance", "buyers"],
+  executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing"],
 };
 
 export function tabsForRole(role: Role | null): Tab[] {
@@ -44,5 +44,6 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/management")) return "management";
   if (pathname.startsWith("/compliance")) return "compliance";
   if (pathname.startsWith("/buyers")) return "buyers";
+  if (pathname.startsWith("/marketing")) return "marketing";
   return null;
 }
