@@ -18,11 +18,11 @@ export async function updateFobItem(
   revalidateAll();
 }
 
-export async function addFobItem(section: FobSection, nextPosition: number) {
+export async function addFobItem(section: FobSection, nextPosition: number, commodityGroup: string = "New Item") {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("fob_items")
-    .insert({ section, commodity_group: "New Item", position: nextPosition })
+    .insert({ section, commodity_group: commodityGroup, position: nextPosition })
     .select()
     .single();
   if (error) throw new Error(error.message);

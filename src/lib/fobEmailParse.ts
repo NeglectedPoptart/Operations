@@ -122,6 +122,20 @@ function findItem(target: Target, items: FobItem[]): FobItem | null {
   return found.length === 1 ? found[0] : null;
 }
 
+// Falls back to matching the email's own text straight against the catalog
+// when resolveTargets has no hand-mapped entry for this category at all -
+// covers a commodity added via "+ Add Category" (e.g. "Green Beans") without
+// needing a code change for every new item going forward. Only kicks in for
+// a category resolveTargets doesn't recognize; anything it does map keeps
+// using that exact hand-mapped behavior untouched.
+function directMatch(category: string, label: string, items: FobItem[]): FobItem[] {
+  const groupItems = items.filter((i) => norm(i.commodity_group) === norm(category));
+  if (groupItems.length === 0) return [];
+  if (groupItems.length === 1) return groupItems;
+  const labelMatch = groupItems.filter((i) => norm(i.variety) === norm(label) || norm(i.size) === norm(label));
+  return labelMatch.length === 1 ? labelMatch : [];
+}
+
 export interface FobPriceMatch {
   category: string;
   label: string;
@@ -135,7 +149,10 @@ export interface FobPriceMatch {
 export function matchFobPriceLines(parsed: ParsedFobPriceLine[], items: FobItem[]): FobPriceMatch[] {
   return parsed.map((p) => {
     const targets = resolveTargets(p.category, p.label);
+    if (targets.length === 0) {
+      return { ...p, matches: directMatch(p.category, p.label, items) };
+    }
     const matches = targets.map((t) => findItem(t, items)).filter((i): i is FobItem => i !== null);
-    return { ...p, matches: matches.length === targets.length && targets.length > 0 ? matches : [] };
+    return { ...p, matches: matches.length === targets.length ? matches : [] };
   });
 }

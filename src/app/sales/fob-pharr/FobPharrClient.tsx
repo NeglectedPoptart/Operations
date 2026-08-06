@@ -332,6 +332,7 @@ function FobItemsSection({
   onFieldSave,
   onGroupRename,
   onAdd,
+  onAddCategory,
   onDelete,
 }: {
   title: string;
@@ -343,15 +344,33 @@ function FobItemsSection({
   ) => void;
   onGroupRename: (section: FobSection, oldName: string, newName: string) => void;
   onAdd: (section: FobSection) => Promise<void>;
+  onAddCategory: (section: FobSection, categoryName: string) => Promise<void>;
   onDelete: (id: string) => void;
 }) {
   const groups = useMemo(() => groupFobItems(items, section), [items, section]);
   const [adding, setAdding] = useState(false);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
 
   async function handleAdd() {
     setAdding(true);
     try {
       await onAdd(section);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleSaveCategory() {
+    if (!newCategoryName.trim()) {
+      alert("Enter a category name.");
+      return;
+    }
+    setAdding(true);
+    try {
+      await onAddCategory(section, newCategoryName.trim());
+      setNewCategoryName("");
+      setAddingCategory(false);
     } finally {
       setAdding(false);
     }
@@ -442,13 +461,47 @@ function FobItemsSection({
           </tbody>
         </table>
       </div>
-      <button
-        onClick={handleAdd}
-        disabled={adding}
-        className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-      >
-        {adding ? "Adding..." : "+ Add Item"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={handleAdd}
+          disabled={adding}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+        >
+          {adding ? "Adding..." : "+ Add Item"}
+        </button>
+        <button
+          onClick={() => setAddingCategory((v) => !v)}
+          className="rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+        >
+          + Add Category
+        </button>
+      </div>
+      {addingCategory && (
+        <div className="flex flex-wrap items-end gap-2 rounded border border-dashed border-green-500/50 bg-green-50/50 p-2 dark:bg-green-950/10">
+          <label className="flex flex-col gap-0.5 text-xs">
+            <span className="font-medium">Category name</span>
+            <input
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              placeholder="e.g. Green Beans"
+              className={`${field} w-48`}
+            />
+          </label>
+          <button
+            onClick={handleSaveCategory}
+            disabled={adding}
+            className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            {adding ? "Saving..." : "Save Category"}
+          </button>
+          <button
+            onClick={() => setAddingCategory(false)}
+            className="rounded-md px-2.5 py-1 text-xs font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -489,10 +542,22 @@ export default function FobPharrClient({
     affected.forEach((i) => updateFobItem(i.id, { commodity_group: newName }).catch(() => {}));
   }
 
+  // A quick "+ Add Item" (still-unnamed "New Item" bucket) lands at the top
+  // of its section so it's easy to find and fill in; "+ Add Category" (a
+  // real name given up front) lands at the bottom, same as pasting a whole
+  // new block onto the end of the sheet. groupFobItems sorts by position, so
+  // this ordering is what actually renders, not just insertion order.
   async function handleAddItem(section: FobSection) {
-    const sectionItems = items.filter((i) => i.section === section);
-    const nextPosition = sectionItems.length > 0 ? Math.max(...sectionItems.map((i) => i.position)) + 1 : 1;
-    const row = await addFobItem(section, nextPosition);
+    const positions = items.filter((i) => i.section === section).map((i) => i.position);
+    const position = Math.min(0, ...positions) - 1;
+    const row = await addFobItem(section, position, "New Item");
+    setItems((prev) => [...prev, row as FobItem]);
+  }
+
+  async function handleAddCategory(section: FobSection, categoryName: string) {
+    const positions = items.filter((i) => i.section === section).map((i) => i.position);
+    const position = Math.max(-1, ...positions) + 1;
+    const row = await addFobItem(section, position, categoryName);
     setItems((prev) => [...prev, row as FobItem]);
   }
 
@@ -644,6 +709,7 @@ export default function FobPharrClient({
             onFieldSave={handleItemFieldSave}
             onGroupRename={handleGroupRename}
             onAdd={handleAddItem}
+            onAddCategory={handleAddCategory}
             onDelete={handleDeleteItem}
           />
           <FobItemsSection
@@ -653,6 +719,7 @@ export default function FobPharrClient({
             onFieldSave={handleItemFieldSave}
             onGroupRename={handleGroupRename}
             onAdd={handleAddItem}
+            onAddCategory={handleAddCategory}
             onDelete={handleDeleteItem}
           />
         </div>

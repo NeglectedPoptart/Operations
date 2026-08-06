@@ -8,12 +8,15 @@ export interface FobItemGroup {
 // Groups items by commodity_group regardless of adjacency (a group's rows
 // can be spread across the list after edits/reordering), preserving the
 // order each group name first appears in - shared by the FOB Pricing page
-// and every per-lane Delivered Pricing sheet derived from it.
+// and every per-lane Delivered Pricing sheet derived from it. Sorted by
+// position first rather than trusting the caller's array order, so a quick
+// "+ Add Item" (given a position below everything else) reliably groups at
+// the top, and "+ Add Category" (given one above) at the bottom.
 export function groupFobItems(items: FobItem[], section: FobSection): FobItemGroup[] {
+  const sectionItems = items.filter((i) => i.section === section).sort((a, b) => a.position - b.position);
   const order: string[] = [];
   const map = new Map<string, FobItem[]>();
-  for (const item of items) {
-    if (item.section !== section) continue;
+  for (const item of sectionItems) {
     if (!map.has(item.commodity_group)) {
       map.set(item.commodity_group, []);
       order.push(item.commodity_group);
