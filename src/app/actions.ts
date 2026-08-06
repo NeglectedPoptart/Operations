@@ -3,6 +3,24 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/dates";
+import type { PushPlatform } from "@/lib/types";
+
+// Called by the mobile app shell right after it gets a device token from
+// FCM/APNs - upserted on the token itself (not user_id) so re-registering
+// on the same device just refreshes updated_at, and signing in as a
+// different person on that same device reassigns it instead of leaving a
+// stale duplicate row pointed at the old account.
+export async function registerPushToken(token: string, platform: PushPlatform) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  const { error } = await supabase
+    .from("push_tokens")
+    .upsert({ user_id: user.id, platform, token }, { onConflict: "token" });
+  if (error) console.error("registerPushToken failed:", error.message);
+}
 
 // Marks the Warehouse/QC daily reminder modal (rendered from the root
 // layout) as seen for today, so it doesn't show again until tomorrow.

@@ -4,6 +4,7 @@ import ConfirmProvider from "@/components/ConfirmProvider";
 import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
 import NotificationPopup from "@/components/NotificationPopup";
+import PushRegistration from "@/components/PushRegistration";
 import { todayISO } from "@/lib/dates";
 import { getDailyReminderCheck, type DailyReminderCheck } from "@/lib/dailyReminders";
 import { createClient } from "@/lib/supabase/server";
@@ -72,6 +73,7 @@ export default async function RootLayout({
           <NavBar role={role} />
           {reminderCheck && <DailyReminderModal check={reminderCheck} />}
           {user && <NotificationPopup />}
+          {user && <PushRegistration />}
           <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
             {children}
           </main>

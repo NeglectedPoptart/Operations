@@ -556,3 +556,16 @@ export interface NotificationRecipient {
 export interface SentNotification extends AppNotification {
   notification_recipients: NotificationRecipient[];
 }
+
+// Mobile app: push tokens -------------------------------------------------
+
+export type PushPlatform = "android" | "ios";
+
+export interface PushToken {
+  id: string;
+  user_id: string;
+  platform: PushPlatform;
+  token: string;
+  created_at: string;
+  updated_at: string;
+}

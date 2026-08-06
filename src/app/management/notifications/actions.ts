@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { sendPushToTokens } from "@/lib/push";
 import type { Role } from "@/lib/roles";
 import type { NotificationTargetType } from "@/lib/types";
 
@@ -60,6 +61,18 @@ export async function sendNotification(input: SendNotificationInput) {
     .from("notification_recipients")
     .insert(recipientIds.map((userId) => ({ notification_id: notification.id, user_id: userId })));
   if (recipientsError) throw new Error(recipientsError.message);
+
+  // Best-effort - the in-app popup (polled from any open tab/app instance)
+  // is the notification of record regardless of whether this succeeds; push
+  // just gets it in front of someone whose app isn't currently open.
+  const { data: pushTokens } = await supabase.from("push_tokens").select("token").in("user_id", recipientIds);
+  const tokens = (pushTokens ?? []).map((t) => t.token as string);
+  await sendPushToTokens(
+    tokens,
+    `Attention ${input.tabLabel}`,
+    `${input.subtabLabel} sheet has been Updated`,
+    { pagePath: input.pagePath },
+  );
 
   revalidatePath("/management/notifications");
 }
