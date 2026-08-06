@@ -7,6 +7,7 @@ import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } 
 import { normalizeCategory, parsePriceSheetPaste, PRODUCE_CATEGORIES, type ParsedPriceSheetItem } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
 import {
+  createPriceSheetItem,
   createVendor,
   deletePriceSheetItem,
   deleteVendor,
@@ -315,21 +316,113 @@ function PastePreview({
   );
 }
 
+interface NewItemInput {
+  category: string;
+  itemLabel: string;
+  size: string;
+  price: number | null;
+}
+
+// Shared by both "+ Add Item" and "+ Add Category" - they only differ in
+// what category the field starts with and where the saved row lands.
+function AddItemForm({
+  actionLabel,
+  initialCategory,
+  onSave,
+  onCancel,
+}: {
+  actionLabel: string;
+  initialCategory: string;
+  onSave: (item: NewItemInput) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [category, setCategory] = useState(initialCategory);
+  const [itemLabel, setItemLabel] = useState("");
+  const [size, setSize] = useState("");
+  const [price, setPrice] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    if (!itemLabel.trim()) {
+      alert("Enter an item name.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({
+        category: normalizeCategory(category.trim() || "Other"),
+        itemLabel: itemLabel.trim(),
+        size: size.trim(),
+        price: price.trim() === "" ? null : Number(price),
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded border border-dashed border-green-500/50 bg-green-50/50 p-2 dark:bg-green-950/10">
+      <label className="flex flex-col gap-0.5 text-xs">
+        <span className="font-medium">Category</span>
+        <input
+          list="price-sheet-categories"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          className={`${field} w-32`}
+        />
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs">
+        <span className="font-medium">Item</span>
+        <input value={itemLabel} onChange={(e) => setItemLabel(e.target.value)} className={`${field} w-36`} />
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs">
+        <span className="font-medium">Size</span>
+        <input value={size} onChange={(e) => setSize(e.target.value)} className={`${field} w-20`} />
+      </label>
+      <label className="flex flex-col gap-0.5 text-xs">
+        <span className="font-medium">Price</span>
+        <input type="number" step="any" value={price} onChange={(e) => setPrice(e.target.value)} className={`${field} w-20`} />
+      </label>
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+      >
+        {saving ? "Saving..." : actionLabel}
+      </button>
+      <button
+        onClick={onCancel}
+        className="rounded-md px-2.5 py-1 text-xs font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 function VendorSection({
   vendor,
   items,
   onFieldSave,
   onDeleteItem,
   onDeleteVendor,
+  onAddItem,
 }: {
   vendor: Vendor;
   items: PriceSheetItem[];
   onFieldSave: (id: string, patch: Partial<Pick<PriceSheetItem, "category" | "item_label" | "size" | "price">>) => void;
   onDeleteItem: (id: string) => void;
   onDeleteVendor: (id: string) => void;
+  onAddItem: (vendorId: string, item: NewItemInput, placement: "top" | "bottom") => Promise<void>;
 }) {
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const [addMode, setAddMode] = useState<"item" | "category" | null>(null);
+
+  async function handleAdd(item: NewItemInput, placement: "top" | "bottom") {
+    await onAddItem(vendor.id, item, placement);
+    setAddMode(null);
+  }
 
   const sheetLabel = `${vendor.name}${vendor.sheet_date ? ` - ${formatDate(vendor.sheet_date)}` : ""}`;
 
@@ -416,6 +509,18 @@ function VendorSection({
           >
             {imageStatus ?? "Copy as Image"}
           </button>
+          <button
+            onClick={() => setAddMode((m) => (m === "item" ? null : "item"))}
+            className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            + Add Item
+          </button>
+          <button
+            onClick={() => setAddMode((m) => (m === "category" ? null : "category"))}
+            className="rounded-md border border-black/20 px-3 py-1.5 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            + Add Category
+          </button>
           {!vendor.is_unknown && (
             <button onClick={() => onDeleteVendor(vendor.id)} className="text-xs font-medium text-red-600 hover:underline">
               Delete Vendor
@@ -423,6 +528,22 @@ function VendorSection({
           )}
         </div>
       </div>
+      {addMode === "item" && (
+        <AddItemForm
+          actionLabel="Save Item"
+          initialCategory="New Item"
+          onSave={(item) => handleAdd(item, "top")}
+          onCancel={() => setAddMode(null)}
+        />
+      )}
+      {addMode === "category" && (
+        <AddItemForm
+          actionLabel="Save Category"
+          initialCategory=""
+          onSave={(item) => handleAdd(item, "bottom")}
+          onCancel={() => setAddMode(null)}
+        />
+      )}
       {items.length === 0 ? (
         <p className="text-sm text-black/40 dark:text-white/40">Nothing on this sheet yet.</p>
       ) : (
@@ -526,8 +647,20 @@ export default function PriceSheetsClient({
       if (!map.has(item.vendor_id)) map.set(item.vendor_id, []);
       map.get(item.vendor_id)!.push(item);
     }
+    // Explicit sort (rather than trusting incidental array order) so a
+    // quick "+ Add Item" (given a position below everything else) reliably
+    // renders at the top, and "+ Add Category" (given one above) at the
+    // bottom.
+    for (const list of map.values()) list.sort((a, b) => a.position - b.position);
     return map;
   }, [items]);
+
+  async function handleAddItem(vendorId: string, item: NewItemInput, placement: "top" | "bottom") {
+    const positions = (itemsByVendor.get(vendorId) ?? []).map((i) => i.position);
+    const position = placement === "top" ? Math.min(0, ...positions) - 1 : Math.max(-1, ...positions) + 1;
+    const saved = await createPriceSheetItem(vendorId, item, position);
+    setItems((prev) => [...prev, saved]);
+  }
 
   function handlePreview(text: string = pasteText) {
     setParseError(null);
@@ -799,6 +932,7 @@ export default function PriceSheetsClient({
             onFieldSave={handleItemFieldSave}
             onDeleteItem={handleDeleteItem}
             onDeleteVendor={handleDeleteVendor}
+            onAddItem={handleAddItem}
           />
         ))}
         {vendors.length === 0 && (

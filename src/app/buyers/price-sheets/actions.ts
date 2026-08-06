@@ -149,6 +149,41 @@ export async function importPriceSheet(
   return (finalItems ?? []) as PriceSheetItem[];
 }
 
+// Adds a single row without touching the rest of the vendor's sheet -
+// importPriceSheet's full-replace would otherwise be the only way to add
+// one item, wiping out everything else already on file for them.
+// `position` decides where it lands (the caller passes something below the
+// vendor's lowest existing position for a quick ad-hoc add, or above the
+// highest for a new category going at the bottom).
+export async function createPriceSheetItem(
+  vendorId: string,
+  item: { category: string; itemLabel: string; size: string; price: number | null },
+  position: number,
+): Promise<PriceSheetItem> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("price_sheet_items")
+    .insert({
+      vendor_id: vendorId,
+      category: item.category,
+      item_label: item.itemLabel,
+      size: item.size || null,
+      price: item.price,
+      position,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+
+  const { error: commodityError } = await supabase
+    .from("vendor_commodities")
+    .upsert({ vendor_id: vendorId, category: item.category }, { onConflict: "vendor_id,category", ignoreDuplicates: true });
+  if (commodityError) throw new Error(commodityError.message);
+
+  revalidateAll();
+  return data as PriceSheetItem;
+}
+
 export async function updatePriceSheetItem(
   id: string,
   patch: Partial<Pick<PriceSheetItem, "category" | "item_label" | "size" | "price">>,

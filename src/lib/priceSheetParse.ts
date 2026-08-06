@@ -33,6 +33,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   Cauliflower: ["cauliflower"],
   Celery: ["celery"],
   Cucumber: ["cucumber", "cuke", "slicer", "🥒"],
+  "Green Beans": ["green bean"],
   Jalapeno: ["jalape", "🌶"],
   Lemon: ["lemon", "🍋"],
   Lettuce: ["lettuce", "romaine"],
