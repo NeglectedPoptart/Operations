@@ -3,15 +3,16 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatTimestamp } from "@/lib/dates";
+import { createClient } from "@/lib/supabase/client";
 import type { MarketingFile, MarketingTask, MarketingTaskStatus } from "@/lib/types";
 import {
   addMarketingTask,
   deleteMarketingFile,
   deleteMarketingTask,
+  recordMarketingFile,
   updateMarketingFileLabel,
   updateMarketingNotes,
   updateMarketingTask,
-  uploadMarketingFile,
 } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -137,6 +138,7 @@ export default function MarketingClient({
 }) {
   const confirm = useConfirm();
   const [files, setFiles] = useState(initialFiles);
+  const [urls, setUrls] = useState(fileUrls);
   const [tasks, setTasks] = useState(initialTasks);
   const [notes, setNotes] = useState(initialNotes);
   const [uploading, setUploading] = useState(false);
@@ -145,18 +147,38 @@ export default function MarketingClient({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Uploads go straight from the browser to Supabase Storage - a big file's
+  // bytes never touch a Server Action, which is capped at ~4.5MB on Vercel
+  // regardless of Next.js config. Only the resulting metadata (name, path,
+  // size) is sent to recordMarketingFile to insert the row.
   async function handleUpload(e: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(e.target.files ?? []);
     e.target.value = "";
     if (selected.length === 0) return;
     setUploading(true);
     setUploadError(null);
+    const supabase = createClient();
     try {
       for (const file of selected) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const saved = await uploadMarketingFile(formData, null);
+        const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const storagePath = `${crypto.randomUUID()}${ext}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("marketing-assets")
+          .upload(storagePath, file, { contentType: file.type || undefined });
+        if (uploadErr) throw new Error(uploadErr.message);
+
+        const publicUrl = supabase.storage.from("marketing-assets").getPublicUrl(storagePath).data.publicUrl;
+
+        const saved = await recordMarketingFile({
+          fileName: file.name,
+          storagePath,
+          contentType: file.type || null,
+          sizeBytes: file.size,
+          label: null,
+        });
         setFiles((prev) => [saved, ...prev]);
+        setUrls((prev) => ({ ...prev, [saved.id]: publicUrl }));
       }
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed.");
@@ -253,10 +275,10 @@ export default function MarketingClient({
               <FileCard
                 key={file.id}
                 file={file}
-                url={fileUrls[file.id] ?? ""}
+                url={urls[file.id] ?? ""}
                 onLabelSave={handleLabelSave}
                 onDelete={handleDeleteFile}
-                onPreview={() => setPreviewUrl(fileUrls[file.id] ?? null)}
+                onPreview={() => setPreviewUrl(urls[file.id] ?? null)}
               />
             ))}
           </div>

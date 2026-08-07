@@ -8,40 +8,40 @@ function revalidateAll() {
   revalidatePath("/marketing/assets");
 }
 
-// Uploads straight to the public "marketing-assets" bucket (migration 046) -
-// these are brand/packaging previews, not sensitive, so a stable public URL
-// is simpler than juggling signed URLs for every render.
-export async function uploadMarketingFile(formData: FormData, label: string | null): Promise<MarketingFile> {
-  const file = formData.get("file");
-  if (!(file instanceof Blob)) throw new Error("No file received.");
-  const fileName = file instanceof File ? file.name : "upload";
-
+// The actual file bytes never come through this action - Vercel's
+// serverless functions cap a request body at ~4.5MB regardless of Next.js's
+// own serverActions.bodySizeLimit config, which only governs Next's own
+// parsing and can't override the platform ceiling underneath it. A 14.6MB
+// PDF (a real one a user hit) blew straight through that and came back as
+// an opaque "unexpected response" rather than a clean error. Fixed by
+// uploading directly from the browser to Supabase Storage (client.ts, same
+// anon key + RLS as everywhere else) and only sending this action the
+// resulting metadata to record.
+export async function recordMarketingFile(input: {
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+  label: string | null;
+}): Promise<MarketingFile> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const ext = fileName.includes(".") ? fileName.slice(fileName.lastIndexOf(".")) : "";
-  const storagePath = `${crypto.randomUUID()}${ext}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("marketing-assets")
-    .upload(storagePath, file, { contentType: file.type || undefined });
-  if (uploadError) throw new Error(uploadError.message);
-
-  const { data: row, error: insertError } = await supabase
+  const { data: row, error } = await supabase
     .from("marketing_files")
     .insert({
-      file_name: fileName,
-      storage_path: storagePath,
-      content_type: file.type || null,
-      size_bytes: file.size,
-      label: label?.trim() || null,
+      file_name: input.fileName,
+      storage_path: input.storagePath,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      label: input.label?.trim() || null,
       uploaded_by: user?.id ?? null,
     })
     .select()
     .single();
-  if (insertError) throw new Error(insertError.message);
+  if (error) throw new Error(error.message);
 
   revalidateAll();
   return row as MarketingFile;
