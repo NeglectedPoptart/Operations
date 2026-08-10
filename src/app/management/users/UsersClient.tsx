@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { formatDate } from "@/lib/dates";
 import { ROLES, type Role } from "@/lib/roles";
-import type { Profile } from "@/lib/types";
-import { updateUserRole } from "./actions";
+import type { Broker, Profile } from "@/lib/types";
+import { updateUserBrokerId, updateUserRole } from "./actions";
 
 export default function UsersClient({
   initialProfiles,
+  brokers,
   currentUserId,
 }: {
   initialProfiles: Profile[];
+  brokers: Broker[];
   currentUserId: string | null;
 }) {
   const [profiles, setProfiles] = useState(initialProfiles);
@@ -27,6 +29,22 @@ export default function UsersClient({
     } catch (e) {
       setProfiles(previous);
       setError(e instanceof Error ? e.message : "Failed to update role.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function handleBrokerChange(id: string, brokerId: string) {
+    const value = brokerId || null;
+    const previous = profiles;
+    setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, broker_id: value } : p)));
+    setSavingId(id);
+    setError(null);
+    try {
+      await updateUserBrokerId(id, value);
+    } catch (e) {
+      setProfiles(previous);
+      setError(e instanceof Error ? e.message : "Failed to update broker.");
     } finally {
       setSavingId(null);
     }
@@ -50,12 +68,14 @@ export default function UsersClient({
             <tr>
               <th className="px-3 py-2">Email</th>
               <th className="px-3 py-2">Role</th>
+              <th className="px-3 py-2">Broker/Carrier Company</th>
               <th className="px-3 py-2">Added</th>
             </tr>
           </thead>
           <tbody>
             {profiles.map((profile) => {
               const isSelf = profile.id === currentUserId;
+              const isBrokerCarrier = profile.role === "broker_carrier";
               return (
                 <tr key={profile.id} className="border-t border-black/10 dark:border-white/10">
                   <td className="px-3 py-2">
@@ -77,6 +97,25 @@ export default function UsersClient({
                       ))}
                     </select>
                   </td>
+                  <td className="px-2 py-1.5">
+                    {isBrokerCarrier ? (
+                      <select
+                        value={profile.broker_id ?? ""}
+                        disabled={savingId === profile.id}
+                        onChange={(e) => handleBrokerChange(profile.id, e.target.value)}
+                        className="w-full max-w-[10rem] rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black disabled:opacity-60"
+                      >
+                        <option value="">-- select --</option>
+                        {brokers.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-black/30 dark:text-white/30">—</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 whitespace-nowrap text-black/60 dark:text-white/60">
                     {formatDate(profile.created_at.slice(0, 10))}
                   </td>
@@ -85,7 +124,7 @@ export default function UsersClient({
             })}
             {profiles.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={4} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No users yet.
                 </td>
               </tr>

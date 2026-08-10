@@ -66,14 +66,20 @@ export default async function RootLayout({
     }
   }
 
+  // A broker/carrier login only ever sees its one page (enforced in
+  // middleware.ts) - none of the internal-team chrome (nav dropdowns, the
+  // Warehouse/QC reminder, internal Notify popups, push registration)
+  // belongs in front of an outside carrier, so it's all skipped here too.
+  const isBrokerCarrier = role === "broker_carrier";
+
   return (
     <html lang="en" className={`${rajdhani.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <ConfirmProvider>
           <NavBar role={role} />
-          {reminderCheck && <DailyReminderModal check={reminderCheck} />}
-          {user && <NotificationPopup />}
-          {user && <PushRegistration />}
+          {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
+          {user && !isBrokerCarrier && <NotificationPopup />}
+          {user && !isBrokerCarrier && <PushRegistration />}
           <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
             {children}
           </main>

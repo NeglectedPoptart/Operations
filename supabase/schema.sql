@@ -15,7 +15,7 @@ create table if not exists profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text,
   role text not null default 'sales'
-    check (role in ('admin', 'operations', 'warehouse_qc', 'sales', 'accounting', 'buyer', 'executive')),
+    check (role in ('admin', 'operations', 'warehouse_qc', 'sales', 'accounting', 'buyer', 'executive', 'broker_carrier')),
   -- Last calendar date (business timezone) this user dismissed their daily
   -- Warehouse/QC login reminder - lets it show once per day per account
   -- regardless of device/browser.
@@ -50,6 +50,21 @@ drop policy if exists "admins update roles" on profiles;
 create policy "admins update roles" on profiles
   for update using (is_admin()) with check (is_admin());
 
+-- Same security-definer reasoning as is_admin() - lets brokers/
+-- broker_rate_entries policies check the caller's own role/broker_id
+-- without recursing back into profiles' own RLS.
+create or replace function is_broker_carrier()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and role = 'broker_carrier'
+  );
+$$ language sql security definer set search_path = public stable;
+
+create or replace function current_broker_id()
+returns uuid as $$
+  select broker_id from public.profiles where id = auth.uid();
+$$ language sql security definer set search_path = public stable;
+
 create or replace function handle_new_user()
 returns trigger as $$
 begin
@@ -78,6 +93,12 @@ create table if not exists brokers (
   position integer not null default 0,
   last_activity_at timestamptz
 );
+
+-- Which broker/carrier company a broker_carrier-role login is - null for
+-- every other role. Set from Management > User Roles once the role is
+-- chosen. Added here (rather than inline on the profiles table above) since
+-- it references brokers, which doesn't exist yet at that point in the file.
+alter table profiles add column if not exists broker_id uuid references brokers (id) on delete set null;
 
 -- Logistics: Invoicing - per-broker aging list of pasted statement lines.
 -- Merge-only import matched on (broker_id, invoice_no). Age is never
@@ -193,6 +214,9 @@ create table if not exists broker_rate_entries (
   broker_id uuid not null references brokers (id) on delete cascade,
   week_start_date date not null,
   rate numeric,
+  -- "Include timestamps so I can see when they updated information" - the
+  -- Broker Rate Entry page's whole reason for existing.
+  updated_at timestamptz not null default now(),
   unique (lane_id, broker_id, week_start_date)
 );
 
@@ -617,6 +641,11 @@ create trigger loads_set_updated_at
   before update on loads
   for each row execute function set_updated_at();
 
+drop trigger if exists broker_rate_entries_set_updated_at on broker_rate_entries;
+create trigger broker_rate_entries_set_updated_at
+  before update on broker_rate_entries
+  for each row execute function set_updated_at();
+
 drop trigger if exists invoice_statements_set_updated_at on invoice_statements;
 create trigger invoice_statements_set_updated_at
   before update on invoice_statements
@@ -759,9 +788,16 @@ drop policy if exists "authenticated full access" on invoice_statements;
 create policy "authenticated full access" on invoice_statements
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+-- Staff (everyone else) keep full access; a broker/carrier login only ever
+-- reads its own single row - never another carrier's name.
 drop policy if exists "authenticated full access" on brokers;
-create policy "authenticated full access" on brokers
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+drop policy if exists "staff full access to brokers" on brokers;
+create policy "staff full access to brokers" on brokers
+  for all using (not is_broker_carrier()) with check (not is_broker_carrier());
+
+drop policy if exists "broker carrier reads own broker" on brokers;
+create policy "broker carrier reads own broker" on brokers
+  for select using (is_broker_carrier() and id = current_broker_id());
 
 drop policy if exists "authenticated full access" on lanes;
 create policy "authenticated full access" on lanes
@@ -779,9 +815,17 @@ drop policy if exists "authenticated full access" on load_pickups;
 create policy "authenticated full access" on load_pickups
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+-- Staff keep full access; a broker/carrier login can read/write only rows
+-- tagged with its own broker_id - never another carrier's rates.
 drop policy if exists "authenticated full access" on broker_rate_entries;
-create policy "authenticated full access" on broker_rate_entries
-  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+drop policy if exists "staff full access to broker_rate_entries" on broker_rate_entries;
+create policy "staff full access to broker_rate_entries" on broker_rate_entries
+  for all using (not is_broker_carrier()) with check (not is_broker_carrier());
+
+drop policy if exists "broker carrier manages own rates" on broker_rate_entries;
+create policy "broker carrier manages own rates" on broker_rate_entries
+  for all using (is_broker_carrier() and broker_id = current_broker_id())
+  with check (is_broker_carrier() and broker_id = current_broker_id());
 
 drop policy if exists "authenticated full access" on rate_submissions;
 create policy "authenticated full access" on rate_submissions

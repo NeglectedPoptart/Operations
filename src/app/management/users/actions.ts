@@ -18,3 +18,16 @@ export async function updateUserRole(id: string, role: Role) {
   revalidatePath("/management/users");
   return data[0];
 }
+
+// Which broker/carrier company a broker_carrier login is - same admin-only
+// RLS policy as updateUserRole enforces this.
+export async function updateUserBrokerId(id: string, brokerId: string | null) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("profiles").update({ broker_id: brokerId }).eq("id", id).select();
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new Error("Update was blocked - only admins can change this.");
+  }
+  revalidatePath("/management/users");
+  return data[0];
+}

@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { canAccessTab, tabForPath, type Role } from "@/lib/roles";
+import { BROKER_CARRIER_PATH, canAccessTab, tabForPath, type Role } from "@/lib/roles";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -29,33 +29,49 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const pathname = request.nextUrl.pathname;
 
-  if (!user && !request.nextUrl.pathname.startsWith("/login")) {
+  if (!user) {
+    if (!pathname.startsWith("/login")) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+    return response;
+  }
+
+  // Every redirect below needs to know the role anyway (even the plain
+  // "signed in, hitting /login" case - a broker_carrier lands on their one
+  // page, not Home), so it's fetched once up front rather than only when a
+  // tab-gated path is hit.
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  const role = (profile?.role ?? null) as Role | null;
+  const homePath = role === "broker_carrier" ? BROKER_CARRIER_PATH : "/";
+
+  if (pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = homePath;
     return NextResponse.redirect(url);
   }
 
-  if (user && request.nextUrl.pathname.startsWith("/login")) {
+  // A broker/carrier login is a hardcoded exception to the whole tab
+  // system - exactly this one page, not even Home, regardless of what
+  // ROLE_TABS says (it has none). Checked before the generic tab logic so
+  // it can never fall through to it.
+  if (role === "broker_carrier") {
+    if (pathname !== BROKER_CARRIER_PATH) {
+      const url = request.nextUrl.clone();
+      url.pathname = BROKER_CARRIER_PATH;
+      return NextResponse.redirect(url);
+    }
+    return response;
+  }
+
+  const tab = tabForPath(pathname);
+  if (tab && !canAccessTab(role, tab)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
-  }
-
-  const tab = user ? tabForPath(request.nextUrl.pathname) : null;
-  if (user && tab) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    const role = (profile?.role ?? null) as Role | null;
-
-    if (!canAccessTab(role, tab)) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/";
-      return NextResponse.redirect(url);
-    }
   }
 
   return response;

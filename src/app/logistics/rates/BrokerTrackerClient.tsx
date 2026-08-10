@@ -288,7 +288,14 @@ export default function BrokerTrackerClient({
         ...prev,
         [weekStart]: [
           ...others,
-          { id: `${laneId}-${brokerId}`, lane_id: laneId, broker_id: brokerId, week_start_date: weekStart, rate },
+          {
+            id: `${laneId}-${brokerId}`,
+            lane_id: laneId,
+            broker_id: brokerId,
+            week_start_date: weekStart,
+            rate,
+            updated_at: new Date().toISOString(),
+          },
         ],
       };
     });

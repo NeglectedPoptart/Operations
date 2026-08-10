@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { canAccessTab, type Role, type Tab } from "@/lib/roles";
+import { BROKER_CARRIER_PATH, canAccessTab, type Role, type Tab } from "@/lib/roles";
 
 interface NavItem {
   href: string;
@@ -27,6 +27,7 @@ const NAV: NavCategory[] = [
       { href: "/logistics", label: "Summary" },
       { href: "/logistics/board", label: "List" },
       { href: "/logistics/rates", label: "Freight Rates" },
+      { href: "/logistics/broker-rate-entry", label: "Broker Rate Entry" },
       { href: "/logistics/freight-calculator", label: "Freight Calculator" },
       { href: "/logistics/weight-calculator", label: "Weight Calculator" },
       { href: "/logistics/invoicing", label: "Invoicing" },
@@ -98,7 +99,11 @@ export default function NavBar({ role }: { role: Role | null }) {
   const router = useRouter();
   const [openCategory, setOpenCategory] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
-  const nav = NAV.filter((category) => !category.tab || canAccessTab(role, category.tab));
+  const isBrokerCarrier = role === "broker_carrier";
+  // A broker/carrier login gets none of the normal categories - not even
+  // Home, which every other role gets for free (it has no `.tab`, so the
+  // filter below would otherwise always keep it).
+  const nav = isBrokerCarrier ? [] : NAV.filter((category) => !category.tab || canAccessTab(role, category.tab));
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -133,6 +138,11 @@ export default function NavBar({ role }: { role: Role | null }) {
         className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-3"
       >
         <div className="flex flex-wrap items-center gap-1">
+          {isBrokerCarrier && (
+            <Link href={BROKER_CARRIER_PATH} className="px-3 py-2 text-sm font-medium text-black/70 dark:text-white/70">
+              Broker Rate Entry
+            </Link>
+          )}
           {nav.map((category) => {
             if (category.href) {
               const active = pathname === category.href;

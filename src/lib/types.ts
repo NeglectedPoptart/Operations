@@ -108,6 +108,7 @@ export interface BrokerRateEntry {
   broker_id: string;
   week_start_date: string;
   rate: number | null;
+  updated_at: string;
 }
 
 export interface RateSubmission {
@@ -525,6 +526,9 @@ export interface Profile {
   id: string;
   email: string | null;
   role: Role;
+  // Which broker/carrier company this login is - only set when role is
+  // "broker_carrier", null for everyone else.
+  broker_id: string | null;
   created_at: string;
 }
 

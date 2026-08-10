@@ -24,6 +24,7 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
       { label: "Summary", href: "/logistics" },
       { label: "List", href: "/logistics/board" },
       { label: "Freight Rates", href: "/logistics/rates" },
+      { label: "Broker Rate Entry", href: "/logistics/broker-rate-entry" },
       { label: "Freight Calculator", href: "/logistics/freight-calculator" },
       { label: "Weight Calculator", href: "/logistics/weight-calculator" },
       { label: "Invoicing", href: "/logistics/invoicing" },
@@ -161,6 +162,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     pasFiles,
     marketingFiles,
     marketingTasks,
+    brokerRateEntries,
   ] = await Promise.all([
     maxUpdatedAt(supabase, "loads"),
     maxUpdatedAt(supabase, "invoice_statements"),
@@ -188,12 +190,14 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     maxUpdatedAt(supabase, "pas_files"),
     maxCreatedAt(supabase, "marketing_files"),
     maxUpdatedAt(supabase, "marketing_tasks"),
+    maxUpdatedAt(supabase, "broker_rate_entries"),
   ]);
 
   return {
     "/logistics": null, // dashboard summary - nothing of its own to edit
     "/logistics/board": loads,
-    "/logistics/rates": null, // broker_rate_entries has no updated_at column tracked yet
+    "/logistics/rates": brokerRateEntries,
+    "/logistics/broker-rate-entry": brokerRateEntries,
     "/logistics/freight-calculator": null, // calculator only, nothing persisted
     "/logistics/weight-calculator": null,
     "/logistics/invoicing": invoiceStatements,
