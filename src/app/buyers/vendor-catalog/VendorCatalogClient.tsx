@@ -1,18 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { updatePriceSheetItem } from "@/app/buyers/price-sheets/actions";
 import { formatDate, todayISO } from "@/lib/dates";
-import { PRODUCE_CATEGORIES } from "@/lib/priceSheetParse";
+import { normalizeCategory, PRODUCE_CATEGORIES } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor, VendorCommodity } from "@/lib/types";
 
 function formatMoney(n: number | null): string {
   return n === null ? "CALL" : `$${n.toFixed(2)}`;
 }
 
+const sizeInput =
+  "w-20 min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-sm transition-colors hover:bg-black/5 focus:border-green-500 focus:bg-white focus:text-black focus:outline-none focus:ring-1 focus:ring-green-500 dark:hover:bg-white/10 dark:focus:bg-black/40";
+
 export default function VendorCatalogClient({
   vendors,
   commodities,
-  items,
+  items: initialItems,
 }: {
   vendors: Vendor[];
   commodities: VendorCommodity[];
@@ -20,15 +24,30 @@ export default function VendorCatalogClient({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [items, setItems] = useState(initialItems);
+
+  // Auto-categorization comes in wrong sometimes (a size/grade the parser
+  // misread) - this lets it be fixed right here rather than only in Price
+  // Sheets, and the fix feeds straight into the vendor average / FOB
+  // comparison since both read from the same price_sheet_items rows.
+  function handleSizeSave(id: string, size: string) {
+    const trimmed = size.trim();
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, size: trimmed || null } : i)));
+    updatePriceSheetItem(id, { size: trimmed || null }).catch(() => {});
+  }
 
   const today = todayISO();
   const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
 
+  // Normalized so a vendor filed under an old raw label ("Broccoli",
+  // "Tomatoes"...) still counts toward the canonical category tile
+  // (normalizeCategory upgrades those, same as it does for display).
   const vendorIdsByCategory = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const c of commodities) {
-      if (!map.has(c.category)) map.set(c.category, []);
-      map.get(c.category)!.push(c.vendor_id);
+      const category = normalizeCategory(c.category);
+      if (!map.has(category)) map.set(category, []);
+      map.get(category)!.push(c.vendor_id);
     }
     return map;
   }, [commodities]);
@@ -36,7 +55,7 @@ export default function VendorCatalogClient({
   const itemsByVendorAndCategory = useMemo(() => {
     const map = new Map<string, PriceSheetItem[]>();
     for (const item of items) {
-      const key = `${item.vendor_id}:${item.category}`;
+      const key = `${item.vendor_id}:${normalizeCategory(item.category)}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(item);
     }
@@ -168,7 +187,13 @@ export default function VendorCatalogClient({
                         {rows.map((r) => (
                           <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
                             <td className="px-2 py-1">{r.item_label}</td>
-                            <td className="px-2 py-1">{r.size ?? ""}</td>
+                            <td className="px-2 py-1">
+                              <input
+                                defaultValue={r.size ?? ""}
+                                onBlur={(e) => handleSizeSave(r.id, e.target.value)}
+                                className={sizeInput}
+                              />
+                            </td>
                             <td className="px-2 py-1">{formatMoney(r.price)}</td>
                           </tr>
                         ))}

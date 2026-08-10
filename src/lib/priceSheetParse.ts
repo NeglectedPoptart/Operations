@@ -26,9 +26,19 @@ export interface ParsePriceSheetResult {
 // a "ROMAS # 1 - GREENHOUSE" header). Deliberately includes a couple of
 // common misspellings/emoji seen in real vendor texts (zucchini/zuchinni,
 // the 🥦/🥕/🌶/🥒/🍅/🍋/🧅 shorthand some vendors lean on instead of words).
+// Broccoli / Crowns is the canonical name for every spelling a vendor uses
+// for this commodity ("Crowns", "Emperor Crowns", "Broccoli Crowns", plain
+// "Broccoli"...) - see classifyBroccoliGrade() below for how the #1/#2
+// grade distinction is pulled out of that same text.
+export const BROCCOLI_CROWNS_CATEGORY = "Broccoli / Crowns";
+
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   "Bell Pepper": ["bell pepper", "bell peppers"],
-  Broccoli: ["broccoli", "emperor crown", "🥦"],
+  // Checked before Broccoli / Crowns below - "Iceless Broccoli" contains
+  // "broccoli" too, but the business treats it as a wholly separate item,
+  // not a grade of Broccoli / Crowns.
+  "Iceless Broccoli": ["iceless"],
+  [BROCCOLI_CROWNS_CATEGORY]: ["broccoli", "crown", "🥦"],
   Carrots: ["carrot", "🥕"],
   Cauliflower: ["cauliflower"],
   Celery: ["celery"],
@@ -74,7 +84,14 @@ const CATEGORY_ALIASES: Record<string, string> = {
   lettuces: "Lettuce",
   cauliflowers: "Cauliflower",
   celeries: "Celery",
-  broccolis: "Broccoli",
+  broccolis: BROCCOLI_CROWNS_CATEGORY,
+  broccoli: BROCCOLI_CROWNS_CATEGORY,
+  crowns: BROCCOLI_CROWNS_CATEGORY,
+  crown: BROCCOLI_CROWNS_CATEGORY,
+  "broccoli crowns": BROCCOLI_CROWNS_CATEGORY,
+  "crowns broccoli": BROCCOLI_CROWNS_CATEGORY,
+  "emperor crown": BROCCOLI_CROWNS_CATEGORY,
+  "emperor crowns": BROCCOLI_CROWNS_CATEGORY,
   carrot: "Carrots",
   beet: "Beets",
   "bell peppers": "Bell Pepper",
@@ -105,6 +122,22 @@ export function classify(text: string): string {
     if (keywords.some((k) => EMOJI_RE.test(k) && t.includes(k))) return category;
   }
   return "Other";
+}
+
+// Vendors write Broccoli / Crowns grades in wildly different ways - a bare
+// "Crowns" or "Emperor Crowns" line, an explicit "#1"/"#2"/"No. 2" marker,
+// or a plain-language "Green"/"Generic" label. Per an explicit rule from
+// the business: a label reads as #2 only if it says "green" or "generic"
+// (or carries an explicit #2/No. 2 marker) - everything else, including a
+// plain label like "Emperor Crowns", defaults to #1. This is also applied
+// to FOB Pharr's own variety text (Fu Choy Red/Green, Generic) so both
+// sides of the vendor-average comparison grade the same way.
+export function classifyBroccoliGrade(text: string): "#1" | "#2" {
+  const t = text.toLowerCase();
+  if (/#\s*2\b|\bno\.?\s*2\b/.test(t)) return "#2";
+  if (/#\s*1\b|\bno\.?\s*1\b/.test(t)) return "#1";
+  if (t.includes("green") || t.includes("generic")) return "#2";
+  return "#1";
 }
 
 // Same 2-or-4-digit-year date parser used across the other paste parsers in
@@ -207,10 +240,17 @@ export function parsePriceSheetPaste(raw: string): ParsePriceSheetResult {
         rawCategory === "Other" ? [headerRest, labelRest].filter(Boolean).join(" ") || "Item" : labelRest || "Item";
       const category = rawCategory !== "Other" ? rawCategory : classify(headerText);
 
+      // Broccoli / Crowns comes from dozens of different vendor spellings
+      // that would otherwise each show up as their own line on the price
+      // sheet breakdown - collapsing the label to the canonical name and
+      // folding the #1/#2 grade into the size box means every vendor's
+      // quote groups into exactly two buckets (see classifyBroccoliGrade).
+      const isBroccoliCrowns = category === BROCCOLI_CROWNS_CATEGORY;
+
       items.push({
         category,
-        itemLabel,
-        size,
+        itemLabel: isBroccoliCrowns ? BROCCOLI_CROWNS_CATEGORY : itemLabel,
+        size: isBroccoliCrowns ? classifyBroccoliGrade(`${headerText} ${line}`) : size,
         price: price !== null && Number.isFinite(price) ? price : null,
       });
       continue;

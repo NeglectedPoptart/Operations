@@ -18,10 +18,10 @@ import {
 import PriceComparisonImport from "./PriceComparisonImport";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
-// The saved sheet's Item cell folds size into the label so the table doesn't
-// need a separate column ("25 lbs" becomes part of "Bell Pepper 25 lbs") -
-// blur handlers below persist that combined text back into item_label and
-// clear size, so it stays folded in going forward.
+// Item and Size are separate, independently editable fields (size holds a
+// grade like "#1"/"#2" for Broccoli / Crowns, not just a physical size) -
+// combinedItemLabel() below only folds them together for read-only display
+// (copy-for-email/image, the commodity breakdown), never for editing.
 const cellInput =
   "min-w-0 rounded border border-transparent bg-transparent px-1.5 py-1 text-[13px] font-medium text-black transition-colors hover:bg-black/[0.04] focus:border-green-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-green-500 dark:text-white dark:hover:bg-white/[0.06] dark:focus:bg-black/40";
 const PRICE_SHEET_HEADERS = ["Category", "Item", "Price"];
@@ -490,6 +490,9 @@ function VendorSection({
                 <th className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
                   Item
                 </th>
+                <th className="px-3 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
+                  Size
+                </th>
                 <th className="px-3 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
                   Price
                 </th>
@@ -498,7 +501,6 @@ function VendorSection({
             </thead>
             <tbody>
               {items.map((item) => {
-                const label = combinedItemLabel(item);
                 return (
                   <tr
                     key={item.id}
@@ -515,9 +517,17 @@ function VendorSection({
                     </td>
                     <td className="px-1 py-0.5">
                       <input
-                        defaultValue={label}
-                        size={Math.max(label.length, 6)}
-                        onBlur={(e) => onFieldSave(item.id, { item_label: e.target.value, size: null })}
+                        defaultValue={item.item_label}
+                        size={Math.max(item.item_label.length, 6)}
+                        onBlur={(e) => onFieldSave(item.id, { item_label: e.target.value })}
+                        className={cellInput}
+                      />
+                    </td>
+                    <td className="px-1 py-0.5">
+                      <input
+                        defaultValue={item.size ?? ""}
+                        size={Math.max((item.size ?? "").length, 4)}
+                        onBlur={(e) => onFieldSave(item.id, { size: e.target.value.trim() === "" ? null : e.target.value })}
                         className={cellInput}
                       />
                     </td>

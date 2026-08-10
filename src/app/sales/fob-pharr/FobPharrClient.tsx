@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
-import { categoryForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
+import { categoryForFobRow, gradeForFobRow, vendorAverageKeyForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
 import { fobFamilyLinkedKeys } from "@/lib/pageStatus";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
@@ -332,16 +332,30 @@ function PriceEmailPanel({
 // data to make an average" - shows nothing at all until there's at least
 // one same-day vendor quote for the matching commodity, rather than
 // comparing against stale or nonexistent data.
-function FobVsVendorBadge({ fob, category, vendorAverages }: { fob: number | null; category: string; vendorAverages: Record<string, VendorAverage> }) {
+function FobVsVendorBadge({
+  fob,
+  commodityGroup,
+  variety,
+  vendorAverages,
+}: {
+  fob: number | null;
+  commodityGroup: string;
+  variety: string | null;
+  vendorAverages: Record<string, VendorAverage>;
+}) {
   if (fob === null) return null;
-  const avg = vendorAverages[category.toLowerCase()];
+  const avg = vendorAverages[vendorAverageKeyForFobRow(commodityGroup, variety)];
   if (!avg) return null;
+
+  const category = categoryForFobRow(commodityGroup, variety);
+  const grade = gradeForFobRow(commodityGroup, variety);
+  const label = grade ? `${category} ${grade}` : category;
 
   const pct = ((fob - avg.average) / avg.average) * 100;
   const over = pct >= 0;
   return (
     <span
-      title={`Today's vendor average for ${category}: $${avg.average.toFixed(2)} across ${avg.count} quote${avg.count === 1 ? "" : "s"}`}
+      title={`Today's vendor average for ${label}: $${avg.average.toFixed(2)} across ${avg.count} quote${avg.count === 1 ? "" : "s"}`}
       className={`ml-1 whitespace-nowrap text-xs font-semibold ${
         over ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
       }`}
@@ -469,7 +483,8 @@ function FobItemsSection({
                         />
                         <FobVsVendorBadge
                           fob={item.fob}
-                          category={categoryForFobRow(item.commodity_group, item.variety)}
+                          commodityGroup={item.commodity_group}
+                          variety={item.variety}
                           vendorAverages={vendorAverages}
                         />
                       </div>
