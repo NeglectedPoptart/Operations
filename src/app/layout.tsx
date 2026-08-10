@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Rajdhani } from "next/font/google";
+import AppHeader from "@/components/AppHeader";
 import ConfirmProvider from "@/components/ConfirmProvider";
 import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
@@ -76,6 +77,7 @@ export default async function RootLayout({
     <html lang="en" className={`${rajdhani.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <ConfirmProvider>
+          <AppHeader />
           <NavBar role={role} />
           {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
           {user && !isBrokerCarrier && <NotificationPopup />}
