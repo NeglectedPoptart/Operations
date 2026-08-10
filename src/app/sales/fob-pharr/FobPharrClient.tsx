@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
+import { categoryForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
 import { fobFamilyLinkedKeys } from "@/lib/pageStatus";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
@@ -327,6 +328,29 @@ function PriceEmailPanel({
   );
 }
 
+// "once we start uploading price sheets for that day and price lists has
+// data to make an average" - shows nothing at all until there's at least
+// one same-day vendor quote for the matching commodity, rather than
+// comparing against stale or nonexistent data.
+function FobVsVendorBadge({ fob, category, vendorAverages }: { fob: number | null; category: string; vendorAverages: Record<string, VendorAverage> }) {
+  if (fob === null) return null;
+  const avg = vendorAverages[category.toLowerCase()];
+  if (!avg) return null;
+
+  const pct = ((fob - avg.average) / avg.average) * 100;
+  const over = pct >= 0;
+  return (
+    <span
+      title={`Today's vendor average for ${category}: $${avg.average.toFixed(2)} across ${avg.count} quote${avg.count === 1 ? "" : "s"}`}
+      className={`ml-1 whitespace-nowrap text-xs font-semibold ${
+        over ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+      }`}
+    >
+      {over ? "▲" : "▼"} {Math.abs(pct).toFixed(0)}%
+    </span>
+  );
+}
+
 function FobItemsSection({
   title,
   section,
@@ -336,6 +360,7 @@ function FobItemsSection({
   onAdd,
   onAddCategory,
   onDelete,
+  vendorAverages,
 }: {
   title: string;
   section: FobSection;
@@ -348,6 +373,7 @@ function FobItemsSection({
   onAdd: (section: FobSection) => Promise<void>;
   onAddCategory: (section: FobSection, categoryName: string) => Promise<void>;
   onDelete: (id: string) => void;
+  vendorAverages: Record<string, VendorAverage>;
 }) {
   const groups = useMemo(() => groupFobItems(items, section), [items, section]);
   const [adding, setAdding] = useState(false);
@@ -432,14 +458,21 @@ function FobItemsSection({
                         className={field}
                       />
                     </td>
-                    <td className="min-w-[6rem] px-1 py-1">
-                      <input
-                        type="number"
-                        step="any"
-                        defaultValue={item.fob ?? ""}
-                        onBlur={(e) => onFieldSave(item.id, { fob: parseNum(e.target.value) })}
-                        className={`${field} font-semibold`}
-                      />
+                    <td className="min-w-[8rem] px-1 py-1">
+                      <div className="flex items-center">
+                        <input
+                          type="number"
+                          step="any"
+                          defaultValue={item.fob ?? ""}
+                          onBlur={(e) => onFieldSave(item.id, { fob: parseNum(e.target.value) })}
+                          className={`${field} font-semibold`}
+                        />
+                        <FobVsVendorBadge
+                          fob={item.fob}
+                          category={categoryForFobRow(item.commodity_group, item.variety)}
+                          vendorAverages={vendorAverages}
+                        />
+                      </div>
                     </td>
                     <td className="px-2 py-1.5">
                       <button
@@ -511,9 +544,11 @@ function FobItemsSection({
 export default function FobPharrClient({
   initialItems,
   initialFreightRates,
+  vendorAverages,
 }: {
   initialItems: FobItem[];
   initialFreightRates: FobFreightRate[];
+  vendorAverages: Record<string, VendorAverage>;
 }) {
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
@@ -715,6 +750,7 @@ export default function FobPharrClient({
             onAdd={handleAddItem}
             onAddCategory={handleAddCategory}
             onDelete={handleDeleteItem}
+            vendorAverages={vendorAverages}
           />
           <FobItemsSection
             title="Hot House"
@@ -725,6 +761,7 @@ export default function FobPharrClient({
             onAdd={handleAddItem}
             onAddCategory={handleAddCategory}
             onDelete={handleDeleteItem}
+            vendorAverages={vendorAverages}
           />
         </div>
       </div>

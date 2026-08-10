@@ -92,7 +92,11 @@ const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;
 // is - a couple of these emoji (🥒 for both cucumber and squash-family
 // vendors, say) are ambiguous enough that an explicit word on the same line
 // ("Mex Gray Squash 🥒") should always win over a shared shorthand symbol.
-function classify(text: string): string {
+// Exported for reuse by fobVendorCompare.ts, which classifies FOB Pharr's
+// own commodity_group/variety text against this same keyword set so a
+// vendor-average comparison lines up with the identical category a paste
+// import would have assigned.
+export function classify(text: string): string {
   const t = text.toLowerCase();
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
     if (keywords.some((k) => !EMOJI_RE.test(k) && t.includes(k))) return category;

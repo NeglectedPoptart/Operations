@@ -133,6 +133,58 @@ export default function VendorCatalogClient({
         )}
       </div>
 
+      {selectedCategory && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+          <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Who sells {selectedCategory}</h2>
+          {sellersForSelected.length === 0 ? (
+            <p className="text-sm text-black/40 dark:text-white/40">
+              No vendor has been recorded selling {selectedCategory} yet - it&apos;ll show up here the first time it
+              appears on a pasted price sheet.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {sellersForSelected.map(({ vendor, isCurrent, rows }) => (
+                <div key={vendor.id} className="rounded border border-black/10 p-3 dark:border-white/10">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold">{vendor.name}</span>
+                    <span className="text-xs text-black/40 dark:text-white/40">
+                      {isCurrent
+                        ? `Priced today, ${formatDate(vendor.sheet_date)}`
+                        : vendor.sheet_date
+                          ? `Last sheet ${formatDate(vendor.sheet_date)} (not today - no current price)`
+                          : "No sheet pasted yet"}
+                    </span>
+                  </div>
+                  {rows.length > 0 && (
+                    <table className="mt-2 w-full text-sm">
+                      <thead className="bg-black/5 text-left dark:bg-white/5">
+                        <tr>
+                          <th className="px-2 py-1">Item</th>
+                          <th className="px-2 py-1">Size</th>
+                          <th className="px-2 py-1">Price</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
+                            <td className="px-2 py-1">{r.item_label}</td>
+                            <td className="px-2 py-1">{r.size ?? ""}</td>
+                            <td className="px-2 py-1">{formatMoney(r.price)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Below the commodity results on purpose - this list can get long,
+          and clicking a commodity above shouldn't require scrolling past it
+          to see the answer. */}
       <div className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
         <h2 className="text-lg font-bold text-green-700 dark:text-green-400">All Vendors</h2>
         {allVendors.length === 0 ? (
@@ -186,55 +238,6 @@ export default function VendorCatalogClient({
           </div>
         )}
       </div>
-
-      {selectedCategory && (
-        <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-          <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Who sells {selectedCategory}</h2>
-          {sellersForSelected.length === 0 ? (
-            <p className="text-sm text-black/40 dark:text-white/40">
-              No vendor has been recorded selling {selectedCategory} yet - it&apos;ll show up here the first time it
-              appears on a pasted price sheet.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {sellersForSelected.map(({ vendor, isCurrent, rows }) => (
-                <div key={vendor.id} className="rounded border border-black/10 p-3 dark:border-white/10">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold">{vendor.name}</span>
-                    <span className="text-xs text-black/40 dark:text-white/40">
-                      {isCurrent
-                        ? `Priced today, ${formatDate(vendor.sheet_date)}`
-                        : vendor.sheet_date
-                          ? `Last sheet ${formatDate(vendor.sheet_date)} (not today - no current price)`
-                          : "No sheet pasted yet"}
-                    </span>
-                  </div>
-                  {rows.length > 0 && (
-                    <table className="mt-2 w-full text-sm">
-                      <thead className="bg-black/5 text-left dark:bg-white/5">
-                        <tr>
-                          <th className="px-2 py-1">Item</th>
-                          <th className="px-2 py-1">Size</th>
-                          <th className="px-2 py-1">Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r) => (
-                          <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
-                            <td className="px-2 py-1">{r.item_label}</td>
-                            <td className="px-2 py-1">{r.size ?? ""}</td>
-                            <td className="px-2 py-1">{formatMoney(r.price)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
