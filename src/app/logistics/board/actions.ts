@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import zipcodes from "zipcodes";
 import { createClient } from "@/lib/supabase/server";
+import { todayISO } from "@/lib/dates";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
 import { splitDestinationLabel } from "@/lib/destination";
 import type { LoadStatus } from "@/lib/types";
@@ -185,6 +186,18 @@ export async function updateLoadStatus(id: string, status: LoadStatus) {
   const { error } = await supabase.from("loads").update({ status }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
+}
+
+// Marks the Pending Orders Check popup seen for today - same one-per-day-
+// per-account pattern as the Warehouse/QC daily reminder, just for this
+// page's own field.
+export async function markPendingOrdersSeen() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase.from("profiles").update({ last_pending_orders_seen_date: todayISO() }).eq("id", user.id);
 }
 
 export async function updateLoadReady(id: string, readyToLoad: boolean) {

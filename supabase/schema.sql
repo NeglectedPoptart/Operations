@@ -20,6 +20,8 @@ create table if not exists profiles (
   -- Warehouse/QC login reminder - lets it show once per day per account
   -- regardless of device/browser.
   last_reminder_seen_date date,
+  -- Same idea, for the Logistics List's "Pending Orders Check" popup.
+  last_pending_orders_seen_date date,
   created_at timestamptz not null default now()
 );
 

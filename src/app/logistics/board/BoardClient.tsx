@@ -6,6 +6,7 @@ import { groupByLoadingDate } from "@/lib/loadGrouping";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
+import PendingOrdersPopup from "./PendingOrdersPopup";
 import RateConfirmationImport from "./RateConfirmationImport";
 
 export default function BoardClient({
@@ -13,11 +14,13 @@ export default function BoardClient({
   brokers,
   hubOptions,
   cityOptions,
+  initialOverdueLoads,
 }: {
   loads: Load[];
   brokers: Broker[];
   hubOptions: string[];
   cityOptions: string[];
+  initialOverdueLoads: Load[] | null;
 }) {
   const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(undefined);
   const [newStatus, setNewStatus] = useState<LoadStatus>("pending_to_load");
@@ -44,6 +47,8 @@ export default function BoardClient({
 
   return (
     <div className="space-y-8">
+      {initialOverdueLoads !== null && <PendingOrdersPopup initialLoads={initialOverdueLoads} />}
+
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-2 text-sm">
           <span className="font-medium">Filter by customer</span>
