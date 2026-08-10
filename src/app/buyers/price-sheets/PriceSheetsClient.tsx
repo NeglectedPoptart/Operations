@@ -128,44 +128,12 @@ function CommodityBreakdown({ category, items }: { category: string; items: Pric
   );
 }
 
-const TOP_PICKS_STORAGE_KEY = "priceSheets.topCategories";
-
 function CommoditySummary({ items }: { items: PriceSheetItem[] }) {
   const categoryCounts = useMemo(() => computeCategoryCounts(items), [items]);
   const categoryNames = useMemo(
     () => [...categoryCounts].map((c) => c.category).sort((a, b) => a.localeCompare(b)),
     [categoryCounts],
   );
-
-  // Lazy initializer runs once on mount only - reads a saved pick from
-  // localStorage, or seeds from whatever's most-quoted right now. Later
-  // changes to `items` (edits, new imports) never override a pick the user
-  // already made.
-  const [topPicks, setTopPicks] = useState<string[]>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const saved = JSON.parse(window.localStorage.getItem(TOP_PICKS_STORAGE_KEY) ?? "null");
-        if (Array.isArray(saved) && saved.length === 5 && saved.every((p) => typeof p === "string")) return saved;
-      } catch {
-        // ignore malformed/blocked storage, fall through to computed defaults
-      }
-    }
-    const defaults = categoryCounts.slice(0, 5).map((c) => c.category);
-    while (defaults.length < 5) defaults.push("");
-    return defaults;
-  });
-
-  function setPick(index: number, value: string) {
-    setTopPicks((prev) => {
-      const next = prev.map((p, i) => (i === index ? value : p));
-      try {
-        window.localStorage.setItem(TOP_PICKS_STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // ignore - localStorage may be unavailable (private browsing, etc.)
-      }
-      return next;
-    });
-  }
 
   const [lookupInput, setLookupInput] = useState("");
   const [lookupCategory, setLookupCategory] = useState<string | null>(null);
@@ -178,70 +146,35 @@ function CommoditySummary({ items }: { items: PriceSheetItem[] }) {
   if (categoryNames.length === 0) return null;
 
   return (
-    <div className="space-y-4 rounded-lg border border-black/10 p-4 dark:border-white/10">
-      <div>
-        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Top 5 Commodities</h2>
-        <p className="text-xs text-black/50 dark:text-white/50">
-          Pick 5 categories to track - broken down by item, Hi/Lo/Average across every vendor&apos;s current
-          sheet.
-        </p>
+    <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+      <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Look up a commodity</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          list="price-sheet-summary-categories"
+          value={lookupInput}
+          onChange={(e) => setLookupInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleLookup();
+            }
+          }}
+          placeholder="Type a category..."
+          className="w-56 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+        />
+        <datalist id="price-sheet-summary-categories">
+          {categoryNames.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+        <button
+          onClick={handleLookup}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+        >
+          Show
+        </button>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {topPicks.map((pick, i) => (
-          <select
-            key={i}
-            value={pick}
-            onChange={(e) => setPick(i, e.target.value)}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
-          >
-            <option value="">-- Select category {i + 1} --</option>
-            {categoryNames.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        ))}
-      </div>
-      <div className="space-y-4">
-        {topPicks.filter(Boolean).map((category) => (
-          <CommodityBreakdown key={category} category={category} items={items} />
-        ))}
-        {topPicks.every((p) => !p) && (
-          <p className="text-xs text-black/40 dark:text-white/40">Pick up to 5 categories above to see them here.</p>
-        )}
-      </div>
-
-      <div className="space-y-3 border-t border-black/10 pt-4 dark:border-white/10">
-        <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Look up another commodity</h3>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            list="price-sheet-summary-categories"
-            value={lookupInput}
-            onChange={(e) => setLookupInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleLookup();
-              }
-            }}
-            placeholder="Type a category..."
-            className="w-56 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
-          />
-          <datalist id="price-sheet-summary-categories">
-            {categoryNames.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
-          <button
-            onClick={handleLookup}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-          >
-            Show
-          </button>
-        </div>
-        {lookupCategory && <CommodityBreakdown category={lookupCategory} items={items} />}
-      </div>
+      {lookupCategory && <CommodityBreakdown category={lookupCategory} items={items} />}
     </div>
   );
 }
