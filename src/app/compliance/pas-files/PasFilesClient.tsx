@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
 import { escapeHtml } from "@/lib/fobPricing";
@@ -228,6 +229,7 @@ export default function PasFilesClient({
     // below has more room before it needs to scroll left/right.
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="space-y-4">
+        <UpdateStatusButton pageKey="pas-files" />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">PAS Files</h1>
           <div className="flex flex-wrap gap-2">

@@ -1,6 +1,8 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
+import { fobFamilyLinkedKeys } from "@/lib/pageStatus";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
   buildWhatsAppSection,
@@ -283,6 +285,7 @@ export default function EastCoastPricingClient({
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
+        <UpdateStatusButton pageKey="delivered-east-coast" linkedKeys={fobFamilyLinkedKeys("delivered-east-coast")} />
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">East Coast Delivered Pricing</h1>
           <div className="flex gap-2">

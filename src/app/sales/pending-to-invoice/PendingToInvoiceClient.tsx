@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { daysSince, formatDate } from "@/lib/dates";
 import type { PendingToInvoiceItem } from "@/lib/types";
 import { clearInvoicingItems, deletePendingToInvoiceItem } from "./actions";
@@ -122,6 +123,7 @@ export default function PendingToInvoiceClient({ initialItems }: { initialItems:
     // this is a wide list and needs the room before it has to scroll.
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="space-y-8">
+        <UpdateStatusButton pageKey="pending-to-invoice" />
         <div className="space-y-4">
           <div>
             <h1 className="text-2xl font-bold">Pending to Invoice</h1>

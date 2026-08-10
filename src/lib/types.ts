@@ -594,3 +594,11 @@ export interface MarketingTask {
   created_at: string;
   updated_at: string;
 }
+
+// Manual "up to date" confirmation per page -------------------------------
+
+export interface PageStatus {
+  page_key: string;
+  marked_at: string;
+  marked_by: string | null;
+}

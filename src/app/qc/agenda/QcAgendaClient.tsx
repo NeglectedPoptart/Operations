@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
 import {
@@ -370,6 +371,9 @@ export default function QcAgendaClient({
 
   return (
     <div className="space-y-6">
+      <div className="print:hidden">
+        <UpdateStatusButton pageKey="qc-agenda" />
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-2xl font-bold">QC Agenda</h1>
         <div className="flex gap-2">

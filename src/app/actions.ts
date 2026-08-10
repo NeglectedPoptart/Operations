@@ -138,3 +138,48 @@ export async function acknowledgeNotification(recipientId: string) {
   if (error) console.error("acknowledgeNotification failed:", error.message);
   revalidatePath("/management/notifications");
 }
+
+export interface PageStatusInfo {
+  markedAt: string | null;
+  markedByEmail: string | null;
+}
+
+// Self-contained (UpdateStatusButton fetches its own status on mount rather
+// than every page threading it through as a prop) - one fewer thing every
+// page.tsx/Client pair needs to wire up just to show this button.
+export async function getPageStatus(pageKey: string): Promise<PageStatusInfo> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("page_status")
+    .select("marked_at, marked_by")
+    .eq("page_key", pageKey)
+    .maybeSingle();
+  if (!data) return { markedAt: null, markedByEmail: null };
+
+  const markedBy = data.marked_by as string | null;
+  let markedByEmail: string | null = null;
+  if (markedBy) {
+    const { data: profile } = await supabase.from("profiles").select("email").eq("id", markedBy).maybeSingle();
+    markedByEmail = (profile?.email as string | null) ?? null;
+  }
+  return { markedAt: data.marked_at as string, markedByEmail };
+}
+
+// Marks every key in pageKeys at once (e.g. FOB Pharr's button also covers
+// the three Delivered pages derived from the same pricing data) with the
+// same timestamp/person, so they all read as confirmed together.
+export async function markPageUpToDate(pageKeys: string[]): Promise<PageStatusInfo> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("page_status")
+    .upsert(
+      pageKeys.map((key) => ({ page_key: key, marked_at: now, marked_by: user?.id ?? null })),
+      { onConflict: "page_key" },
+    );
+  if (error) throw new Error(error.message);
+  return { markedAt: now, markedByEmail: user?.email ?? null };
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
 import {
   isBellPepper,
   isBroccoli,
@@ -330,6 +331,7 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-2 sm:px-4">
       <div className="mx-auto max-w-[110rem] space-y-6">
+        <UpdateStatusButton pageKey="cold-inventory" />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">Cold Inventory</h1>
           <button

@@ -2,6 +2,8 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
+import { fobFamilyLinkedKeys } from "@/lib/pageStatus";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
   buildWhatsAppSection,
@@ -667,6 +669,8 @@ export default function FobPharrClient({
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <h1 className="text-2xl font-bold">FOB Pricing</h1>
+
+        <UpdateStatusButton pageKey="fob-pharr" linkedKeys={fobFamilyLinkedKeys("fob-pharr")} />
 
         <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />
 

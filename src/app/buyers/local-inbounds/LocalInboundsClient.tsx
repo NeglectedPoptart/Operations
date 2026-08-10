@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
 import type { LocalInbound } from "@/lib/types";
 import { addLocalInboundRow, deleteLocalInboundRow, updateLocalInboundRow } from "./actions";
 
@@ -220,6 +221,7 @@ export default function LocalInboundsClient({
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="space-y-6">
+        <UpdateStatusButton pageKey="local-inbounds" />
         <h1 className="text-2xl font-bold">Local Inbounds</h1>
 
         <ProgressSummary

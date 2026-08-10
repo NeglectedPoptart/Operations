@@ -1244,3 +1244,16 @@ drop policy if exists "authenticated manage marketing-assets" on storage.objects
 create policy "authenticated manage marketing-assets" on storage.objects
   for all using (bucket_id = 'marketing-assets' and auth.role() = 'authenticated')
   with check (bucket_id = 'marketing-assets' and auth.role() = 'authenticated');
+
+-- Manual "up to date" confirmation per page ---------------------------------
+create table if not exists page_status (
+  page_key text primary key,
+  marked_at timestamptz not null,
+  marked_by uuid references profiles (id) on delete set null
+);
+
+alter table page_status enable row level security;
+
+drop policy if exists "authenticated full access" on page_status;
+create policy "authenticated full access" on page_status
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

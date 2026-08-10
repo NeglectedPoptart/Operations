@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { createClient } from "@/lib/supabase/client";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { AM_HOLDOVER_STATUSES, type AmHoldover, type AmHoldoverStatus } from "@/lib/types";
@@ -85,6 +86,9 @@ export default function AmHoldoversClient({
 
   return (
     <div className="space-y-4">
+      <div className="print:hidden">
+        <UpdateStatusButton pageKey="am-holdovers" />
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <h1 className="text-2xl font-bold">AM Holdovers</h1>
         <button
