@@ -12,7 +12,7 @@ export default function AppHeader() {
         <img src="/logo-harvest-best.png" alt="Harvest Best" className="h-12 w-auto shrink-0" />
         <div className="leading-tight">
           <p
-            className="bg-clip-text text-lg font-extrabold tracking-wide text-transparent"
+            className="bg-clip-text text-2xl font-extrabold tracking-wide text-transparent"
             style={{ backgroundImage: GOLD_GRADIENT }}
           >
             HOPS
