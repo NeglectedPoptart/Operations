@@ -90,6 +90,17 @@ function matchKey(orderNo: string, po: string): string {
   return `${orderNo.trim().toLowerCase()}|${po.trim().toLowerCase()}`;
 }
 
+// Displayed oldest ship date to newest, top to bottom, regardless of import/
+// insertion order - `position` is only a tiebreaker for same-day rows (and
+// the sort key for rows with no ship date yet, which sink to the bottom
+// instead of before everything with a real date).
+function compareByShipDate(a: PasFile, b: PasFile): number {
+  if (a.ship_date === b.ship_date) return a.position - b.position;
+  if (a.ship_date === null) return 1;
+  if (b.ship_date === null) return -1;
+  return a.ship_date < b.ship_date ? -1 : 1;
+}
+
 export default function PasFilesClient({
   initialItems,
   existingPendingKeys,
@@ -115,13 +126,12 @@ export default function PasFilesClient({
   // No boxes checked = no filter (show everything); otherwise show only the
   // checked highlight(s).
   const filterActive = filterRed || filterYellow;
-  const visibleItems = useMemo(
-    () =>
-      filterActive
-        ? items.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"))
-        : items,
-    [items, filterActive, filterRed, filterYellow],
-  );
+  const visibleItems = useMemo(() => {
+    const base = filterActive
+      ? items.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"))
+      : items;
+    return [...base].sort(compareByShipDate);
+  }, [items, filterActive, filterRed, filterYellow]);
 
   async function handleCopyEmail() {
     const html = buildTableHtml("PAS Files", PAS_FILE_HEADERS, visibleItems.map(pasFileRowValues));

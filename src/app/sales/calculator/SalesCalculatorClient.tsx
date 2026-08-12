@@ -2,9 +2,23 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { calcPurchasePrice, calcSalesPrice } from "@/lib/salesCalculator";
+import { calcPurchasePrices, calcSalesPrices, type ProductLine } from "@/lib/salesCalculator";
 
 type Mode = "sales" | "buy";
+
+interface ProductRow {
+  id: number;
+  label: string;
+  priceInput: string; // purchase price in "sales" mode, sales price in "buy" mode
+  palletCount: string;
+  inOutPerPallet: string;
+  totalCases: string;
+}
+
+let nextId = 1;
+function makeRow(label = ""): ProductRow {
+  return { id: nextId++, label, priceInput: "", palletCount: "", inOutPerPallet: "", totalCases: "" };
+}
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -20,36 +34,38 @@ function num(s: string): number {
 export default function SalesCalculatorClient() {
   const confirm = useConfirm();
   const [mode, setMode] = useState<Mode>("sales");
-  const [purchasePrice, setPurchasePrice] = useState("");
-  const [salesPrice, setSalesPrice] = useState("");
   const [commissionRate, setCommissionRate] = useState("10");
   const [totalFreight, setTotalFreight] = useState("");
-  const [palletCount, setPalletCount] = useState("");
-  const [inOutPerPallet, setInOutPerPallet] = useState("");
-  const [totalCases, setTotalCases] = useState("");
+  const [rows, setRows] = useState<ProductRow[]>([makeRow()]);
 
-  const inputs = {
-    totalFreight: num(totalFreight),
-    palletCount: num(palletCount),
-    inOutPerPallet: num(inOutPerPallet),
-    totalCases: num(totalCases),
-  };
   const rate = Math.min(10, Math.max(1, num(commissionRate))) / 100;
+  const freight = num(totalFreight);
+  const lines: ProductLine[] = rows.map((r) => ({
+    palletCount: num(r.palletCount),
+    inOutPerPallet: num(r.inOutPerPallet),
+    totalCases: num(r.totalCases),
+  }));
+  const priceInputs = rows.map((r) => num(r.priceInput));
+  const results = mode === "sales" ? calcSalesPrices(priceInputs, rate, freight, lines) : calcPurchasePrices(priceInputs, rate, freight, lines);
+  const totalPallets = lines.reduce((sum, l) => sum + l.palletCount, 0);
 
-  const result =
-    mode === "sales" ? calcSalesPrice(num(purchasePrice), rate, inputs) : calcPurchasePrice(num(salesPrice), rate, inputs);
+  function updateRow(id: number, patch: Partial<ProductRow>) {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
 
-  const canCompute = inputs.totalCases > 0 && (mode === "sales" ? purchasePrice.trim() !== "" : salesPrice.trim() !== "");
+  function addRow() {
+    setRows((prev) => [...prev, makeRow()]);
+  }
+
+  function deleteRow(id: number) {
+    setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+  }
 
   async function clearAll() {
     if (!(await confirm("Clear every field on the calculator?"))) return;
-    setPurchasePrice("");
-    setSalesPrice("");
     setCommissionRate("10");
     setTotalFreight("");
-    setPalletCount("");
-    setInOutPerPallet("");
-    setTotalCases("");
+    setRows([makeRow()]);
   }
 
   return (
@@ -80,136 +96,166 @@ export default function SalesCalculatorClient() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <div className="space-y-4 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-          <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Inputs</h2>
-
-          {mode === "sales" ? (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Purchase Price ($/case)</span>
-              <input
-                type="number"
-                step="any"
-                value={purchasePrice}
-                onChange={(e) => setPurchasePrice(e.target.value)}
-                placeholder="0.00"
-                className={field}
-              />
-            </label>
-          ) : (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Sales Price ($/case)</span>
-              <input
-                type="number"
-                step="any"
-                value={salesPrice}
-                onChange={(e) => setSalesPrice(e.target.value)}
-                placeholder="0.00"
-                className={field}
-              />
-            </label>
-          )}
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Commission Rate (%, 1-10)</span>
-            <input
-              type="number"
-              min={1}
-              max={10}
-              step="0.5"
-              value={commissionRate}
-              onChange={(e) => setCommissionRate(e.target.value)}
-              className={`${field} w-24`}
-            />
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Total Freight ($)</span>
-              <input
-                type="number"
-                step="any"
-                value={totalFreight}
-                onChange={(e) => setTotalFreight(e.target.value)}
-                placeholder="100.00"
-                className={field}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Pallet Count</span>
-              <input
-                type="number"
-                step="any"
-                value={palletCount}
-                onChange={(e) => setPalletCount(e.target.value)}
-                placeholder="2"
-                className={field}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">In/Out ($/pallet)</span>
-              <input
-                type="number"
-                step="any"
-                value={inOutPerPallet}
-                onChange={(e) => setInOutPerPallet(e.target.value)}
-                placeholder="16.50"
-                className={field}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Total Cases</span>
-              <input
-                type="number"
-                step="any"
-                value={totalCases}
-                onChange={(e) => setTotalCases(e.target.value)}
-                placeholder="80"
-                className={field}
-              />
-            </label>
+      <div className="flex flex-wrap items-end gap-6 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Commission Rate (%, 1-10)</span>
+          <input
+            type="number"
+            min={1}
+            max={10}
+            step="0.5"
+            value={commissionRate}
+            onChange={(e) => setCommissionRate(e.target.value)}
+            className={`${field} w-24`}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">Total Freight for the Truck ($)</span>
+          <input
+            type="number"
+            step="any"
+            value={totalFreight}
+            onChange={(e) => setTotalFreight(e.target.value)}
+            placeholder="100.00"
+            className={`${field} w-40`}
+          />
+        </label>
+        <p className="max-w-xs text-xs text-black/50 dark:text-white/50">
+          One freight cost for the whole trailer - split below by each product&apos;s share of the total pallets, so
+          adding more products lowers everyone&apos;s cost per case.
+        </p>
+        {totalPallets > 0 && (
+          <div className="text-sm">
+            <p className="text-black/60 dark:text-white/60">Total Pallets</p>
+            <p className="text-lg font-semibold">{totalPallets}</p>
           </div>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left dark:bg-white/5">
+              <tr>
+                <th className="px-2 py-2">Product</th>
+                <th className="px-2 py-2">{mode === "sales" ? "Purchase Price" : "Sales Price"} ($/case)</th>
+                <th className="px-2 py-2">Pallets</th>
+                <th className="px-2 py-2">In/Out ($/pallet)</th>
+                <th className="px-2 py-2">Total Cases</th>
+                <th className="w-16 px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
+                  <td className="min-w-[8rem] px-1 py-1">
+                    <input
+                      value={r.label}
+                      onChange={(e) => updateRow(r.id, { label: e.target.value })}
+                      placeholder="e.g. Lettuce"
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[7rem] px-1 py-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={r.priceInput}
+                      onChange={(e) => updateRow(r.id, { priceInput: e.target.value })}
+                      placeholder="0.00"
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[5rem] px-1 py-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={r.palletCount}
+                      onChange={(e) => updateRow(r.id, { palletCount: e.target.value })}
+                      placeholder="2"
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={r.inOutPerPallet}
+                      onChange={(e) => updateRow(r.id, { inOutPerPallet: e.target.value })}
+                      placeholder="16.50"
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1">
+                    <input
+                      type="number"
+                      step="any"
+                      value={r.totalCases}
+                      onChange={(e) => updateRow(r.id, { totalCases: e.target.value })}
+                      placeholder="80"
+                      className={field}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    {rows.length > 1 && (
+                      <button onClick={() => deleteRow(r.id)} className="text-xs font-medium text-red-600 hover:underline">
+                        Delete
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+        <button onClick={addRow} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+          + Add Product
+        </button>
+      </div>
 
-        <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-          <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Breakdown</h2>
-          {!canCompute ? (
-            <p className="text-sm text-black/40 dark:text-white/40">
-              Enter {mode === "sales" ? "a purchase price" : "a sales price"} and the total cases to see the breakdown.
-            </p>
-          ) : (
-            <div className="space-y-1.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-black/60 dark:text-white/60">In/Out Total ({inputs.palletCount} pallets)</span>
-                <span className="tabular-nums">{formatMoney(result.inOutTotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-black/60 dark:text-white/60">Warehouse Cost (freight + in/out)</span>
-                <span className="tabular-nums">{formatMoney(result.warehouseCost)}</span>
-              </div>
-              <div className="flex justify-between border-b border-black/10 pb-1.5 dark:border-white/10">
-                <span className="text-black/60 dark:text-white/60">Cost Per Case</span>
-                <span className="tabular-nums">{formatMoney(result.costPerCase)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-black/60 dark:text-white/60">Commission ({(rate * 100).toFixed(1)}% of purchase)</span>
-                <span className="tabular-nums">{formatMoney(result.commission)}</span>
-              </div>
-              <div className="flex justify-between border-b border-black/10 pb-1.5 dark:border-white/10">
-                <span className="text-black/60 dark:text-white/60">Cost Addition (commission + cost/case)</span>
-                <span className="tabular-nums">{formatMoney(result.costAddition)}</span>
-              </div>
-
-              <div className="flex justify-between pt-1">
-                <span className="text-black/60 dark:text-white/60">Purchase Price</span>
-                <span className="tabular-nums">{formatMoney(result.purchasePrice)}</span>
-              </div>
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-base font-bold">Sales Price</span>
-                <span className="text-2xl font-bold text-green-700 dark:text-green-400">{formatMoney(result.salesPrice)}</span>
-              </div>
-            </div>
-          )}
+      <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Breakdown</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left dark:bg-white/5">
+              <tr>
+                <th className="px-2 py-1.5">Product</th>
+                <th className="px-2 py-1.5 text-right">Freight Share</th>
+                <th className="px-2 py-1.5 text-right">In/Out Total</th>
+                <th className="px-2 py-1.5 text-right">Cost/Case</th>
+                <th className="px-2 py-1.5 text-right">Commission</th>
+                <th className="px-2 py-1.5 text-right">Purchase Price</th>
+                <th className="px-2 py-1.5 text-right">Sales Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const res = results[i];
+                const hasInputs = lines[i].totalCases > 0 && r.priceInput.trim() !== "";
+                return (
+                  <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
+                    <td className="px-2 py-1.5 font-medium">{r.label || `Product ${i + 1}`}</td>
+                    {!hasInputs ? (
+                      <td colSpan={6} className="px-2 py-1.5 text-black/40 dark:text-white/40">
+                        Enter {mode === "sales" ? "a purchase price" : "a sales price"} and total cases.
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(res.freightShare)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(res.inOutTotal)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(res.costPerCase)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(res.commission)}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(res.purchasePrice)}</td>
+                        <td className="px-2 py-1.5 text-right text-base font-bold tabular-nums text-green-700 dark:text-green-400">
+                          {formatMoney(res.salesPrice)}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
