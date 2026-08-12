@@ -60,6 +60,7 @@ const NAV: NavCategory[] = [
       { href: "/sales/delivered/dallas", label: "Dallas Delivered" },
       { href: "/sales/delivered/east-coast", label: "East Coast Delivered" },
       { href: "/sales/pending-to-invoice", label: "Pending to Invoice" },
+      { href: "/sales/calculator", label: "Sales Calculator" },
     ],
   },
   {
