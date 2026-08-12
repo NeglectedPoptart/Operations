@@ -38,12 +38,18 @@ function priceSheetRowValues(item: Pick<PriceSheetItem, "category" | "item_label
   return [item.category, combinedItemLabel(item), formatMoney(item.price)];
 }
 
+interface QuoteRef {
+  vendorId: string;
+  price: number;
+}
+
 interface ItemStat {
   itemLabel: string;
   low: number;
   high: number;
   average: number;
   count: number;
+  quotes: QuoteRef[];
 }
 
 // "call" items (no number) are skipped since there's nothing to compute
@@ -51,28 +57,49 @@ interface ItemStat {
 // Grouped by item label (case-insensitive, first-seen casing wins) within
 // the given category, so e.g. "Cucumber, Plain" and "Cucumber, Select" get
 // their own Hi/Lo/Average instead of being blended into one Cucumber-wide
-// number.
+// number. Each stat keeps its raw per-vendor quotes too (not just the
+// aggregated numbers) so the UI can show who quoted a given Low/High/
+// Average and when, on hover.
 function computeCategoryItemStats(items: PriceSheetItem[], category: string): ItemStat[] {
   const target = normalizeCategory(category).toLowerCase();
-  const byKey = new Map<string, { display: string; prices: number[] }>();
+  const byKey = new Map<string, { display: string; quotes: QuoteRef[] }>();
   for (const item of items) {
     if (item.price === null) continue;
     if (normalizeCategory(item.category).toLowerCase() !== target) continue;
     const display = combinedItemLabel(item).trim();
     if (!display) continue;
     const key = display.toLowerCase();
-    if (!byKey.has(key)) byKey.set(key, { display, prices: [] });
-    byKey.get(key)!.prices.push(item.price);
+    if (!byKey.has(key)) byKey.set(key, { display, quotes: [] });
+    byKey.get(key)!.quotes.push({ vendorId: item.vendor_id, price: item.price });
   }
   return Array.from(byKey.values())
-    .map(({ display, prices }) => ({
-      itemLabel: display,
-      low: Math.min(...prices),
-      high: Math.max(...prices),
-      average: prices.reduce((a, b) => a + b, 0) / prices.length,
-      count: prices.length,
-    }))
+    .map(({ display, quotes }) => {
+      const prices = quotes.map((q) => q.price);
+      return {
+        itemLabel: display,
+        low: Math.min(...prices),
+        high: Math.max(...prices),
+        average: prices.reduce((a, b) => a + b, 0) / prices.length,
+        count: prices.length,
+        quotes,
+      };
+    })
     .sort((a, b) => a.itemLabel.localeCompare(b.itemLabel));
+}
+
+// Builds the hover tooltip text for a price cell - one "Vendor - $price
+// (date)" line per quote, using each vendor's sheet_date since
+// price_sheet_items is a full-replace snapshot of their most recent paste
+// (no separate per-quote timestamp to fall back on).
+function quotesTooltip(quotes: QuoteRef[], vendorById: Map<string, Vendor>): string {
+  return quotes
+    .map((q) => {
+      const vendor = vendorById.get(q.vendorId);
+      const name = vendor?.name ?? "Unknown vendor";
+      const date = vendor?.sheet_date ? formatDate(vendor.sheet_date) : "no date";
+      return `${name} - ${formatMoney(q.price)} (${date})`;
+    })
+    .join("\n");
 }
 
 // Distinct categories currently priced anywhere, most-quoted first (used to
@@ -91,8 +118,11 @@ function computeCategoryCounts(items: PriceSheetItem[]): { category: string; cou
     .sort((a, b) => b.count - a.count);
 }
 
-function CommodityBreakdown({ category, items }: { category: string; items: PriceSheetItem[] }) {
+const hoverPrice = "cursor-help underline decoration-dotted decoration-black/30 dark:decoration-white/30";
+
+function CommodityBreakdown({ category, items, vendors }: { category: string; items: PriceSheetItem[]; vendors: Vendor[] }) {
   const rows = useMemo(() => computeCategoryItemStats(items, category), [items, category]);
+  const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
   return (
     <div className="space-y-1">
       <h4 className="text-sm font-semibold">{normalizeCategory(category)}</h4>
@@ -114,9 +144,24 @@ function CommodityBreakdown({ category, items }: { category: string; items: Pric
               {rows.map((r) => (
                 <tr key={r.itemLabel} className="border-t border-black/10 dark:border-white/10">
                   <td className="px-3 py-1.5 font-medium">{r.itemLabel}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">${r.low.toFixed(2)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">${r.high.toFixed(2)}</td>
-                  <td className="px-3 py-1.5 text-right font-semibold tabular-nums">${r.average.toFixed(2)}</td>
+                  <td
+                    title={quotesTooltip(r.quotes.filter((q) => q.price === r.low), vendorById)}
+                    className={`px-3 py-1.5 text-right tabular-nums ${hoverPrice}`}
+                  >
+                    ${r.low.toFixed(2)}
+                  </td>
+                  <td
+                    title={quotesTooltip(r.quotes.filter((q) => q.price === r.high), vendorById)}
+                    className={`px-3 py-1.5 text-right tabular-nums ${hoverPrice}`}
+                  >
+                    ${r.high.toFixed(2)}
+                  </td>
+                  <td
+                    title={quotesTooltip(r.quotes, vendorById)}
+                    className={`px-3 py-1.5 text-right font-semibold tabular-nums ${hoverPrice}`}
+                  >
+                    ${r.average.toFixed(2)}
+                  </td>
                   <td className="px-3 py-1.5 text-right text-black/50 dark:text-white/50">{r.count}</td>
                 </tr>
               ))}
@@ -128,7 +173,7 @@ function CommodityBreakdown({ category, items }: { category: string; items: Pric
   );
 }
 
-function CommoditySummary({ items }: { items: PriceSheetItem[] }) {
+function CommoditySummary({ items, vendors }: { items: PriceSheetItem[]; vendors: Vendor[] }) {
   const categoryCounts = useMemo(() => computeCategoryCounts(items), [items]);
   const categoryNames = useMemo(
     () => [...categoryCounts].map((c) => c.category).sort((a, b) => a.localeCompare(b)),
@@ -174,7 +219,7 @@ function CommoditySummary({ items }: { items: PriceSheetItem[] }) {
           Show
         </button>
       </div>
-      {lookupCategory && <CommodityBreakdown category={lookupCategory} items={items} />}
+      {lookupCategory && <CommodityBreakdown category={lookupCategory} items={items} vendors={vendors} />}
     </div>
   );
 }
@@ -864,7 +909,7 @@ export default function PriceSheetsClient({
 
       <PriceComparisonImport vendors={vendors} onComplete={handleComparisonImportComplete} />
 
-      <CommoditySummary items={items} />
+      <CommoditySummary items={items} vendors={vendors} />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {vendors.map((vendor) => (
