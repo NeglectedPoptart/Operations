@@ -3,10 +3,23 @@
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
+import { formatDate } from "@/lib/dates";
+import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
 import type { LocalInbound } from "@/lib/types";
 import { addLocalInboundRow, deleteLocalInboundRow, updateLocalInboundRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+
+const LOCAL_INBOUND_HEADERS = ["PO", "PU", "Vendor", "Loading Warehouse", "ETA", "Notes"];
+
+function localInboundRowValues(r: LocalInbound): string[] {
+  return [r.po ?? "", r.pu_info ?? "", r.vendor ?? "", r.loading_warehouse ?? "", r.eta ?? "", r.notes ?? ""];
+}
+
+function toCanvasRows(items: LocalInbound[]): MonoRow[] {
+  if (items.length === 0) return [{ cells: ["Nothing here yet.", "", "", "", "", ""] }];
+  return items.map((item) => ({ cells: localInboundRowValues(item) }));
+}
 
 function ProgressSummary({
   total,
@@ -183,10 +196,37 @@ export default function LocalInboundsClient({
   const [items, setItems] = useState(initialItems);
   const [addingPending, setAddingPending] = useState(false);
   const [addingLoadingDirect, setAddingLoadingDirect] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const pending = items.filter((i) => i.status === "pending");
   const loadingDirect = items.filter((i) => i.status === "loading_direct");
   const arrived = items.filter((i) => i.status === "arrived");
+
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        { title: "Pending", headerColor: "#8DC63F", columnHeaders: LOCAL_INBOUND_HEADERS, rows: toCanvasRows(pending) },
+        {
+          title: "Loading Direct",
+          headerColor: "#64B5F6",
+          columnHeaders: LOCAL_INBOUND_HEADERS,
+          rows: toCanvasRows(loadingDirect),
+        },
+        { title: "Arrived", headerColor: "#BDBDBD", columnHeaders: LOCAL_INBOUND_HEADERS, rows: toCanvasRows(arrived) },
+      ];
+      const blob = await renderPriceSheetPng({
+        title: `Local Inbounds - ${formatDate(entryDate)}`,
+        message: `Total: ${items.length}   Pending: ${pending.length}   Loading Direct: ${loadingDirect.length}   Arrived: ${arrived.length}`,
+        blocks,
+        direction: "column",
+      });
+      const result = await copyOrDownloadPng(blob, `local-inbounds-${entryDate}.png`);
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
 
   function updateLocal(id: string, patch: Partial<LocalInbound>) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -222,7 +262,15 @@ export default function LocalInboundsClient({
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="space-y-6">
         <UpdateStatusButton pageKey="local-inbounds" />
-        <h1 className="text-2xl font-bold">Local Inbounds</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold">Local Inbounds</h1>
+          <button
+            onClick={handleCopyImage}
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
+        </div>
 
         <ProgressSummary
           total={items.length}
