@@ -16,6 +16,38 @@ function formatMoney(n: number | null): string {
   return n === null ? "" : `$${n.toFixed(2)}`;
 }
 
+interface PayDiscrepancy {
+  kind: "short" | "over";
+  amount: number;
+}
+
+// A partial-credit invoice (the report's own "*" flag) usually landed at a
+// lower balance than the original invoice - a short pay, money we're not
+// collecting. A negative balance (regardless of the flag) means the
+// opposite: a credit sitting on the account that we owe back or that can
+// offset a future invoice - an over pay.
+function payDiscrepancy(invoice: ArInvoice): PayDiscrepancy | null {
+  if (invoice.balance < 0) return { kind: "over", amount: Math.abs(invoice.balance) };
+  if (!invoice.has_partial_credit || invoice.doc_amount === null) return null;
+  const diff = invoice.doc_amount - invoice.balance;
+  if (diff === 0) return null;
+  return diff > 0 ? { kind: "short", amount: diff } : { kind: "over", amount: Math.abs(diff) };
+}
+
+const DISCREPANCY_BADGE: Record<"short" | "over", string> = {
+  short: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  over: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+};
+
+function DiscrepancyBadge({ discrepancy }: { discrepancy: PayDiscrepancy | null }) {
+  if (!discrepancy) return null;
+  return (
+    <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-semibold ${DISCREPANCY_BADGE[discrepancy.kind]}`}>
+      {discrepancy.kind === "short" ? "Short" : "Over"} ${discrepancy.amount.toFixed(2)}
+    </span>
+  );
+}
+
 const BUCKET_BADGE: Record<ArAgingBucket, string> = {
   current: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
   "1-20": "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
@@ -30,10 +62,23 @@ const HIGHLIGHT_ROW_CLASS: Record<ArHighlight, string> = {
   red: "bg-red-50 dark:bg-red-950/20",
 };
 
-const AR_HEADERS = ["Customer", "Invoice #", "PO", "Invoice Date", "Due Date", "Doc Amount", "Balance", "Aging", "Last Contact", "Notes"];
+const AR_HEADERS = [
+  "Customer",
+  "Invoice #",
+  "PO",
+  "Invoice Date",
+  "Due Date",
+  "Doc Amount",
+  "Balance",
+  "Short/Over Pay",
+  "Aging",
+  "Last Contact",
+  "Notes",
+];
 
 function arRowValues(invoice: ArInvoice, customerName: string): string[] {
   const bucket = arAgingBucket(invoice.due_date);
+  const discrepancy = payDiscrepancy(invoice);
   return [
     customerName,
     invoice.invoice_no,
@@ -42,6 +87,7 @@ function arRowValues(invoice: ArInvoice, customerName: string): string[] {
     formatDate(invoice.due_date),
     formatMoney(invoice.doc_amount),
     formatMoney(invoice.balance),
+    discrepancy ? `${discrepancy.kind === "short" ? "Short" : "Over"} $${discrepancy.amount.toFixed(2)}` : "",
     AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label ?? "",
     invoice.last_contact ? formatDate(invoice.last_contact) : "",
     invoice.notes ?? "",
@@ -52,6 +98,8 @@ interface CustomerGroup {
   customer: ArCustomer;
   invoices: ArInvoice[];
   totalBalance: number;
+  shortTotal: number;
+  overTotal: number;
 }
 
 function compareByDueDate(a: ArInvoice, b: ArInvoice): number {
@@ -70,7 +118,15 @@ function buildGroups(customers: ArCustomer[], invoices: ArInvoice[]): CustomerGr
   return customers
     .map((customer) => {
       const invs = [...(byCustomer.get(customer.id) ?? [])].sort(compareByDueDate);
-      return { customer, invoices: invs, totalBalance: invs.reduce((sum, i) => sum + i.balance, 0) };
+      let shortTotal = 0;
+      let overTotal = 0;
+      for (const inv of invs) {
+        const d = payDiscrepancy(inv);
+        if (!d) continue;
+        if (d.kind === "short") shortTotal += d.amount;
+        else overTotal += d.amount;
+      }
+      return { customer, invoices: invs, totalBalance: invs.reduce((sum, i) => sum + i.balance, 0), shortTotal, overTotal };
     })
     .filter((g) => g.invoices.length > 0)
     .sort((a, b) => b.totalBalance - a.totalBalance);
@@ -124,14 +180,21 @@ export default function ArClient({
     let escalated = 0;
     let needsContact = 0;
     let trouble = 0;
+    let shortTotal = 0;
+    let overTotal = 0;
     for (const inv of invoices) {
       total += inv.balance;
       byBucket.set(arAgingBucket(inv.due_date), (byBucket.get(arAgingBucket(inv.due_date)) ?? 0) + inv.balance);
       if (inv.highlight === "red") escalated++;
       if (inv.highlight === "yellow") needsContact++;
       if (inv.trouble_status !== "none") trouble++;
+      const d = payDiscrepancy(inv);
+      if (d) {
+        if (d.kind === "short") shortTotal += d.amount;
+        else overTotal += d.amount;
+      }
     }
-    return { total, byBucket, escalated, needsContact, trouble };
+    return { total, byBucket, escalated, needsContact, trouble, shortTotal, overTotal };
   }, [invoices]);
 
   const filterActive = filterRed || filterYellow;
@@ -278,7 +341,7 @@ export default function ArClient({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
             <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Summary</h2>
-            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <div>
                 <p className="text-black/60 dark:text-white/60">Total Outstanding</p>
                 <p className="text-xl font-bold">${totals.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
@@ -294,6 +357,14 @@ export default function ArClient({
               <div>
                 <p className="text-black/60 dark:text-white/60">Trouble Claims</p>
                 <p className="text-xl font-bold">{totals.trouble}</p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Short Pay Total</p>
+                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">${totals.shortTotal.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Over Pay Total</p>
+                <p className="text-xl font-bold text-purple-600 dark:text-purple-400">${totals.overTotal.toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -391,7 +462,21 @@ export default function ArClient({
                     {g.customer.credit_limit !== null && ` · Credit Limit ${formatMoney(g.customer.credit_limit)}`}
                   </p>
                 </div>
-                <p className="text-lg font-bold">{formatMoney(g.totalBalance)}</p>
+                <div className="flex flex-col items-end gap-1">
+                  <p className="text-lg font-bold">{formatMoney(g.totalBalance)}</p>
+                  <div className="flex gap-1">
+                    {g.shortTotal > 0 && (
+                      <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-semibold ${DISCREPANCY_BADGE.short}`}>
+                        Short ${g.shortTotal.toFixed(2)}
+                      </span>
+                    )}
+                    {g.overTotal > 0 && (
+                      <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-semibold ${DISCREPANCY_BADGE.over}`}>
+                        Over ${g.overTotal.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
               <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
                 <table className="w-full text-sm">
@@ -413,20 +498,24 @@ export default function ArClient({
                   <tbody>
                     {g.invoices.map((inv) => {
                       const bucket = arAgingBucket(inv.due_date);
-                      const flagText = [inv.has_partial_credit ? "partial credit" : null, inv.trouble_status !== "none" ? `trouble ${inv.trouble_status}` : null]
-                        .filter(Boolean)
-                        .join(", ");
+                      const discrepancy = payDiscrepancy(inv);
+                      const troubleText = inv.trouble_status !== "none" ? `Trouble claim ${inv.trouble_status}` : null;
                       return (
                         <tr key={inv.id} className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]}`}>
-                          <td className="px-2 py-1.5" title={flagText || undefined}>
+                          <td className="px-2 py-1.5" title={troubleText || undefined}>
                             {inv.invoice_no}
-                            {flagText && <span className="ml-1 text-amber-600 dark:text-amber-400">*</span>}
+                            {troubleText && <span className="ml-1 text-red-600 dark:text-red-400">⚠</span>}
                           </td>
                           <td className="px-2 py-1.5">{inv.po ?? ""}</td>
                           <td className="px-2 py-1.5">{formatDate(inv.invoice_date)}</td>
                           <td className="px-2 py-1.5">{formatDate(inv.due_date)}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(inv.doc_amount)}</td>
-                          <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(inv.balance)}</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <span className="font-semibold tabular-nums">{formatMoney(inv.balance)}</span>
+                              <DiscrepancyBadge discrepancy={discrepancy} />
+                            </div>
+                          </td>
                           <td className="px-2 py-1.5">
                             <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${BUCKET_BADGE[bucket]}`}>
                               {AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label}
