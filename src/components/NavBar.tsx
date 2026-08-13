@@ -89,6 +89,11 @@ const NAV: NavCategory[] = [
     items: [{ href: "/compliance/pas-files", label: "PAS Files" }],
   },
   {
+    label: "Accounting",
+    tab: "accounting",
+    items: [{ href: "/accounting/ar", label: "Accounts Receivable" }],
+  },
+  {
     label: "Marketing",
     tab: "marketing",
     items: [{ href: "/marketing/assets", label: "Brand Assets" }],

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { AR_AGING_BUCKETS, arAgingBucket } from "@/lib/arAging";
 import { currentWeekStart, prevWeekStart, todayISO } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
 import { topChangedLanes } from "@/lib/laneChange";
@@ -115,6 +116,7 @@ export default async function HomePage() {
     pasEscalationRes,
     missingAppointmentRes,
     missingRateConRes,
+    arInvoicesRes,
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -156,6 +158,7 @@ export default async function HomePage() {
       .select("*", { count: "exact", head: true })
       .eq("rate_con_sent", false)
       .neq("status", "complete"),
+    supabase.from("ar_invoices").select("due_date, balance, highlight"),
   ]);
 
   const error =
@@ -174,7 +177,8 @@ export default async function HomePage() {
     pasContactRes.error ??
     pasEscalationRes.error ??
     missingAppointmentRes.error ??
-    missingRateConRes.error;
+    missingRateConRes.error ??
+    arInvoicesRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load dashboard: {error.message}</p>;
   }
@@ -202,6 +206,16 @@ export default async function HomePage() {
   const localInbounds = (localInboundsRes.data ?? []) as Pick<LocalInbound, "id" | "po" | "vendor" | "eta" | "status">[];
   const pendingInbounds = localInbounds.filter((i) => i.status === "pending");
   const arrivedInboundsCount = localInbounds.filter((i) => i.status === "arrived").length;
+
+  const arInvoices = (arInvoicesRes.data ?? []) as { due_date: string | null; balance: number; highlight: string }[];
+  const arTotalOutstanding = arInvoices.reduce((sum, i) => sum + i.balance, 0);
+  const arEscalatedCount = arInvoices.filter((i) => i.highlight === "red").length;
+  const arBucketTotals = new Map(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
+  for (const inv of arInvoices) {
+    const bucket = arAgingBucket(inv.due_date);
+    arBucketTotals.set(bucket, (arBucketTotals.get(bucket) ?? 0) + inv.balance);
+  }
+  const arBucketChartData = AR_AGING_BUCKETS.map((b) => ({ label: b.label, value: arBucketTotals.get(b.key) ?? 0 }));
 
   return (
     <div className="home-dashboard space-y-10">
@@ -327,6 +341,33 @@ export default async function HomePage() {
               needingContact={pasContactRes.count ?? 0}
               needingEscalation={pasEscalationRes.count ?? 0}
             />
+          </div>
+        </section>
+      </div>
+
+      <div className="space-y-5">
+        <CategoryHeading>Accounting</CategoryHeading>
+
+        <section>
+          <SubHeading>Accounts Receivable</SubHeading>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Link
+              href="/accounting/ar"
+              className={`rounded-lg border p-4 shadow-sm transition hover:border-green-600 ${
+                arEscalatedCount > 0 ? "border-red-300 dark:border-red-800" : "border-black/10 dark:border-white/10"
+              }`}
+            >
+              <p className="text-3xl font-bold">
+                ${arTotalOutstanding.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <p className="text-sm text-black/60 dark:text-white/60">Total Outstanding</p>
+              <p className={`mt-2 text-sm font-medium ${arEscalatedCount > 0 ? "text-red-600 dark:text-red-400" : "text-black/60 dark:text-white/60"}`}>
+                {arEscalatedCount} escalated
+              </p>
+            </Link>
+            <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+              <HorizontalBarChart data={arBucketChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
+            </div>
           </div>
         </section>
       </div>

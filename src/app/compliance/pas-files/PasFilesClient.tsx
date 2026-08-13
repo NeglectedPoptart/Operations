@@ -5,7 +5,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
-import { escapeHtml } from "@/lib/fobPricing";
+import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
 import { addPasFileRow, deletePasFileRow, importPendingList, updatePasFileRow } from "./actions";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
@@ -120,6 +120,7 @@ export default function PasFilesClient({
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const existingKeys = new Set(items.map((i) => matchKey(i.order_no, i.po ?? "")));
 
@@ -151,6 +152,28 @@ export default function PasFilesClient({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        {
+          title: "PAS Files",
+          headerColor: "#8DC63F",
+          columnHeaders: PAS_FILE_HEADERS,
+          rows:
+            visibleItems.length > 0
+              ? visibleItems.map((item) => ({ cells: pasFileRowValues(item) }))
+              : [{ cells: ["Nothing here yet.", ...Array(PAS_FILE_HEADERS.length - 1).fill("")] }],
+        },
+      ];
+      const blob = await renderPriceSheetPng({ title: "PAS Files", message: "", blocks });
+      const result = await copyOrDownloadPng(blob, "pas-files.png");
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
     }
   }
 
@@ -249,6 +272,13 @@ export default function PasFilesClient({
               className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
             >
               {copied ? "Copied!" : "Copy for Email"}
+            </button>
+            <button
+              onClick={handleCopyImage}
+              disabled={visibleItems.length === 0}
+              className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+            >
+              {imageStatus ?? "Copy as Image"}
             </button>
             <button
               onClick={() => setShowPaste((s) => !s)}

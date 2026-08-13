@@ -19,7 +19,16 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "broker_carrier", label: "Broker/Carrier" },
 ];
 
-export type Tab = "logistics" | "warehouse" | "qc" | "sales" | "management" | "compliance" | "buyers" | "marketing";
+export type Tab =
+  | "logistics"
+  | "warehouse"
+  | "qc"
+  | "sales"
+  | "management"
+  | "compliance"
+  | "buyers"
+  | "marketing"
+  | "accounting";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -33,14 +42,14 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // permission levels round, and middleware.ts for the broker_carrier
 // exception).
 const ROLE_TABS: Record<Role, Tab[]> = {
-  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing"],
+  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing", "accounting"],
   operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing"],
   warehouse_qc: ["warehouse", "qc"],
   sales: ["sales", "qc", "buyers", "marketing"],
-  accounting: ["logistics", "qc", "sales", "compliance"],
+  accounting: ["logistics", "qc", "sales", "compliance", "accounting"],
   buyer: ["warehouse", "qc", "sales", "buyers"],
   // Sees everything except Logistics and Management.
-  executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing"],
+  executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting"],
   // No tabs at all - access to BROKER_CARRIER_PATH is a hardcoded exception
   // in middleware.ts, not tab-based like every other role.
   broker_carrier: [],
@@ -66,5 +75,6 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/compliance")) return "compliance";
   if (pathname.startsWith("/buyers")) return "buyers";
   if (pathname.startsWith("/marketing")) return "marketing";
+  if (pathname.startsWith("/accounting")) return "accounting";
   return null;
 }

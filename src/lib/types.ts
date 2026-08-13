@@ -606,3 +606,46 @@ export interface PageStatus {
   marked_at: string;
   marked_by: string | null;
 }
+
+// Accounting: Accounts Receivable ------------------------------------------------
+
+export interface ArCustomer {
+  id: string;
+  customer_code: string;
+  customer_name: string;
+  credit_limit: number | null;
+  bb_rating: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ArTroubleStatus = "none" | "pending" | "posted";
+export type ArHighlight = "none" | "yellow" | "red";
+
+export const AR_HIGHLIGHTS: { value: ArHighlight; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "yellow", label: "Needs Contact" },
+  { value: "red", label: "Escalated" },
+];
+
+// Aging bucket (Current/1-20/21-40/41-60/61+) is deliberately not a stored
+// field - it's computed live from due_date at render time (see
+// src/lib/arAging.ts) so it never goes stale between AR report pulls.
+export interface ArInvoice {
+  id: string;
+  customer_id: string;
+  invoice_no: string;
+  po: string | null;
+  invoice_date: string | null;
+  due_date: string | null;
+  doc_amount: number | null;
+  balance: number;
+  has_partial_credit: boolean;
+  trouble_status: ArTroubleStatus;
+  last_contact: string | null;
+  notes: string | null;
+  highlight: ArHighlight;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
