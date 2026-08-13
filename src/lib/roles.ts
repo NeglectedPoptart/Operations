@@ -46,7 +46,7 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing"],
   warehouse_qc: ["warehouse", "qc"],
   sales: ["sales", "qc", "buyers", "marketing"],
-  accounting: ["logistics", "qc", "sales", "compliance", "accounting"],
+  accounting: ["sales", "compliance", "accounting"],
   buyer: ["warehouse", "qc", "sales", "buyers"],
   // Sees everything except Logistics and Management.
   executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting"],
