@@ -8,6 +8,7 @@ import {
   deleteWorkflowTask,
   resetWorkflowDay,
   updateWorkflowTaskNotes,
+  updateWorkflowTaskPosition,
   updateWorkflowTaskStatus,
 } from "./actions";
 
@@ -86,6 +87,7 @@ function SectionTable({
   onSaveNotes,
   onDelete,
   onAdd,
+  onMove,
 }: {
   label: string;
   tasks: WorkflowTask[];
@@ -93,6 +95,7 @@ function SectionTable({
   onSaveNotes: (id: string, notes: string) => void;
   onDelete: (id: string) => void;
   onAdd: (name: string, isPermanent: boolean) => void;
+  onMove: (task: WorkflowTask, direction: "up" | "down") => void;
 }) {
   return (
     <section className="space-y-2">
@@ -107,6 +110,7 @@ function SectionTable({
               <th className="px-2 py-2">Task</th>
               <th className="w-24 px-2 py-2">Status</th>
               <th className="px-2 py-2">Notes / Follow-up</th>
+              <th className="w-16 px-2 py-2 print:hidden" />
               <th className="w-16 px-2 py-2 print:hidden" />
             </tr>
           </thead>
@@ -141,6 +145,26 @@ function SectionTable({
                     className={field}
                   />
                 </td>
+                <td className="whitespace-nowrap px-1 py-1.5 text-center print:hidden">
+                  <button
+                    type="button"
+                    onClick={() => onMove(task, "up")}
+                    disabled={i === 0}
+                    title="Move up"
+                    className="px-1 text-black/40 hover:text-black disabled:opacity-30 dark:text-white/40 dark:hover:text-white"
+                  >
+                    ▲
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMove(task, "down")}
+                    disabled={i === tasks.length - 1}
+                    title="Move down"
+                    className="px-1 text-black/40 hover:text-black disabled:opacity-30 dark:text-white/40 dark:hover:text-white"
+                  >
+                    ▼
+                  </button>
+                </td>
                 <td className="px-2 py-1.5 print:hidden">
                   <button
                     onClick={() => onDelete(task.id)}
@@ -153,7 +177,7 @@ function SectionTable({
             ))}
             {tasks.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No tasks yet.
                 </td>
               </tr>
@@ -205,6 +229,18 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
     if (row) setTasks((prev) => [...prev, row as WorkflowTask]);
   }
 
+  function handleMove(task: WorkflowTask, direction: "up" | "down") {
+    const siblings = (bySection.get(task.section) ?? []).slice().sort((a, b) => a.position - b.position);
+    const idx = siblings.findIndex((t) => t.id === task.id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= siblings.length) return;
+    const other = siblings[swapIdx];
+    updateLocal(task.id, { position: other.position });
+    updateLocal(other.id, { position: task.position });
+    updateWorkflowTaskPosition(task.id, other.position).catch(() => {});
+    updateWorkflowTaskPosition(other.id, task.position).catch(() => {});
+  }
+
   async function handleResetDay() {
     if (!(await confirm("Reset all tasks back to Pending and clear notes? Today-only tasks will be removed."))) return;
     setResetting(true);
@@ -248,6 +284,7 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
           onSaveNotes={handleSaveNotes}
           onDelete={handleDelete}
           onAdd={(name, isPermanent) => handleAdd(section.value, name, isPermanent)}
+          onMove={handleMove}
         />
       ))}
     </div>

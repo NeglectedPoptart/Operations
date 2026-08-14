@@ -101,6 +101,8 @@ export async function pullOldAgeIntoFloorAging(entryDate: string) {
     days_on_floor: item.age,
     action_needed: item.notes || (item.next_step ? NEXT_STEP_LABELS[item.next_step] : null),
     old_age_item_id: item.id,
+    pack_style: item.pack_style,
+    size: item.size,
   }));
 
   const { data, error } = await supabase.from("qc_agenda_floor_aging").insert(rows).select();
@@ -129,6 +131,8 @@ export async function updateFloorAgingRow(
     received_date?: string | null;
     days_on_floor?: number | null;
     action_needed?: string | null;
+    pack_style?: string | null;
+    size?: string | null;
   },
 ) {
   const supabase = await createClient();

@@ -38,6 +38,13 @@ export async function updateWorkflowTaskStatus(id: string, status: WorkflowStatu
   revalidateAll();
 }
 
+export async function updateWorkflowTaskPosition(id: string, position: number) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("workflow_tasks").update({ position }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
 export async function updateWorkflowTaskNotes(id: string, notes: string) {
   const supabase = await createClient();
   const { error } = await supabase

@@ -56,10 +56,12 @@ function inboundRowValues(r: QcAgendaInbound): string[] {
   ];
 }
 
-const FLOOR_AGING_HEADERS = ["Commodity/SKU", "Lot #", "Date Received", "Days on Floor", "Action Needed"];
+const FLOOR_AGING_HEADERS = ["Commodity/SKU", "Pack Style", "Size", "Lot #", "Date Received", "Days on Floor", "Action Needed"];
 function floorAgingRowValues(r: QcAgendaFloorAging): string[] {
   return [
     r.commodity_sku ?? "",
+    r.pack_style ?? "",
+    r.size ?? "",
     r.lot_number ?? "",
     r.received_date ? formatDate(r.received_date) : "",
     r.days_on_floor != null ? String(r.days_on_floor) : "",
@@ -588,6 +590,8 @@ export default function QcAgendaClient({
             <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">
               <tr>
                 <th className="px-2 py-2 print:p-0.5">Commodity / SKU</th>
+                <th className="px-2 py-2 print:p-0.5">Pack Style</th>
+                <th className="px-2 py-2 print:p-0.5">Size</th>
                 <th className="px-2 py-2 print:p-0.5">Lot #</th>
                 <th className="px-2 py-2 print:p-0.5">Date Received</th>
                 <th className="px-2 py-2 print:p-0.5">Days on Floor</th>
@@ -602,6 +606,20 @@ export default function QcAgendaClient({
                     <input
                       defaultValue={row.commodity_sku ?? ""}
                       onBlur={(e) => handleFloorAgingSave(row.id, { commodity_sku: e.target.value })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.pack_style ?? ""}
+                      onBlur={(e) => handleFloorAgingSave(row.id, { pack_style: e.target.value || null })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[5rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.size ?? ""}
+                      onBlur={(e) => handleFloorAgingSave(row.id, { size: e.target.value || null })}
                       className={field}
                     />
                   </td>
@@ -644,7 +662,7 @@ export default function QcAgendaClient({
               ))}
               {day.floorAging.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={8} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     Nothing pulled in yet.
                   </td>
                 </tr>

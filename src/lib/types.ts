@@ -346,6 +346,8 @@ export interface QcAgendaFloorAging {
   days_on_floor: number | null;
   action_needed: string | null;
   old_age_item_id: string | null;
+  pack_style: string | null;
+  size: string | null;
   created_at: string;
   updated_at: string;
 }
