@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/dates";
 import { ROLES, type Role } from "@/lib/roles";
 import type { Broker, Profile } from "@/lib/types";
 import { updateUserBrokerId, updateUserRole } from "./actions";
+import RolesPermissionsModal from "./RolesPermissionsModal";
 
 export default function UsersClient({
   initialProfiles,
@@ -18,6 +19,7 @@ export default function UsersClient({
   const [profiles, setProfiles] = useState(initialProfiles);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPermissions, setShowPermissions] = useState(false);
 
   async function handleRoleChange(id: string, role: Role) {
     const previous = profiles;
@@ -51,13 +53,22 @@ export default function UsersClient({
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">User Roles</h1>
-        <p className="text-sm text-black/60 dark:text-white/60">
-          Controls what each signed-in user can see - see the role table on the Management tab for what each
-          level opens. New sign-ups start as Sales until changed here.
-        </p>
+    <>
+    <div className={`space-y-4 ${showPermissions ? "print:hidden" : ""}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold">User Roles</h1>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Controls what each signed-in user can see - see the role table on the Management tab for what each
+            level opens. New sign-ups start as Sales until changed here.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowPermissions(true)}
+          className="rounded-md border border-green-600 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+        >
+          View Roles &amp; Permissions
+        </button>
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
@@ -133,5 +144,9 @@ export default function UsersClient({
         </table>
       </div>
     </div>
+    {showPermissions && (
+      <RolesPermissionsModal profiles={profiles} brokers={brokers} onClose={() => setShowPermissions(false)} />
+    )}
+    </>
   );
 }
