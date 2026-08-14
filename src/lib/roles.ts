@@ -43,8 +43,9 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // exception).
 const ROLE_TABS: Record<Role, Tab[]> = {
   admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing", "accounting"],
-  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing"],
-  warehouse_qc: ["warehouse", "qc"],
+  // Sees everything except Management.
+  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting"],
+  warehouse_qc: ["warehouse", "qc", "buyers"],
   sales: ["sales", "qc", "buyers", "marketing"],
   accounting: ["sales", "compliance", "accounting"],
   buyer: ["warehouse", "qc", "sales", "buyers"],
