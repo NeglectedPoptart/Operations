@@ -372,8 +372,9 @@ function FobItemsSection({
   items,
   onFieldSave,
   onGroupRename,
-  onAdd,
-  onAddCategory,
+  onAddItem,
+  onMoveToCategory,
+  onMoveWithinGroup,
   onDelete,
   vendorAverages,
 }: {
@@ -382,41 +383,58 @@ function FobItemsSection({
   items: FobItem[];
   onFieldSave: (
     id: string,
-    patch: Partial<Pick<FobItem, "commodity_group" | "variety" | "unit_per" | "size" | "fob">>,
+    patch: Partial<Pick<FobItem, "commodity_group" | "variety" | "unit_per" | "size" | "fob" | "position">>,
   ) => void;
   onGroupRename: (section: FobSection, oldName: string, newName: string) => void;
-  onAdd: (section: FobSection) => Promise<void>;
-  onAddCategory: (section: FobSection, categoryName: string) => Promise<void>;
+  onAddItem: (section: FobSection, category: string, isNewCategory: boolean) => Promise<void>;
+  onMoveToCategory: (item: FobItem, category: string, isNewCategory: boolean) => void;
+  onMoveWithinGroup: (item: FobItem, direction: "up" | "down") => void;
   onDelete: (id: string) => void;
   vendorAverages: Record<string, VendorAverage>;
 }) {
   const groups = useMemo(() => groupFobItems(items, section), [items, section]);
+  const categoryNames = useMemo(() => groups.map((g) => g.name), [groups]);
   const [adding, setAdding] = useState(false);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [addCategory, setAddCategory] = useState("__new__");
+  const [addNewCategoryName, setAddNewCategoryName] = useState("");
+  // Which row is mid-way through typing a brand-new category name after
+  // picking "+ New Category..." from its own dropdown.
+  const [recategorizing, setRecategorizing] = useState<{ itemId: string; name: string } | null>(null);
 
-  async function handleAdd() {
-    setAdding(true);
-    try {
-      await onAdd(section);
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function handleSaveCategory() {
-    if (!newCategoryName.trim()) {
+  async function handleAddSave() {
+    const isNewCategory = addCategory === "__new__";
+    const category = isNewCategory ? addNewCategoryName.trim() : addCategory;
+    if (!category) {
       alert("Enter a category name.");
       return;
     }
-    setAdding(true);
+    setSaving(true);
     try {
-      await onAddCategory(section, newCategoryName.trim());
-      setNewCategoryName("");
-      setAddingCategory(false);
-    } finally {
+      await onAddItem(section, category, isNewCategory);
+      setAddCategory("__new__");
+      setAddNewCategoryName("");
       setAdding(false);
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function handleCategorySelect(item: FobItem, value: string) {
+    if (value === "__new__") {
+      setRecategorizing({ itemId: item.id, name: "" });
+    } else if (value !== item.commodity_group) {
+      onMoveToCategory(item, value, false);
+    }
+  }
+
+  function handleConfirmNewCategory() {
+    if (!recategorizing) return;
+    const name = recategorizing.name.trim();
+    if (!name) return;
+    const item = items.find((i) => i.id === recategorizing.itemId);
+    if (item) onMoveToCategory(item, name, true);
+    setRecategorizing(null);
   }
 
   return (
@@ -426,10 +444,12 @@ function FobItemsSection({
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/5">
             <tr>
+              <th className="px-2 py-2">Category</th>
               <th className="px-2 py-2">Commodity</th>
               <th className="px-2 py-2">Unit Per</th>
               <th className="px-2 py-2">Size</th>
               <th className="px-2 py-2">FOB</th>
+              <th className="w-16 px-2 py-2" />
               <th className="w-16 px-2 py-2" />
             </tr>
           </thead>
@@ -437,7 +457,7 @@ function FobItemsSection({
             {groups.map((g) => (
               <Fragment key={g.name}>
                 <tr className="border-t border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/5">
-                  <td colSpan={5} className="px-2 py-1">
+                  <td colSpan={7} className="px-2 py-1">
                     <input
                       defaultValue={g.name}
                       onBlur={(e) => {
@@ -448,8 +468,48 @@ function FobItemsSection({
                     />
                   </td>
                 </tr>
-                {g.rows.map((item) => (
+                {g.rows.map((item, idx) => (
                   <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
+                    <td className="min-w-[9rem] px-1 py-1">
+                      {recategorizing?.itemId === item.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            value={recategorizing.name}
+                            onChange={(e) => setRecategorizing({ itemId: item.id, name: e.target.value })}
+                            placeholder="New category"
+                            className={field}
+                          />
+                          <button
+                            type="button"
+                            onClick={handleConfirmNewCategory}
+                            className="text-xs font-semibold text-green-600 hover:underline"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRecategorizing(null)}
+                            className="text-xs font-semibold text-black/40 hover:underline dark:text-white/40"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <select
+                          value={item.commodity_group}
+                          onChange={(e) => handleCategorySelect(item, e.target.value)}
+                          className={field}
+                        >
+                          {categoryNames.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                          <option value="__new__">+ New Category…</option>
+                        </select>
+                      )}
+                    </td>
                     <td className="min-w-[10rem] px-1 py-1">
                       <input
                         defaultValue={item.variety ?? ""}
@@ -490,6 +550,26 @@ function FobItemsSection({
                         />
                       </div>
                     </td>
+                    <td className="whitespace-nowrap px-1 py-1.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => onMoveWithinGroup(item, "up")}
+                        disabled={idx === 0}
+                        title="Move up"
+                        className="px-1 text-black/40 hover:text-black disabled:opacity-30 dark:text-white/40 dark:hover:text-white"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onMoveWithinGroup(item, "down")}
+                        disabled={idx === g.rows.length - 1}
+                        title="Move down"
+                        className="px-1 text-black/40 hover:text-black disabled:opacity-30 dark:text-white/40 dark:hover:text-white"
+                      >
+                        ▼
+                      </button>
+                    </td>
                     <td className="px-2 py-1.5">
                       <button
                         onClick={() => onDelete(item.id)}
@@ -504,7 +584,7 @@ function FobItemsSection({
             ))}
             {groups.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={7} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No items yet.
                 </td>
               </tr>
@@ -514,39 +594,49 @@ function FobItemsSection({
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button
-          onClick={handleAdd}
-          disabled={adding}
-          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          onClick={() => setAdding((v) => !v)}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
         >
-          {adding ? "Adding..." : "+ Add Item"}
-        </button>
-        <button
-          onClick={() => setAddingCategory((v) => !v)}
-          className="rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-        >
-          + Add Category
+          + Add Item
         </button>
       </div>
-      {addingCategory && (
+      {adding && (
         <div className="flex flex-wrap items-end gap-2 rounded border border-dashed border-green-500/50 bg-green-50/50 p-2 dark:bg-green-950/10">
           <label className="flex flex-col gap-0.5 text-xs">
-            <span className="font-medium">Category name</span>
-            <input
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              placeholder="e.g. Green Beans"
+            <span className="font-medium">Category</span>
+            <select
+              value={addCategory}
+              onChange={(e) => setAddCategory(e.target.value)}
               className={`${field} w-48`}
-            />
+            >
+              <option value="__new__">+ New Category</option>
+              {categoryNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
           </label>
+          {addCategory === "__new__" && (
+            <label className="flex flex-col gap-0.5 text-xs">
+              <span className="font-medium">New category name</span>
+              <input
+                value={addNewCategoryName}
+                onChange={(e) => setAddNewCategoryName(e.target.value)}
+                placeholder="e.g. Green Beans"
+                className={`${field} w-48`}
+              />
+            </label>
+          )}
           <button
-            onClick={handleSaveCategory}
-            disabled={adding}
+            onClick={handleAddSave}
+            disabled={saving}
             className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
           >
-            {adding ? "Saving..." : "Save Category"}
+            {saving ? "Adding..." : "Add Item"}
           </button>
           <button
-            onClick={() => setAddingCategory(false)}
+            onClick={() => setAdding(false)}
             className="rounded-md px-2.5 py-1 text-xs font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
           >
             Cancel
@@ -612,7 +702,7 @@ export default function FobPharrClient({
 
   function handleItemFieldSave(
     id: string,
-    patch: Partial<Pick<FobItem, "commodity_group" | "variety" | "unit_per" | "size" | "fob">>,
+    patch: Partial<Pick<FobItem, "commodity_group" | "variety" | "unit_per" | "size" | "fob" | "position">>,
   ) {
     updateLocalItem(id, patch);
     updateFobItem(id, patch).catch(() => {});
@@ -628,23 +718,41 @@ export default function FobPharrClient({
     affected.forEach((i) => updateFobItem(i.id, { commodity_group: newName }).catch(() => {}));
   }
 
-  // A quick "+ Add Item" (still-unnamed "New Item" bucket) lands at the top
-  // of its section so it's easy to find and fill in; "+ Add Category" (a
-  // real name given up front) lands at the bottom, same as pasting a whole
-  // new block onto the end of the sheet. groupFobItems sorts by position, so
-  // this ordering is what actually renders, not just insertion order.
-  async function handleAddItem(section: FobSection) {
-    const positions = items.filter((i) => i.section === section).map((i) => i.position);
-    const position = Math.min(0, ...positions) - 1;
-    const row = await addFobItem(section, position, "New Item", date);
+  // A new item can join an existing category (appended to the end of that
+  // group) or start a brand-new one (lands at the bottom of the section).
+  // groupFobItems sorts by position, so this is what actually renders, not
+  // just insertion order.
+  async function handleAddItem(section: FobSection, category: string, isNewCategory: boolean) {
+    const sectionItems = items.filter((i) => i.section === section);
+    const position = isNewCategory
+      ? Math.max(-1, ...sectionItems.map((i) => i.position)) + 1
+      : Math.max(-1, ...sectionItems.filter((i) => i.commodity_group === category).map((i) => i.position)) + 1;
+    const row = await addFobItem(section, position, category, date);
     patchItems((prev) => [...prev, row as FobItem]);
   }
 
-  async function handleAddCategory(section: FobSection, categoryName: string) {
-    const positions = items.filter((i) => i.section === section).map((i) => i.position);
-    const position = Math.max(-1, ...positions) + 1;
-    const row = await addFobItem(section, position, categoryName, date);
-    patchItems((prev) => [...prev, row as FobItem]);
+  // Moving a row into a different category re-parents it - groupFobItems
+  // only cares about commodity_group matching, so position just needs to
+  // land it somewhere sensible (end of the target group, or the bottom of
+  // the section for a brand-new one), not touch any other row.
+  function handleMoveItemToCategory(item: FobItem, category: string, isNewCategory: boolean) {
+    const sectionItems = items.filter((i) => i.section === item.section && i.id !== item.id);
+    const position = isNewCategory
+      ? Math.max(-1, ...sectionItems.map((i) => i.position)) + 1
+      : Math.max(-1, ...sectionItems.filter((i) => i.commodity_group === category).map((i) => i.position)) + 1;
+    handleItemFieldSave(item.id, { commodity_group: category, position });
+  }
+
+  function handleMoveItemWithinGroup(item: FobItem, direction: "up" | "down") {
+    const siblings = items
+      .filter((i) => i.section === item.section && i.commodity_group === item.commodity_group)
+      .sort((a, b) => a.position - b.position);
+    const idx = siblings.findIndex((i) => i.id === item.id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= siblings.length) return;
+    const other = siblings[swapIdx];
+    handleItemFieldSave(item.id, { position: other.position });
+    handleItemFieldSave(other.id, { position: item.position });
   }
 
   async function handleDeleteItem(id: string) {
@@ -831,8 +939,9 @@ export default function FobPharrClient({
             items={items}
             onFieldSave={handleItemFieldSave}
             onGroupRename={handleGroupRename}
-            onAdd={handleAddItem}
-            onAddCategory={handleAddCategory}
+            onAddItem={handleAddItem}
+            onMoveToCategory={handleMoveItemToCategory}
+            onMoveWithinGroup={handleMoveItemWithinGroup}
             onDelete={handleDeleteItem}
             vendorAverages={visibleVendorAverages}
           />
@@ -842,8 +951,9 @@ export default function FobPharrClient({
             items={items}
             onFieldSave={handleItemFieldSave}
             onGroupRename={handleGroupRename}
-            onAdd={handleAddItem}
-            onAddCategory={handleAddCategory}
+            onAddItem={handleAddItem}
+            onMoveToCategory={handleMoveItemToCategory}
+            onMoveWithinGroup={handleMoveItemWithinGroup}
             onDelete={handleDeleteItem}
             vendorAverages={visibleVendorAverages}
           />

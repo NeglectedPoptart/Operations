@@ -10,7 +10,7 @@ function revalidateAll() {
 
 export async function updateFobItem(
   id: string,
-  patch: Partial<Pick<FobItem, "commodity_group" | "variety" | "unit_per" | "size" | "fob">>,
+  patch: Partial<Pick<FobItem, "commodity_group" | "variety" | "unit_per" | "size" | "fob" | "position">>,
 ) {
   const supabase = await createClient();
   const { error } = await supabase.from("fob_items").update(patch).eq("id", id);

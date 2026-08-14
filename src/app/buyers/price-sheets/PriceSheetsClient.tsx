@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { formatDate, todayISO } from "@/lib/dates";
+import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { normalizeCategory, parsePriceSheetPaste, PRODUCE_CATEGORIES, type ParsedPriceSheetItem } from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
@@ -120,6 +120,22 @@ function computeCategoryCounts(items: PriceSheetItem[]): { category: string; cou
 
 const hoverPrice = "cursor-help underline decoration-dotted decoration-black/30 dark:decoration-white/30";
 
+// price_sheet_items has no history of its own (each paste replaces a
+// vendor's prior sheet, per the full-replace design noted above), so
+// "looking back N days" means widening which vendors count at all -
+// anyone whose most recent sheet_date falls in the window - rather than
+// averaging across multiple dated snapshots that don't exist.
+type LookbackWindow = "today" | "3" | "7";
+const LOOKBACK_OPTIONS: { value: LookbackWindow; label: string }[] = [
+  { value: "today", label: "Today only" },
+  { value: "3", label: "Last 3 days" },
+  { value: "7", label: "Last 7 days (weekly)" },
+];
+function lookbackStartDate(window: LookbackWindow, today: string): string {
+  if (window === "today") return today;
+  return addDays(today, window === "3" ? -2 : -6);
+}
+
 function CommodityBreakdown({ category, items, vendors }: { category: string; items: PriceSheetItem[]; vendors: Vendor[] }) {
   const rows = useMemo(() => computeCategoryItemStats(items, category), [items, category]);
   const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
@@ -174,7 +190,18 @@ function CommodityBreakdown({ category, items, vendors }: { category: string; it
 }
 
 function CommoditySummary({ items, vendors }: { items: PriceSheetItem[]; vendors: Vendor[] }) {
-  const categoryCounts = useMemo(() => computeCategoryCounts(items), [items]);
+  const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
+  const [lookback, setLookback] = useState<LookbackWindow>("today");
+
+  const visibleItems = useMemo(() => {
+    const start = lookbackStartDate(lookback, todayISO());
+    return items.filter((item) => {
+      const sheetDate = vendorById.get(item.vendor_id)?.sheet_date;
+      return !!sheetDate && sheetDate >= start;
+    });
+  }, [items, vendorById, lookback]);
+
+  const categoryCounts = useMemo(() => computeCategoryCounts(visibleItems), [visibleItems]);
   const categoryNames = useMemo(
     () => [...categoryCounts].map((c) => c.category).sort((a, b) => a.localeCompare(b)),
     [categoryCounts],
@@ -188,7 +215,10 @@ function CommoditySummary({ items, vendors }: { items: PriceSheetItem[]; vendors
     if (trimmed) setLookupCategory(trimmed);
   }
 
-  if (categoryNames.length === 0) return null;
+  // Hidden only when there's truly nothing priced anywhere yet - once any
+  // vendor has a sheet on file, the panel (and its look-back selector) stays
+  // available even if the current window happens to come up empty.
+  if (items.length === 0) return null;
 
   return (
     <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
@@ -218,8 +248,22 @@ function CommoditySummary({ items, vendors }: { items: PriceSheetItem[]; vendors
         >
           Show
         </button>
+        <label className="flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
+          <span className="font-medium">Look back:</span>
+          <select
+            value={lookback}
+            onChange={(e) => setLookback(e.target.value as LookbackWindow)}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-black"
+          >
+            {LOOKBACK_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      {lookupCategory && <CommodityBreakdown category={lookupCategory} items={items} vendors={vendors} />}
+      {lookupCategory && <CommodityBreakdown category={lookupCategory} items={visibleItems} vendors={vendors} />}
     </div>
   );
 }
