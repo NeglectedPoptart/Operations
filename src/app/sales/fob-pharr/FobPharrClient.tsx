@@ -5,7 +5,6 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { categoryForFobRow, gradeForFobRow, vendorAverageKeyForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
-import { fobFamilyLinkedKeys } from "@/lib/pageStatus";
 import { createClient } from "@/lib/supabase/client";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
@@ -790,9 +789,7 @@ export default function FobPharrClient({
           </p>
         )}
 
-        {isToday && (
-          <UpdateStatusButton pageKey="fob-pharr" linkedKeys={fobFamilyLinkedKeys("fob-pharr")} canEdit={isAdmin} />
-        )}
+        {isToday && <UpdateStatusButton pageKey="fob-pharr" canEdit={isAdmin} />}
 
         {isToday && <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />}
 
