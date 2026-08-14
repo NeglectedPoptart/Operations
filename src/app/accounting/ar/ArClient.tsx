@@ -21,17 +21,17 @@ interface PayDiscrepancy {
   amount: number;
 }
 
-// A partial-credit invoice (the report's own "*" flag) usually landed at a
-// lower balance than the original invoice - a short pay, money we're not
-// collecting. A negative balance (regardless of the flag) means the
-// opposite: a credit sitting on the account that we owe back or that can
-// offset a future invoice - an over pay.
+// A partial-credit invoice (the report's own "*" flag) means the customer
+// has already taken a deduction/credit against it - whatever balance is
+// still sitting open on it is money that's actually short, not money still
+// expected to come in, so the balance itself IS the short-pay amount (not
+// doc amount minus balance). A negative balance (regardless of the flag)
+// means the opposite: a credit sitting on the account that we owe back or
+// that can offset a future invoice - an over pay.
 function payDiscrepancy(invoice: ArInvoice): PayDiscrepancy | null {
   if (invoice.balance < 0) return { kind: "over", amount: Math.abs(invoice.balance) };
-  if (!invoice.has_partial_credit || invoice.doc_amount === null) return null;
-  const diff = invoice.doc_amount - invoice.balance;
-  if (diff === 0) return null;
-  return diff > 0 ? { kind: "short", amount: diff } : { kind: "over", amount: Math.abs(diff) };
+  if (!invoice.has_partial_credit || invoice.balance <= 0) return null;
+  return { kind: "short", amount: invoice.balance };
 }
 
 const DISCREPANCY_BADGE: Record<"short" | "over", string> = {
@@ -171,6 +171,8 @@ export default function ArClient({
   const [search, setSearch] = useState("");
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
+  const [filterShort, setFilterShort] = useState(false);
+  const [filterOver, setFilterOver] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
@@ -197,14 +199,23 @@ export default function ArClient({
     return { total, byBucket, escalated, needsContact, trouble, shortTotal, overTotal };
   }, [invoices]);
 
-  const filterActive = filterRed || filterYellow;
+  const highlightFilterActive = filterRed || filterYellow;
+  const discrepancyFilterActive = filterShort || filterOver;
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
     const all = buildGroups(customers, invoices);
     return all
       .map((g) => {
         let invs = g.invoices;
-        if (filterActive) invs = invs.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"));
+        if (highlightFilterActive) {
+          invs = invs.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"));
+        }
+        if (discrepancyFilterActive) {
+          invs = invs.filter((i) => {
+            const d = payDiscrepancy(i);
+            return (filterShort && d?.kind === "short") || (filterOver && d?.kind === "over");
+          });
+        }
         if (q) {
           const nameMatches = g.customer.customer_name.toLowerCase().includes(q) || g.customer.customer_code.toLowerCase().includes(q);
           if (!nameMatches) {
@@ -214,7 +225,7 @@ export default function ArClient({
         return { ...g, invoices: invs };
       })
       .filter((g) => g.invoices.length > 0);
-  }, [customers, invoices, search, filterActive, filterRed, filterYellow]);
+  }, [customers, invoices, search, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver]);
 
   function handlePreview() {
     const result = parseArReportPaste(pasteText);
@@ -443,6 +454,14 @@ export default function ArClient({
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={filterYellow} onChange={(e) => setFilterYellow(e.target.checked)} />
             Needs Contact
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterShort} onChange={(e) => setFilterShort(e.target.checked)} />
+            Short Pay
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterOver} onChange={(e) => setFilterOver(e.target.checked)} />
+            Over Pay
           </label>
         </div>
 
