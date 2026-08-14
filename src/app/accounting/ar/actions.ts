@@ -7,6 +7,7 @@ import type { ArCustomer, ArInvoice } from "@/lib/types";
 
 function revalidateAll() {
   revalidatePath("/accounting/ar");
+  revalidatePath("/accounting/ar-troubles");
   revalidatePath("/");
 }
 

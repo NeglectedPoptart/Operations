@@ -86,6 +86,14 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
     subtabs: [{ label: "PAS Files", href: "/compliance/pas-files" }],
   },
   {
+    tab: "accounting",
+    label: "Accounting",
+    subtabs: [
+      { label: "Accounts Receivable", href: "/accounting/ar" },
+      { label: "AR Troubles", href: "/accounting/ar-troubles" },
+    ],
+  },
+  {
     tab: "marketing",
     label: "Marketing",
     subtabs: [{ label: "Brand Assets", href: "/marketing/assets" }],
@@ -165,6 +173,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     marketingFiles,
     marketingTasks,
     brokerRateEntries,
+    arInvoices,
   ] = await Promise.all([
     maxUpdatedAt(supabase, "loads"),
     maxUpdatedAt(supabase, "invoice_statements"),
@@ -193,6 +202,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     maxCreatedAt(supabase, "marketing_files"),
     maxUpdatedAt(supabase, "marketing_tasks"),
     maxUpdatedAt(supabase, "broker_rate_entries"),
+    maxUpdatedAt(supabase, "ar_invoices"),
   ]);
 
   return {
@@ -222,6 +232,8 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/management/callout-sheet": latestOf(calloutEntries, ptoRequests),
     "/management/users": null, // role changes aren't timestamped
     "/compliance/pas-files": pasFiles,
+    "/accounting/ar": arInvoices,
+    "/accounting/ar-troubles": arInvoices,
     "/marketing/assets": latestOf(marketingFiles, marketingTasks),
   };
 }

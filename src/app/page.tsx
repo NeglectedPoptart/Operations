@@ -158,7 +158,7 @@ export default async function HomePage() {
       .select("*", { count: "exact", head: true })
       .eq("rate_con_sent", false)
       .neq("status", "complete"),
-    supabase.from("ar_invoices").select("due_date, balance, highlight"),
+    supabase.from("ar_invoices").select("due_date, balance, highlight, trouble_status"),
   ]);
 
   const error =
@@ -207,7 +207,13 @@ export default async function HomePage() {
   const pendingInbounds = localInbounds.filter((i) => i.status === "pending");
   const arrivedInboundsCount = localInbounds.filter((i) => i.status === "arrived").length;
 
-  const arInvoices = (arInvoicesRes.data ?? []) as { due_date: string | null; balance: number; highlight: string }[];
+  // AR Troubles is a separate page/tile's worth of data (trouble_status
+  // !== "none") - excluded here the same way the AR page itself excludes
+  // it, so this tile's total stays consistent with what clicking through
+  // to /accounting/ar actually shows.
+  const arInvoices = (
+    (arInvoicesRes.data ?? []) as { due_date: string | null; balance: number; highlight: string; trouble_status: string }[]
+  ).filter((i) => i.trouble_status === "none");
   const arTotalOutstanding = arInvoices.reduce((sum, i) => sum + i.balance, 0);
   const arEscalatedCount = arInvoices.filter((i) => i.highlight === "red").length;
   const arBucketTotals = new Map(AR_AGING_BUCKETS.map((b) => [b.key, 0]));

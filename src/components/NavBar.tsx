@@ -92,7 +92,10 @@ const NAV: NavCategory[] = [
   {
     label: "Accounting",
     tab: "accounting",
-    items: [{ href: "/accounting/ar", label: "Accounts Receivable" }],
+    items: [
+      { href: "/accounting/ar", label: "Accounts Receivable" },
+      { href: "/accounting/ar-troubles", label: "AR Troubles" },
+    ],
   },
   {
     label: "Marketing",
