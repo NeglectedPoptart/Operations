@@ -444,6 +444,7 @@ export type FobSection = "western_veg" | "hot_house";
 
 export interface FobItem {
   id: string;
+  entry_date: string;
   section: FobSection;
   commodity_group: string;
   variety: string | null;

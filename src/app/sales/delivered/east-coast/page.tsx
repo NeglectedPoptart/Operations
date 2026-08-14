@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
-import type { DeliveredPriceMessage, FobFreightRate, FobItem } from "@/lib/types";
+import { todayISO } from "@/lib/dates";
+import { ensureTodayFobItems } from "@/lib/fobDaily";
+import type { DeliveredPriceMessage, FobFreightRate } from "@/lib/types";
 import EastCoastPricingClient from "./EastCoastPricingClient";
 
 export const dynamic = "force-dynamic";
@@ -11,19 +13,12 @@ const DEFAULT_MESSAGE =
 export default async function EastCoastPricingPage() {
   const supabase = await createClient();
 
-  const [
-    { data: items, error: itemsError },
-    { data: freightRates, error: freightError },
-    { data: messageRow, error: messageError },
-  ] = await Promise.all([
-    supabase.from("fob_items").select("*").order("section", { ascending: true }).order("position", { ascending: true }),
+  const [items, { data: freightRates, error: freightError }, { data: messageRow, error: messageError }] = await Promise.all([
+    ensureTodayFobItems(supabase, todayISO()),
     supabase.from("fob_freight_rates").select("*").in("lane", LANES),
     supabase.from("delivered_price_messages").select("*").eq("lane", "east-coast").maybeSingle(),
   ]);
 
-  if (itemsError) {
-    return <p className="text-red-600">Failed to load FOB Pricing: {itemsError.message}</p>;
-  }
   if (freightError) {
     return <p className="text-red-600">Failed to load freight rates: {freightError.message}</p>;
   }
@@ -44,7 +39,7 @@ export default async function EastCoastPricingPage() {
 
   return (
     <EastCoastPricingClient
-      items={(items ?? []) as FobItem[]}
+      items={items}
       lanes={LANES}
       freightRates={rates}
       initialMessage={(messageRow as DeliveredPriceMessage | null)?.message ?? DEFAULT_MESSAGE}

@@ -1,3 +1,4 @@
+import { todayISO } from "./dates";
 import type { createClient } from "./supabase/server";
 import type { Tab } from "./roles";
 
@@ -175,7 +176,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     maxUpdatedAt(supabase, "qc_agenda_repack"),
     maxUpdatedAt(supabase, "old_age_items"),
     maxUpdatedAt(supabase, "qc_inspections"),
-    maxUpdatedAt(supabase, "fob_items"),
+    maxUpdatedAtWhere(supabase, "fob_items", "entry_date", todayISO()),
     maxUpdatedAt(supabase, "fob_freight_rates"),
     maxUpdatedAtWhere(supabase, "delivered_price_messages", "lane", "houston"),
     maxUpdatedAtWhere(supabase, "delivered_price_messages", "lane", "dallas"),

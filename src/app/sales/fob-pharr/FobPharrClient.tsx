@@ -3,8 +3,10 @@
 import { Fragment, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
+import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { categoryForFobRow, gradeForFobRow, vendorAverageKeyForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
 import { fobFamilyLinkedKeys } from "@/lib/pageStatus";
+import { createClient } from "@/lib/supabase/client";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import {
   buildWhatsAppSection,
@@ -557,23 +559,54 @@ function FobItemsSection({
 }
 
 export default function FobPharrClient({
+  initialDate,
   initialItems,
   initialFreightRates,
   vendorAverages,
 }: {
+  initialDate: string;
   initialItems: FobItem[];
   initialFreightRates: FobFreightRate[];
   vendorAverages: Record<string, VendorAverage>;
 }) {
   const confirm = useConfirm();
-  const [items, setItems] = useState(initialItems);
+  // Each calendar day is its own full set of fob_items rows (see
+  // src/lib/fobDaily.ts) - cache keyed by entry_date, same day-navigation
+  // pattern as QC Agenda. Today's row is seeded server-side; every other
+  // day is fetched client-side the first time it's opened.
+  const [date, setDate] = useState(initialDate);
+  const [cache, setCache] = useState<Record<string, FobItem[]>>(() => ({ [initialDate]: initialItems }));
   const [rates, setRates] = useState(initialFreightRates);
   const [copied, setCopied] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
+  const items = cache[date] ?? [];
+  const loading = !(date in cache);
+  const isToday = date === todayISO();
+
+  function loadDate(target: string) {
+    setDate(target);
+    if (target in cache) return;
+
+    const supabase = createClient();
+    supabase
+      .from("fob_items")
+      .select("*")
+      .eq("entry_date", target)
+      .order("section", { ascending: true })
+      .order("position", { ascending: true })
+      .then(({ data }) => {
+        setCache((prev) => ({ ...prev, [target]: (data ?? []) as FobItem[] }));
+      });
+  }
+
+  function patchItems(updater: (items: FobItem[]) => FobItem[]) {
+    setCache((prev) => ({ ...prev, [date]: updater(prev[date] ?? []) }));
+  }
+
   function updateLocalItem(id: string, patch: Partial<FobItem>) {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+    patchItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
 
   function handleItemFieldSave(
@@ -586,7 +619,7 @@ export default function FobPharrClient({
 
   function handleGroupRename(section: FobSection, oldName: string, newName: string) {
     const affected = items.filter((i) => i.section === section && i.commodity_group === oldName);
-    setItems((prev) =>
+    patchItems((prev) =>
       prev.map((i) =>
         i.section === section && i.commodity_group === oldName ? { ...i, commodity_group: newName } : i,
       ),
@@ -602,20 +635,20 @@ export default function FobPharrClient({
   async function handleAddItem(section: FobSection) {
     const positions = items.filter((i) => i.section === section).map((i) => i.position);
     const position = Math.min(0, ...positions) - 1;
-    const row = await addFobItem(section, position, "New Item");
-    setItems((prev) => [...prev, row as FobItem]);
+    const row = await addFobItem(section, position, "New Item", date);
+    patchItems((prev) => [...prev, row as FobItem]);
   }
 
   async function handleAddCategory(section: FobSection, categoryName: string) {
     const positions = items.filter((i) => i.section === section).map((i) => i.position);
     const position = Math.max(-1, ...positions) + 1;
-    const row = await addFobItem(section, position, categoryName);
-    setItems((prev) => [...prev, row as FobItem]);
+    const row = await addFobItem(section, position, categoryName, date);
+    patchItems((prev) => [...prev, row as FobItem]);
   }
 
   async function handleDeleteItem(id: string) {
     if (!(await confirm("Delete this item?"))) return;
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    patchItems((prev) => prev.filter((i) => i.id !== id));
     await deleteFobItem(id).catch(() => {});
   }
 
@@ -715,14 +748,49 @@ export default function FobPharrClient({
     }
   }
 
+  // vendorAverages is only computed server-side for today's vendor price
+  // sheets - comparing a past day's FOB price against today's average
+  // wouldn't mean anything, so the badge is hidden while browsing history.
+  const visibleVendorAverages = isToday ? vendorAverages : {};
+
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <h1 className="text-2xl font-bold">FOB Pricing</h1>
 
-        <UpdateStatusButton pageKey="fob-pharr" linkedKeys={fobFamilyLinkedKeys("fob-pharr")} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => loadDate(addDays(date, -1))}
+            className="rounded-md border border-black/20 px-3 py-1.5 text-sm dark:border-white/20"
+          >
+            ← Prev Day
+          </button>
+          <span className="text-sm font-medium">
+            {formatDate(date)} {isToday && <span className="text-green-600">(today)</span>}
+          </span>
+          <button
+            onClick={() => loadDate(addDays(date, 1))}
+            className="rounded-md border border-black/20 px-3 py-1.5 text-sm dark:border-white/20"
+          >
+            Next Day →
+          </button>
+          {!isToday && (
+            <button onClick={() => loadDate(todayISO())} className="text-sm font-medium text-green-600 hover:underline">
+              Back to today
+            </button>
+          )}
+          {loading && <span className="text-xs text-black/40">loading…</span>}
+        </div>
 
-        <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />
+        {!isToday && (
+          <p className="rounded-md bg-amber-100 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+            Viewing {formatDate(date)}&apos;s pricing - a look back at history, not today&apos;s live sheet.
+          </p>
+        )}
+
+        {isToday && <UpdateStatusButton pageKey="fob-pharr" linkedKeys={fobFamilyLinkedKeys("fob-pharr")} />}
+
+        {isToday && <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />}
 
         <FreightRatesPanel
           rates={rates}
@@ -765,7 +833,7 @@ export default function FobPharrClient({
             onAdd={handleAddItem}
             onAddCategory={handleAddCategory}
             onDelete={handleDeleteItem}
-            vendorAverages={vendorAverages}
+            vendorAverages={visibleVendorAverages}
           />
           <FobItemsSection
             title="Hot House"
@@ -776,7 +844,7 @@ export default function FobPharrClient({
             onAdd={handleAddItem}
             onAddCategory={handleAddCategory}
             onDelete={handleDeleteItem}
-            vendorAverages={vendorAverages}
+            vendorAverages={visibleVendorAverages}
           />
         </div>
       </div>
