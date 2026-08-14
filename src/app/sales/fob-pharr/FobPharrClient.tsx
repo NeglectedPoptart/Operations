@@ -563,11 +563,13 @@ export default function FobPharrClient({
   initialItems,
   initialFreightRates,
   vendorAverages,
+  isAdmin,
 }: {
   initialDate: string;
   initialItems: FobItem[];
   initialFreightRates: FobFreightRate[];
   vendorAverages: Record<string, VendorAverage>;
+  isAdmin: boolean;
 }) {
   const confirm = useConfirm();
   // Each calendar day is its own full set of fob_items rows (see
@@ -788,7 +790,9 @@ export default function FobPharrClient({
           </p>
         )}
 
-        {isToday && <UpdateStatusButton pageKey="fob-pharr" linkedKeys={fobFamilyLinkedKeys("fob-pharr")} />}
+        {isToday && (
+          <UpdateStatusButton pageKey="fob-pharr" linkedKeys={fobFamilyLinkedKeys("fob-pharr")} canEdit={isAdmin} />
+        )}
 
         {isToday && <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />}
 

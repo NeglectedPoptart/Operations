@@ -81,6 +81,7 @@ const NAV: NavCategory[] = [
       { href: "/management/callout-sheet", label: "Callout Sheet" },
       { href: "/management/users", label: "User Roles" },
       { href: "/management/notifications", label: "Notifications" },
+      { href: "/management/reset", label: "Reset Tools" },
     ],
   },
   {

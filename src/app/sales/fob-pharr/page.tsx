@@ -11,12 +11,17 @@ export default async function FobPharrPage() {
   const supabase = await createClient();
   const today = todayISO();
 
-  const [items, { data: freightRates, error: freightError }, { data: priceSheetItems, error: priceSheetItemsError }, { data: vendors, error: vendorsError }] =
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [items, { data: freightRates, error: freightError }, { data: priceSheetItems, error: priceSheetItemsError }, { data: vendors, error: vendorsError }, { data: profile }] =
     await Promise.all([
       ensureTodayFobItems(supabase, today),
       supabase.from("fob_freight_rates").select("*").order("position", { ascending: true }),
       supabase.from("price_sheet_items").select("*"),
       supabase.from("vendors").select("*"),
+      user ? supabase.from("profiles").select("role").eq("id", user.id).single() : Promise.resolve({ data: null }),
     ]);
 
   if (freightError) {
@@ -41,6 +46,7 @@ export default async function FobPharrPage() {
       initialItems={items}
       initialFreightRates={(freightRates ?? []) as FobFreightRate[]}
       vendorAverages={Object.fromEntries(vendorAverages)}
+      isAdmin={(profile as { role: string } | null)?.role === "admin"}
     />
   );
 }

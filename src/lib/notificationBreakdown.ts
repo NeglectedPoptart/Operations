@@ -77,6 +77,7 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
       { label: "Workflow", href: "/management/workflow" },
       { label: "Callout Sheet", href: "/management/callout-sheet" },
       { label: "User Roles", href: "/management/users" },
+      { label: "Reset Tools", href: "/management/reset" },
     ],
   },
   {

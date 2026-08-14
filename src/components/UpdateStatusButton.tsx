@@ -12,9 +12,14 @@ import { formatTimestamp, isoDateOf, todayISO } from "@/lib/dates";
 export default function UpdateStatusButton({
   pageKey,
   linkedKeys = [],
+  canEdit = true,
 }: {
   pageKey: string;
   linkedKeys?: string[];
+  // Some pages restrict who's allowed to confirm up-to-date (e.g. FOB Pharr
+  // is Admin-only) - everyone still sees the current status, but only a
+  // role that passes this can click to change it.
+  canEdit?: boolean;
 }) {
   const [markedAt, setMarkedAt] = useState<string | null>(null);
   const [markedByEmail, setMarkedByEmail] = useState<string | null>(null);
@@ -57,12 +62,11 @@ export default function UpdateStatusButton({
   return (
     <button
       onClick={handleClick}
-      disabled={saving}
+      disabled={saving || !canEdit}
+      title={canEdit ? undefined : "Only an Admin can confirm this page is up to date."}
       className={`mb-4 flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-center text-base font-bold shadow-md transition disabled:opacity-70 ${
-        isUpToDateToday
-          ? "bg-green-600 text-white hover:bg-green-700"
-          : "bg-amber-500 text-black hover:bg-amber-400"
-      }`}
+        canEdit ? "" : "disabled:cursor-not-allowed"
+      } ${isUpToDateToday ? "bg-green-600 text-white hover:bg-green-700" : "bg-amber-500 text-black hover:bg-amber-400"}`}
     >
       {isUpToDateToday ? (
         <>

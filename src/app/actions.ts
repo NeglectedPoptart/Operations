@@ -183,3 +183,13 @@ export async function markPageUpToDate(pageKeys: string[]): Promise<PageStatusIn
   if (error) throw new Error(error.message);
   return { markedAt: now, markedByEmail: user?.email ?? null };
 }
+
+// Wipes every page's confirmation at once - there's no per-page "unmark",
+// only this blanket reset (see Management > Reset Tools). Every
+// UpdateStatusButton across the app reads as amber "not confirmed" again
+// until someone re-checks and re-marks it.
+export async function resetAllPageStatus() {
+  const supabase = await createClient();
+  const { error } = await supabase.from("page_status").delete().not("page_key", "is", null);
+  if (error) throw new Error(error.message);
+}
