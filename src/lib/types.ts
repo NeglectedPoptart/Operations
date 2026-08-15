@@ -652,3 +652,43 @@ export interface ArInvoice {
   created_at: string;
   updated_at: string;
 }
+
+// Accounting: Accounts Payable -------------------------------------------------
+
+export type ApHighlight = "none" | "yellow" | "red";
+
+export const AP_HIGHLIGHTS: { value: ApHighlight; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "yellow", label: "Needs Contact" },
+  { value: "red", label: "Escalated" },
+];
+
+export interface ApVendor {
+  id: string;
+  vendor_code: string;
+  vendor_name: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// gl_account_code/label come straight from the "Accrued Payables by
+// Document" report's own GL Account group headers - not an enum, since
+// nothing here assumes there are only ever two.
+export interface ApPayable {
+  id: string;
+  vendor_id: string;
+  gl_account_code: string;
+  gl_account_label: string;
+  doc_date: string | null;
+  type: string | null;
+  concept: string | null;
+  document: string;
+  balance: number;
+  last_contact: string | null;
+  notes: string | null;
+  highlight: ApHighlight;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}

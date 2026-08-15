@@ -1,0 +1,493 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
+import HorizontalBarChart from "@/components/HorizontalBarChart";
+import { parseApReportPaste, type ParsedApPayable } from "@/lib/apReportParse";
+import { formatDate } from "@/lib/dates";
+import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
+import { AP_HIGHLIGHTS, type ApHighlight, type ApPayable, type ApVendor } from "@/lib/types";
+import { deleteApPayableRow, importApReport, updateApPayableRow } from "./actions";
+
+const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+
+function formatMoney(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+const HIGHLIGHT_ROW_CLASS: Record<ApHighlight, string> = {
+  none: "",
+  yellow: "bg-yellow-50 dark:bg-yellow-950/20",
+  red: "bg-red-50 dark:bg-red-950/20",
+};
+
+const GL_BADGE_CLASS = "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300";
+
+const AP_HEADERS = ["Vendor", "GL Account", "Document", "Date", "Type", "Concept", "Balance", "Last Contact", "Notes"];
+
+function apRowValues(p: ApPayable, vendorName: string): string[] {
+  return [
+    vendorName,
+    p.gl_account_label || p.gl_account_code,
+    p.document,
+    p.doc_date ? formatDate(p.doc_date) : "",
+    p.type ?? "",
+    p.concept ?? "",
+    formatMoney(p.balance),
+    p.last_contact ? formatDate(p.last_contact) : "",
+    p.notes ?? "",
+  ];
+}
+
+interface VendorGroup {
+  vendor: ApVendor;
+  payables: ApPayable[];
+  totalBalance: number;
+}
+
+function compareByDate(a: ApPayable, b: ApPayable): number {
+  if (a.doc_date === b.doc_date) return a.position - b.position;
+  if (a.doc_date === null) return 1;
+  if (b.doc_date === null) return -1;
+  return a.doc_date < b.doc_date ? -1 : 1;
+}
+
+function buildGroups(vendors: ApVendor[], payables: ApPayable[]): VendorGroup[] {
+  const byVendor = new Map<string, ApPayable[]>();
+  for (const p of payables) {
+    if (!byVendor.has(p.vendor_id)) byVendor.set(p.vendor_id, []);
+    byVendor.get(p.vendor_id)!.push(p);
+  }
+  return vendors
+    .map((vendor) => {
+      const ps = [...(byVendor.get(vendor.id) ?? [])].sort(compareByDate);
+      return { vendor, payables: ps, totalBalance: ps.reduce((sum, p) => sum + p.balance, 0) };
+    })
+    .filter((g) => g.payables.length > 0)
+    .sort((a, b) => b.totalBalance - a.totalBalance);
+}
+
+function buildTableHtml(title: string, headers: string[], rows: string[][]): string {
+  const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
+  const headCell = `${cell}font-weight:bold;background:#dddddd;`;
+  const bodyRows =
+    rows.length > 0
+      ? rows.map((r) => `<tr>${r.map((c) => `<td style="${cell}">${escapeHtml(c)}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${headers.length}" style="${cell}text-align:center;color:#666666;">Nothing here.</td></tr>`;
+  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;">
+    <tr><td colspan="${headers.length}" style="background:#8DC63F;color:#000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
+    <tr>${headers.map((h) => `<td style="${headCell}">${escapeHtml(h)}</td>`).join("")}</tr>
+    ${bodyRows}
+  </table>`;
+}
+
+function buildPlainTextTable(title: string, headers: string[], rows: string[][]): string {
+  const lines = [title, headers.join("\t")];
+  if (rows.length === 0) lines.push("Nothing here.");
+  for (const r of rows) lines.push(r.join("\t"));
+  return lines.join("\n");
+}
+
+export default function ApClient({
+  initialVendors,
+  initialPayables,
+}: {
+  initialVendors: ApVendor[];
+  initialPayables: ApPayable[];
+}) {
+  const confirm = useConfirm();
+  const [vendors, setVendors] = useState(initialVendors);
+  const [payables, setPayables] = useState(initialPayables);
+  const [showPaste, setShowPaste] = useState(initialPayables.length === 0);
+  const [pasteText, setPasteText] = useState("");
+  const [previewRows, setPreviewRows] = useState<ParsedApPayable[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterRed, setFilterRed] = useState(false);
+  const [filterYellow, setFilterYellow] = useState(false);
+  const [glFilter, setGlFilter] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
+
+  const glAccounts = useMemo(() => {
+    const byCode = new Map<string, string>();
+    for (const p of payables) {
+      if (!byCode.has(p.gl_account_code)) byCode.set(p.gl_account_code, p.gl_account_label || p.gl_account_code);
+    }
+    return Array.from(byCode.entries()).map(([code, label]) => ({ code, label }));
+  }, [payables]);
+
+  const totals = useMemo(() => {
+    let total = 0;
+    let escalated = 0;
+    const byGl = new Map<string, number>();
+    for (const p of payables) {
+      total += p.balance;
+      if (p.highlight === "red") escalated++;
+      const label = p.gl_account_label || p.gl_account_code;
+      byGl.set(label, (byGl.get(label) ?? 0) + p.balance);
+    }
+    return { total, escalated, byGl };
+  }, [payables]);
+
+  const highlightFilterActive = filterRed || filterYellow;
+  const glFilterActive = glFilter.size > 0;
+  const groups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const all = buildGroups(vendors, payables);
+    return all
+      .map((g) => {
+        let ps = g.payables;
+        if (highlightFilterActive) {
+          ps = ps.filter((p) => (filterRed && p.highlight === "red") || (filterYellow && p.highlight === "yellow"));
+        }
+        if (glFilterActive) {
+          ps = ps.filter((p) => glFilter.has(p.gl_account_code));
+        }
+        if (q) {
+          const nameMatches = g.vendor.vendor_name.toLowerCase().includes(q) || g.vendor.vendor_code.toLowerCase().includes(q);
+          if (!nameMatches) {
+            ps = ps.filter((p) => p.document.toLowerCase().includes(q));
+          }
+        }
+        return { ...g, payables: ps };
+      })
+      .filter((g) => g.payables.length > 0);
+  }, [vendors, payables, search, highlightFilterActive, filterRed, filterYellow, glFilterActive, glFilter]);
+
+  function toggleGlFilter(code: string) {
+    setGlFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  }
+
+  function handlePreview() {
+    const result = parseApReportPaste(pasteText);
+    if (result.error) {
+      setParseError(result.error);
+      setPreviewRows(null);
+      return;
+    }
+    setParseError(null);
+    setPreviewRows(result.payables);
+  }
+
+  const existingKeys = useMemo(
+    () => new Set(payables.map((p) => `${p.vendor_id}:${p.document}`)),
+    [payables],
+  );
+  const vendorIdByCode = useMemo(() => new Map(vendors.map((v) => [v.vendor_code, v.id])), [vendors]);
+  const previewSummary = useMemo(() => {
+    if (!previewRows) return null;
+    const parsedKeys = new Set(
+      previewRows.map((r) => `${vendorIdByCode.get(r.vendorCode) ?? `new:${r.vendorCode}`}:${r.document}`),
+    );
+    const added = previewRows.filter((r) => !existingKeys.has(`${vendorIdByCode.get(r.vendorCode)}:${r.document}`)).length;
+    const updated = previewRows.length - added;
+    const removed = payables.filter((p) => !parsedKeys.has(`${p.vendor_id}:${p.document}`)).length;
+    const total = previewRows.reduce((sum, r) => sum + r.balance, 0);
+    return { added, updated, removed, total };
+  }, [previewRows, existingKeys, vendorIdByCode, payables]);
+
+  async function handleConfirmImport() {
+    if (!previewRows) return;
+    setImporting(true);
+    try {
+      const { vendors: newVendors, payables: newPayables } = await importApReport(previewRows);
+      setVendors(newVendors);
+      setPayables(newPayables);
+      setPreviewRows(null);
+      setPasteText("");
+      setShowPaste(false);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function handleCancelPreview() {
+    setPreviewRows(null);
+    setParseError(null);
+  }
+
+  function updateLocal(id: string, patch: Partial<ApPayable>) {
+    setPayables((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  }
+
+  function handleFieldSave(id: string, patch: Partial<Pick<ApPayable, "last_contact" | "notes" | "highlight">>) {
+    updateLocal(id, patch);
+    updateApPayableRow(id, patch).catch(() => {});
+  }
+
+  async function handleDelete(id: string) {
+    if (!(await confirm("Remove this payable? (It'll come back on the next import if it's still open in the ERP.)"))) return;
+    setPayables((prev) => prev.filter((p) => p.id !== id));
+    await deleteApPayableRow(id).catch(() => {});
+  }
+
+  const flatRows = useMemo(
+    () => groups.flatMap((g) => g.payables.map((p) => apRowValues(p, g.vendor.vendor_name))),
+    [groups],
+  );
+
+  async function handleCopyEmail() {
+    const html = buildTableHtml("Accounts Payable", AP_HEADERS, flatRows);
+    const text = buildPlainTextTable("Accounts Payable", AP_HEADERS, flatRows);
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = [
+        {
+          title: "Accounts Payable",
+          headerColor: "#8DC63F",
+          columnHeaders: AP_HEADERS,
+          rows: flatRows.length > 0 ? flatRows.map((cells) => ({ cells })) : [{ cells: ["Nothing here.", ...Array(AP_HEADERS.length - 1).fill("")] }],
+        },
+      ];
+      const blob = await renderPriceSheetPng({
+        title: "Accounts Payable",
+        message: `Total Outstanding: $${totals.total.toFixed(2)}   Escalated: ${totals.escalated}`,
+        blocks,
+      });
+      const result = await copyOrDownloadPng(blob, "accounts-payable.png");
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
+  const glChartData = Array.from(totals.byGl.entries()).map(([label, value]) => ({ label, value }));
+
+  return (
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold">Accounts Payable</h1>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={handleCopyEmail} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+              {copied ? "Copied!" : "Copy for Email"}
+            </button>
+            <button onClick={handleCopyImage} className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800">
+              {imageStatus ?? "Copy as Image"}
+            </button>
+            <button
+              onClick={() => setShowPaste((s) => !s)}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {showPaste ? "Hide paste box" : "Paste Accrued Payables Report"}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+            <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Summary</h2>
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <p className="text-black/60 dark:text-white/60">Total Outstanding</p>
+                <p className="text-xl font-bold">${totals.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Vendors</p>
+                <p className="text-xl font-bold">{groups.length}</p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Escalated</p>
+                <p className="text-xl font-bold text-red-600 dark:text-red-400">{totals.escalated}</p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+            <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Outstanding by GL Account</h2>
+            <HorizontalBarChart data={glChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
+          </div>
+        </div>
+
+        {showPaste && (
+          <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+            <p className="text-sm text-black/60 dark:text-white/60">
+              Paste the whole &quot;Accrued Payables by Document&quot; export here (select all in Excel, copy, paste below) -
+              this syncs the list: balances/dates/GL accounts refresh, payables no longer in the export are removed
+              (paid off), and any Last Contact/Notes/Highlight you&apos;ve already logged on a still-open payable is
+              kept. Given how many rows this report usually has, the preview below is a summary rather than a
+              row-by-row grid - review the numbers, then check the full list in the page below after syncing.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={(e) => {
+                setPasteText(e.target.value);
+                setPreviewRows(null);
+                setParseError(null);
+              }}
+              rows={6}
+              placeholder="Paste the Accrued Payables report here..."
+              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
+            />
+            {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+            {!previewRows && (
+              <button
+                onClick={handlePreview}
+                disabled={pasteText.trim() === ""}
+                className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+              >
+                Preview
+              </button>
+            )}
+            {previewRows && previewSummary && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">
+                  Found {previewRows.length} payable{previewRows.length === 1 ? "" : "s"} totaling {formatMoney(previewSummary.total)}:{" "}
+                  {previewSummary.added} new, {previewSummary.updated} updated, {previewSummary.removed} will be removed (no longer
+                  open).
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleConfirmImport}
+                    disabled={importing}
+                    className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                  >
+                    {importing ? "Syncing..." : "Confirm & Sync"}
+                  </button>
+                  <button
+                    onClick={handleCancelPreview}
+                    className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center gap-4 rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search vendor or document #..."
+            className="w-64 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+          />
+          <span className="font-medium text-black/60 dark:text-white/60">Filter:</span>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterRed} onChange={(e) => setFilterRed(e.target.checked)} />
+            Escalated
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterYellow} onChange={(e) => setFilterYellow(e.target.checked)} />
+            Needs Contact
+          </label>
+          {glAccounts.map((gl) => (
+            <label key={gl.code} className="flex items-center gap-1.5">
+              <input type="checkbox" checked={glFilter.has(gl.code)} onChange={() => toggleGlFilter(gl.code)} />
+              {gl.label}
+            </label>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          {groups.length === 0 && (
+            <p className="rounded-lg border border-black/10 p-4 text-center text-sm text-black/40 dark:border-white/10 dark:text-white/40">
+              {payables.length === 0 ? "No open payables yet - paste in the Accrued Payables report above." : "Nothing matches the current search/filter."}
+            </p>
+          )}
+          {groups.map((g) => (
+            <div key={g.vendor.id} className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold text-green-700 dark:text-green-400">{g.vendor.vendor_name}</h2>
+                  <p className="text-xs text-black/40 dark:text-white/40">{g.vendor.vendor_code}</p>
+                </div>
+                <p className="text-lg font-bold">{formatMoney(g.totalBalance)}</p>
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-2 py-2">Document</th>
+                      <th className="px-2 py-2">Date</th>
+                      <th className="px-2 py-2">Type</th>
+                      <th className="px-2 py-2">Concept</th>
+                      <th className="px-2 py-2">GL Account</th>
+                      <th className="px-2 py-2 text-right">Balance</th>
+                      <th className="px-2 py-2">Last Contact</th>
+                      <th className="px-2 py-2">Notes</th>
+                      <th className="px-2 py-2">Highlight</th>
+                      <th className="w-16 px-2 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.payables.map((p) => (
+                      <tr key={p.id} className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[p.highlight]}`}>
+                        <td className="px-2 py-1.5">{p.document}</td>
+                        <td className="px-2 py-1.5">{p.doc_date ? formatDate(p.doc_date) : ""}</td>
+                        <td className="px-2 py-1.5">{p.type ?? ""}</td>
+                        <td className="px-2 py-1.5">{p.concept ?? ""}</td>
+                        <td className="px-2 py-1.5">
+                          <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium ${GL_BADGE_CLASS}`}>
+                            {p.gl_account_label || p.gl_account_code}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{formatMoney(p.balance)}</td>
+                        <td className="min-w-[7rem] px-1 py-1">
+                          <input
+                            type="date"
+                            defaultValue={p.last_contact ?? ""}
+                            onBlur={(e) => handleFieldSave(p.id, { last_contact: e.target.value || null })}
+                            className={field}
+                          />
+                        </td>
+                        <td className="min-w-[10rem] px-1 py-1">
+                          <input
+                            defaultValue={p.notes ?? ""}
+                            onBlur={(e) => handleFieldSave(p.id, { notes: e.target.value })}
+                            className={field}
+                          />
+                        </td>
+                        <td className="min-w-[8rem] px-1 py-1">
+                          <select
+                            value={p.highlight}
+                            onChange={(e) => handleFieldSave(p.id, { highlight: e.target.value as ApHighlight })}
+                            className={field}
+                          >
+                            {AP_HIGHLIGHTS.map((h) => (
+                              <option key={h.value} value={h.value}>
+                                {h.label}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <button onClick={() => handleDelete(p.id)} className="text-xs font-medium text-red-600 hover:underline">
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
