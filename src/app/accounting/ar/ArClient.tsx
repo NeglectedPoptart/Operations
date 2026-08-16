@@ -166,6 +166,8 @@ export default function ArClient({
       setPreviewInvoices(null);
       setPasteText("");
       setShowPaste(false);
+    } catch (err) {
+      alert(err instanceof Error ? `Couldn't sync: ${err.message}` : "Couldn't sync - try again.");
     } finally {
       setImporting(false);
     }

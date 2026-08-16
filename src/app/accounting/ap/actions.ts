@@ -11,12 +11,14 @@ function revalidateAll() {
 }
 
 // Syncs the open-payables list against a fresh Accrued Payables pull: a
-// payable already here (matched on vendor_code + document) has its
-// balance/date/type/concept/GL account refreshed, but keeps whatever
-// collections follow-up (last_contact/notes/highlight) was already on it.
-// One missing from the new import (paid off) is deleted. A new one is
-// inserted. Same sync policy as the AR page's importArReport, just keyed
-// on vendor+document instead of a single invoice number.
+// payable already here (matched on vendor + document + concept - a
+// document number alone isn't unique, since one document can carry
+// multiple lines like "Customs" and "Freight") has its
+// balance/date/type/GL account refreshed, but keeps whatever collections
+// follow-up (last_contact/notes/highlight) was already on it. One missing
+// from the new import (paid off) is deleted. A new one is inserted. Same
+// sync policy as the AR page's importArReport, just keyed on this
+// three-part composite instead of a single invoice number.
 export async function importApReport(
   rows: ParsedApPayable[],
 ): Promise<{ vendors: ApVendor[]; payables: ApPayable[] }> {
@@ -37,15 +39,20 @@ export async function importApReport(
 
   const { data: existing, error: existingError } = await supabase
     .from("ap_payables")
-    .select("id, vendor_id, document, position");
+    .select("id, vendor_id, document, concept, position");
   if (existingError) throw new Error(existingError.message);
 
-  const existingByKey = new Map((existing ?? []).map((r) => [`${r.vendor_id}:${r.document}`, r]));
-  const importedKeys = new Set(rows.map((r) => `${vendorIdByCode.get(r.vendorCode)}:${r.document}`));
+  const rowKey = (vendorId: string | undefined, document: string, concept: string | null) =>
+    `${vendorId}:${document}:${concept ?? ""}`;
+
+  const existingByKey = new Map((existing ?? []).map((r) => [rowKey(r.vendor_id, r.document, r.concept), r]));
+  const importedKeys = new Set(
+    rows.map((r) => rowKey(vendorIdByCode.get(r.vendorCode), r.document, r.concept || null)),
+  );
 
   // Anything open before that isn't in this pull has been paid off.
   const toRemove = (existing ?? [])
-    .filter((r) => !importedKeys.has(`${r.vendor_id}:${r.document}`))
+    .filter((r) => !importedKeys.has(rowKey(r.vendor_id, r.document, r.concept)))
     .map((r) => r.id);
   if (toRemove.length > 0) {
     const { error: deleteError } = await supabase.from("ap_payables").delete().in("id", toRemove);
@@ -59,7 +66,7 @@ export async function importApReport(
   for (const row of rows) {
     const vendorId = vendorIdByCode.get(row.vendorCode);
     if (!vendorId) continue; // shouldn't happen - every row's vendor was just upserted above
-    const existingRow = existingByKey.get(`${vendorId}:${row.document}`);
+    const existingRow = existingByKey.get(rowKey(vendorId, row.document, row.concept || null));
 
     // Only balance/date/type/concept/GL account are refreshed here -
     // last_contact/notes/highlight are left untouched by omitting them

@@ -176,19 +176,27 @@ export default function ApClient({
     setPreviewRows(result.payables);
   }
 
+  // A document number alone isn't unique - one document can carry
+  // multiple lines (e.g. "Customs" and "Freight" both filed under the
+  // same doc #), so the match key has to include concept too, same as
+  // the server-side sync logic.
+  const rowKey = (vendorId: string | undefined, document: string, concept: string | null) =>
+    `${vendorId}:${document}:${concept ?? ""}`;
   const existingKeys = useMemo(
-    () => new Set(payables.map((p) => `${p.vendor_id}:${p.document}`)),
+    () => new Set(payables.map((p) => rowKey(p.vendor_id, p.document, p.concept))),
     [payables],
   );
   const vendorIdByCode = useMemo(() => new Map(vendors.map((v) => [v.vendor_code, v.id])), [vendors]);
   const previewSummary = useMemo(() => {
     if (!previewRows) return null;
     const parsedKeys = new Set(
-      previewRows.map((r) => `${vendorIdByCode.get(r.vendorCode) ?? `new:${r.vendorCode}`}:${r.document}`),
+      previewRows.map((r) => rowKey(vendorIdByCode.get(r.vendorCode), r.document, r.concept || null)),
     );
-    const added = previewRows.filter((r) => !existingKeys.has(`${vendorIdByCode.get(r.vendorCode)}:${r.document}`)).length;
+    const added = previewRows.filter(
+      (r) => !existingKeys.has(rowKey(vendorIdByCode.get(r.vendorCode), r.document, r.concept || null)),
+    ).length;
     const updated = previewRows.length - added;
-    const removed = payables.filter((p) => !parsedKeys.has(`${p.vendor_id}:${p.document}`)).length;
+    const removed = payables.filter((p) => !parsedKeys.has(rowKey(p.vendor_id, p.document, p.concept))).length;
     const total = previewRows.reduce((sum, r) => sum + r.balance, 0);
     return { added, updated, removed, total };
   }, [previewRows, existingKeys, vendorIdByCode, payables]);
@@ -203,6 +211,8 @@ export default function ApClient({
       setPreviewRows(null);
       setPasteText("");
       setShowPaste(false);
+    } catch (err) {
+      alert(err instanceof Error ? `Couldn't sync: ${err.message}` : "Couldn't sync - try again.");
     } finally {
       setImporting(false);
     }
