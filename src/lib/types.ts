@@ -692,3 +692,43 @@ export interface ApPayable {
   created_at: string;
   updated_at: string;
 }
+
+// Accounting: AP Pay Lists ------------------------------------------------------
+
+export type ApPayListItemStatus = "pending" | "good_to_pay" | "hold";
+
+export const AP_PAY_LIST_ITEM_STATUSES: { value: ApPayListItemStatus; label: string }[] = [
+  { value: "pending", label: "Pending Review" },
+  { value: "good_to_pay", label: "Good to Pay" },
+  { value: "hold", label: "HOLD" },
+];
+
+export interface ApPayList {
+  id: string;
+  title: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// A snapshot of the payable's fields at the moment it was added to the
+// list, not a live join back to ap_payables (see migration_055) - ap_payable_id
+// is kept only as an optional back-reference.
+export interface ApPayListItem {
+  id: string;
+  pay_list_id: string;
+  ap_payable_id: string | null;
+  vendor_code: string;
+  vendor_name: string;
+  gl_account_label: string;
+  document: string;
+  doc_date: string | null;
+  type: string | null;
+  concept: string | null;
+  balance: number;
+  status: ApPayListItemStatus;
+  notes: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}

@@ -92,6 +92,7 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
       { label: "Accounts Receivable", href: "/accounting/ar" },
       { label: "AR Troubles", href: "/accounting/ar-troubles" },
       { label: "Accounts Payable", href: "/accounting/ap" },
+      { label: "Pay Lists", href: "/accounting/pay-lists" },
     ],
   },
   {
@@ -176,6 +177,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     brokerRateEntries,
     arInvoices,
     apPayables,
+    apPayListItems,
   ] = await Promise.all([
     maxUpdatedAt(supabase, "loads"),
     maxUpdatedAt(supabase, "invoice_statements"),
@@ -206,6 +208,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     maxUpdatedAt(supabase, "broker_rate_entries"),
     maxUpdatedAt(supabase, "ar_invoices"),
     maxUpdatedAt(supabase, "ap_payables"),
+    maxUpdatedAt(supabase, "ap_pay_list_items"),
   ]);
 
   return {
@@ -238,6 +241,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/accounting/ar": arInvoices,
     "/accounting/ar-troubles": arInvoices,
     "/accounting/ap": apPayables,
+    "/accounting/pay-lists": apPayListItems,
     "/marketing/assets": latestOf(marketingFiles, marketingTasks),
   };
 }

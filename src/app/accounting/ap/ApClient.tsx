@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 import { parseApReportPaste, type ParsedApPayable } from "@/lib/apReportParse";
 import { formatDate } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { AP_HIGHLIGHTS, type ApHighlight, type ApPayable, type ApVendor } from "@/lib/types";
+import { AP_HIGHLIGHTS, type ApHighlight, type ApPayable, type ApVendor, type Profile } from "@/lib/types";
+import { createPayList } from "../pay-lists/actions";
 import { deleteApPayableRow, importApReport, updateApPayableRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -91,9 +93,11 @@ function buildPlainTextTable(title: string, headers: string[], rows: string[][])
 export default function ApClient({
   initialVendors,
   initialPayables,
+  profiles,
 }: {
   initialVendors: ApVendor[];
   initialPayables: ApPayable[];
+  profiles: Profile[];
 }) {
   const confirm = useConfirm();
   const [vendors, setVendors] = useState(initialVendors);
@@ -109,6 +113,14 @@ export default function ApClient({
   const [glFilter, setGlFilter] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+
+  // Pay List workspace - purely local until submitted (see handleSubmitPayList).
+  const [payListSelection, setPayListSelection] = useState<Set<string>>(new Set());
+  const [payListTitle, setPayListTitle] = useState("");
+  const [payListRecipients, setPayListRecipients] = useState<Set<string>>(new Set());
+  const [submittingPayList, setSubmittingPayList] = useState(false);
+  const [payListError, setPayListError] = useState<string | null>(null);
+  const [justSubmittedTitle, setJustSubmittedTitle] = useState<string | null>(null);
 
   const glAccounts = useMemo(() => {
     const byCode = new Map<string, string>();
@@ -163,6 +175,53 @@ export default function ApClient({
       else next.add(code);
       return next;
     });
+  }
+
+  const vendorById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
+
+  function togglePayListSelection(id: string) {
+    setPayListSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleRecipient(userId: string) {
+    setPayListRecipients((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
+  const payListItems = useMemo(
+    () => payables.filter((p) => payListSelection.has(p.id)),
+    [payables, payListSelection],
+  );
+  const payListTotal = payListItems.reduce((sum, p) => sum + p.balance, 0);
+
+  async function handleSubmitPayList() {
+    setPayListError(null);
+    if (!payListTitle.trim()) {
+      setPayListError("Enter a title for the pay list.");
+      return;
+    }
+    setSubmittingPayList(true);
+    try {
+      await createPayList(payListTitle, Array.from(payListSelection), Array.from(payListRecipients));
+      setJustSubmittedTitle(payListTitle.trim());
+      setPayListSelection(new Set());
+      setPayListTitle("");
+      setPayListRecipients(new Set());
+      setTimeout(() => setJustSubmittedTitle(null), 6000);
+    } catch (err) {
+      setPayListError(err instanceof Error ? err.message : "Couldn't submit the pay list - try again.");
+    } finally {
+      setSubmittingPayList(false);
+    }
   }
 
   function handlePreview() {
@@ -304,8 +363,94 @@ export default function ApClient({
             >
               {showPaste ? "Hide paste box" : "Paste Accrued Payables Report"}
             </button>
+            <Link
+              href="/accounting/pay-lists"
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              View Pay Lists →
+            </Link>
           </div>
         </div>
+
+        {justSubmittedTitle && (
+          <p className="rounded-md bg-green-100 px-3 py-2 text-sm font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+            Pay list &quot;{justSubmittedTitle}&quot; submitted!{" "}
+            <Link href="/accounting/pay-lists" className="underline">
+              View Pay Lists →
+            </Link>
+          </p>
+        )}
+
+        {payListSelection.size > 0 && (
+          <div className="space-y-3 rounded-lg border-2 border-green-600 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-green-700 dark:text-green-400">
+                Pay List Preview - {payListItems.length} item{payListItems.length === 1 ? "" : "s"}, {formatMoney(payListTotal)}
+              </h2>
+              <button
+                onClick={() => setPayListSelection(new Set())}
+                className="text-xs font-medium text-black/50 hover:underline dark:text-white/50"
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="max-h-56 space-y-1 overflow-y-auto">
+              {payListItems.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded bg-black/5 px-2 py-1 text-sm dark:bg-white/5"
+                >
+                  <span className="truncate">
+                    {vendorById.get(p.vendor_id)?.vendor_name ?? "Unknown vendor"} - {p.document} -{" "}
+                    {formatMoney(p.balance)}
+                  </span>
+                  <button
+                    onClick={() => togglePayListSelection(p.id)}
+                    className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <label className="block text-sm">
+              Title
+              <input
+                value={payListTitle}
+                onChange={(e) => setPayListTitle(e.target.value)}
+                placeholder="e.g. Week of Aug 18 - Freight"
+                className={`${field} mt-1`}
+              />
+            </label>
+
+            <div className="text-sm">
+              <span className="font-medium">Notify:</span>
+              <div className="mt-1 flex flex-wrap gap-3">
+                {profiles.map((pr) => (
+                  <label key={pr.id} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={payListRecipients.has(pr.id)}
+                      onChange={() => toggleRecipient(pr.id)}
+                    />
+                    {pr.email ?? "(no email)"}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {payListError && <p className="text-sm text-red-600">{payListError}</p>}
+
+            <button
+              onClick={handleSubmitPayList}
+              disabled={submittingPayList}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {submittingPayList ? "Submitting..." : "Submit Pay List"}
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
@@ -431,6 +576,7 @@ export default function ApClient({
                 <table className="w-full text-sm">
                   <thead className="bg-black/5 text-left dark:bg-white/5">
                     <tr>
+                      <th className="px-2 py-2">Pay List</th>
                       <th className="px-2 py-2">Document</th>
                       <th className="px-2 py-2">Date</th>
                       <th className="px-2 py-2">Type</th>
@@ -446,6 +592,14 @@ export default function ApClient({
                   <tbody>
                     {g.payables.map((p) => (
                       <tr key={p.id} className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[p.highlight]}`}>
+                        <td className="px-2 py-1.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={payListSelection.has(p.id)}
+                            onChange={() => togglePayListSelection(p.id)}
+                            title="Add to Pay List"
+                          />
+                        </td>
                         <td className="px-2 py-1.5">{p.document}</td>
                         <td className="px-2 py-1.5">{p.doc_date ? formatDate(p.doc_date) : ""}</td>
                         <td className="px-2 py-1.5">{p.type ?? ""}</td>
