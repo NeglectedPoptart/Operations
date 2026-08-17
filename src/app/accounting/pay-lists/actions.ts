@@ -88,3 +88,20 @@ export async function updateApPayListItem(
   if (error) throw new Error(error.message);
   revalidateAll();
 }
+
+export async function deleteApPayListItem(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("ap_pay_list_items").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// Removes the whole pay list - items cascade (on delete cascade in
+// migration_055), not the source ap_payables rows, which were only ever
+// snapshotted here in the first place.
+export async function deleteApPayList(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("ap_pay_lists").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}

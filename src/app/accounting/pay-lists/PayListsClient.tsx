@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import {
   AP_PAY_LIST_ITEM_STATUSES,
@@ -9,7 +10,7 @@ import {
   type ApPayListItemStatus,
   type Profile,
 } from "@/lib/types";
-import { updateApPayListItem } from "./actions";
+import { deleteApPayList, deleteApPayListItem, updateApPayListItem } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -24,7 +25,7 @@ const STATUS_ROW_CLASS: Record<ApPayListItemStatus, string> = {
 };
 
 export default function PayListsClient({
-  payLists,
+  payLists: initialPayLists,
   initialItems,
   profiles,
 }: {
@@ -32,6 +33,8 @@ export default function PayListsClient({
   initialItems: ApPayListItem[];
   profiles: Profile[];
 }) {
+  const confirm = useConfirm();
+  const [payLists, setPayLists] = useState(initialPayLists);
   const [items, setItems] = useState(initialItems);
   const profileById = useMemo(() => new Map(profiles.map((p) => [p.id, p])), [profiles]);
 
@@ -48,6 +51,19 @@ export default function PayListsClient({
   function handleFieldSave(id: string, patch: Partial<Pick<ApPayListItem, "status" | "notes">>) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
     updateApPayListItem(id, patch).catch(() => {});
+  }
+
+  async function handleDeleteItem(id: string) {
+    if (!(await confirm("Remove this item from the pay list?"))) return;
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    await deleteApPayListItem(id).catch(() => {});
+  }
+
+  async function handleClearList(list: ApPayList) {
+    if (!(await confirm(`Clear the entire "${list.title}" pay list? This can't be undone.`))) return;
+    setPayLists((prev) => prev.filter((l) => l.id !== list.id));
+    setItems((prev) => prev.filter((i) => i.pay_list_id !== list.id));
+    await deleteApPayList(list.id).catch(() => {});
   }
 
   return (
@@ -94,6 +110,12 @@ export default function PayListsClient({
                         </span>
                       )}
                     </div>
+                    <button
+                      onClick={() => handleClearList(list)}
+                      className="text-xs font-medium text-red-600 hover:underline"
+                    >
+                      Clear List
+                    </button>
                   </div>
                 </div>
                 <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
@@ -108,6 +130,7 @@ export default function PayListsClient({
                         <th className="px-2 py-2 text-right">Balance</th>
                         <th className="px-2 py-2">Status</th>
                         <th className="px-2 py-2">Notes</th>
+                        <th className="w-16 px-2 py-2" />
                       </tr>
                     </thead>
                     <tbody>
@@ -141,6 +164,14 @@ export default function PayListsClient({
                               onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
                               className={field}
                             />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <button
+                              onClick={() => handleDeleteItem(item.id)}
+                              className="text-xs font-medium text-red-600 hover:underline"
+                            >
+                              Delete
+                            </button>
                           </td>
                         </tr>
                       ))}
