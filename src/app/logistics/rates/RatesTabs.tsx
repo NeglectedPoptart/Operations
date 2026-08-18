@@ -23,7 +23,7 @@ export default function RatesTabs({
       <h1 className="text-2xl font-bold">Freight Rates</h1>
       <div className="flex gap-2 border-b border-black/10 pb-3 dark:border-white/10">
         <button onClick={() => setTab("routes")} className={tabClass(tab === "routes")}>
-          Route Averages
+          Rate Summary
         </button>
         <button onClick={() => setTab("tracker")} className={tabClass(tab === "tracker")}>
           Broker Tracker

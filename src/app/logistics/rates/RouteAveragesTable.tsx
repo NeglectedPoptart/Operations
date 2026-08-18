@@ -37,9 +37,9 @@ export default function RouteAveragesTable({
   return (
     <div className="space-y-2">
       <p className="text-sm text-black/60 dark:text-white/60">
-        Average rate per lane, based on the quotes submitted on the Broker Tracker. Lanes
-        highlighted in amber have no quote yet this week. The footnote shows what actually got
-        booked on the Board this week for comparison.
+        Lowest quoted rate per lane (average shown below it), based on the quotes submitted on
+        the Broker Tracker. Lanes highlighted in amber have no quote yet this week. The footnote
+        shows what actually got booked on the Board this week for comparison.
       </p>
       <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
         <table className="w-full min-w-[640px] text-sm">
@@ -62,7 +62,12 @@ export default function RouteAveragesTable({
                 const curr = currentStats.get(lane.id);
                 const prev = prevStats.get(lane.id);
                 const booked = bookedStats.get(lane.id);
-                const noQuote = !curr || curr.avg == null;
+                const noQuote = !curr || curr.lo == null;
+                const prevLo = prev?.lo?.rate ?? null;
+                const currLo = curr?.lo?.rate ?? null;
+                const pctChange =
+                  prevLo != null && currLo != null && prevLo !== 0 ? ((currLo - prevLo) / prevLo) * 100 : null;
+                const up = pctChange != null && pctChange > 0;
                 return (
                   <tr
                     key={lane.id}
@@ -73,19 +78,40 @@ export default function RouteAveragesTable({
                     <td className="px-3 py-2 font-medium">
                       {lane.from_hub} → {lane.destination}
                     </td>
-                    <td className="px-3 py-2">{money(prev?.avg ?? null)}</td>
                     <td className="px-3 py-2">
-                      {noQuote ? (
-                        <span className="font-medium text-amber-700 dark:text-amber-400">No quote yet</span>
-                      ) : (
-                        money(curr.avg)
+                      {money(prevLo)}
+                      {prev?.avg != null && (
+                        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">avg {money(prev.avg)}</p>
                       )}
-                      {booked && (
-                        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">
-                          {booked.count} {booked.count === 1 ? "load" : "loads"} booked, avg{" "}
-                          {money(booked.avgRate)}
-                        </p>
-                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          {noQuote ? (
+                            <span className="font-medium text-amber-700 dark:text-amber-400">No quote yet</span>
+                          ) : (
+                            money(currLo)
+                          )}
+                          {!noQuote && curr?.avg != null && (
+                            <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">avg {money(curr.avg)}</p>
+                          )}
+                          {booked && (
+                            <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">
+                              {booked.count} {booked.count === 1 ? "load" : "loads"} booked, avg{" "}
+                              {money(booked.avgRate)}
+                            </p>
+                          )}
+                        </div>
+                        {pctChange != null && (
+                          <div
+                            className={`shrink-0 text-sm font-bold ${
+                              up ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+                            }`}
+                          >
+                            {up ? "↑" : "↓"} {Math.abs(pctChange).toFixed(1)}%
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
