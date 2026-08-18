@@ -48,6 +48,7 @@ export interface Lane {
   id: string;
   from_hub: string;
   destination: string;
+  position: number | null;
 }
 
 export interface Hub {

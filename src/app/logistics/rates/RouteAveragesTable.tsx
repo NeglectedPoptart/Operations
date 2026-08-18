@@ -28,9 +28,11 @@ export default function RouteAveragesTable({
   const currentStats = computeLaneWeekStats(lanes, brokers, currentEntries);
   const prevStats = computeLaneWeekStats(lanes, brokers, prevEntries);
 
-  const sortedLanes = [...lanes].sort((a, b) =>
-    (a.from_hub + a.destination).localeCompare(b.from_hub + b.destination),
-  );
+  const sortedLanes = [...lanes].sort((a, b) => {
+    const posDiff = (a.position ?? 0) - (b.position ?? 0);
+    if (posDiff !== 0) return posDiff;
+    return (a.from_hub + a.destination).localeCompare(b.from_hub + b.destination);
+  });
 
   return (
     <div className="space-y-2">

@@ -35,7 +35,12 @@ export default function BrokerRateEntryClient({
   );
 
   const sortedLanes = useMemo(
-    () => [...lanes].sort((a, b) => (a.from_hub + a.destination).localeCompare(b.from_hub + b.destination)),
+    () =>
+      [...lanes].sort((a, b) => {
+        const posDiff = (a.position ?? 0) - (b.position ?? 0);
+        if (posDiff !== 0) return posDiff;
+        return (a.from_hub + a.destination).localeCompare(b.from_hub + b.destination);
+      }),
     [lanes],
   );
 

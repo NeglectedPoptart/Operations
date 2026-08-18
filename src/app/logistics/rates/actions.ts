@@ -23,14 +23,31 @@ export async function upsertRateEntry(
 
 export async function createLane(fromHub: string, destination: string) {
   const supabase = await createClient();
+  const { data: maxRow } = await supabase
+    .from("lanes")
+    .select("position")
+    .order("position", { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  const nextPosition = ((maxRow as { position: number | null } | null)?.position ?? -1) + 1;
   const { data, error } = await supabase
     .from("lanes")
-    .insert({ from_hub: fromHub, destination })
+    .insert({ from_hub: fromHub, destination, position: nextPosition })
     .select()
     .single();
   if (error) throw new Error(error.message);
   revalidatePath("/logistics/rates");
   return data;
+}
+
+export async function reorderLanes(orderedIds: string[]) {
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from("lanes").update({ position: index }).eq("id", id)),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+  revalidatePath("/logistics/rates");
 }
 
 export async function createBroker(name: string) {

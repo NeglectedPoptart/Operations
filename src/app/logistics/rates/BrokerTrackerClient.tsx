@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { formatWeekLabel, nextWeekStart, prevWeekStart as prevWeek, currentWeekStart } from "@/lib/dates";
@@ -12,6 +12,7 @@ import {
   createLane,
   deleteBroker,
   deleteLane,
+  reorderLanes,
   submitWeek,
   unlockWeek,
   updateBrokerIsLocal,
@@ -216,6 +217,8 @@ export default function BrokerTrackerClient({
   const [editingLaneId, setEditingLaneId] = useState<string | null>(null);
   const [editFromHub, setEditFromHub] = useState("");
   const [editDestination, setEditDestination] = useState("");
+  const [draggedLaneIndex, setDraggedLaneIndex] = useState<number | null>(null);
+  const dragStartLaneOrder = useRef<Lane[] | null>(null);
   const [, startTransition] = useTransition();
   const [submitting, setSubmitting] = useState(false);
 
@@ -290,7 +293,12 @@ export default function BrokerTrackerClient({
   );
 
   const sortedLanes = useMemo(
-    () => [...lanes].sort((a, b) => (a.from_hub + a.destination).localeCompare(b.from_hub + b.destination)),
+    () =>
+      [...lanes].sort((a, b) => {
+        const posDiff = (a.position ?? 0) - (b.position ?? 0);
+        if (posDiff !== 0) return posDiff;
+        return (a.from_hub + a.destination).localeCompare(b.from_hub + b.destination);
+      }),
     [lanes],
   );
 
@@ -407,6 +415,49 @@ export default function BrokerTrackerClient({
     } catch (err) {
       alert(err instanceof Error ? `Couldn't update lane: ${err.message}` : "Couldn't update lane - try again.");
     }
+  }
+
+  function handleLaneDragStart(index: number) {
+    dragStartLaneOrder.current = sortedLanes;
+    setDraggedLaneIndex(index);
+  }
+
+  // Reassigns every lane's position to match the dragged-over order, not
+  // just the array order - sortedLanes re-sorts by position on every
+  // render, so a plain array reorder here would get silently undone by
+  // that sort as soon as this state update takes effect.
+  function handleLaneDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (draggedLaneIndex === null || draggedLaneIndex === index) return;
+    const reordered = [...sortedLanes];
+    const [moved] = reordered.splice(draggedLaneIndex, 1);
+    reordered.splice(index, 0, moved);
+    const positionById = new Map(reordered.map((l, i) => [l.id, i]));
+    setLanes((prev) => prev.map((l) => (positionById.has(l.id) ? { ...l, position: positionById.get(l.id)! } : l)));
+    setDraggedLaneIndex(index);
+  }
+
+  function handleLaneDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const previous = dragStartLaneOrder.current;
+    const finalOrder = sortedLanes;
+    setDraggedLaneIndex(null);
+    dragStartLaneOrder.current = null;
+    if (!previous || previous.map((l) => l.id).join() === finalOrder.map((l) => l.id).join()) return;
+    const orderedIds = finalOrder.map((l) => l.id);
+    startTransition(() => {
+      reorderLanes(orderedIds).catch(() => {
+        setLanes((prev) => {
+          const byId = new Map(prev.map((l) => [l.id, l]));
+          return previous.map((l) => byId.get(l.id) ?? l);
+        });
+      });
+    });
+  }
+
+  function handleLaneDragEnd() {
+    setDraggedLaneIndex(null);
+    dragStartLaneOrder.current = null;
   }
 
   function handleToggleBrokerLocal(id: string, isLocal: boolean) {
@@ -557,7 +608,7 @@ export default function BrokerTrackerClient({
               </button>
             </form>
             <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-              {sortedLanes.map((lane) =>
+              {sortedLanes.map((lane, index) =>
                 editingLaneId === lane.id ? (
                   <span
                     key={lane.id}
@@ -601,8 +652,18 @@ export default function BrokerTrackerClient({
                 ) : (
                   <span
                     key={lane.id}
-                    className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
+                    draggable
+                    onDragStart={() => handleLaneDragStart(index)}
+                    onDragOver={(e) => handleLaneDragOver(e, index)}
+                    onDrop={handleLaneDrop}
+                    onDragEnd={handleLaneDragEnd}
+                    className={`inline-flex cursor-grab items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs select-none active:cursor-grabbing dark:bg-white/10 ${
+                      draggedLaneIndex === index ? "opacity-40" : ""
+                    }`}
                   >
+                    <span aria-hidden className="text-black/30 dark:text-white/30">
+                      ⠿
+                    </span>
                     <button
                       onClick={() => handleStartEditLane(lane)}
                       title={`Edit ${lane.from_hub} → ${lane.destination}`}
@@ -624,7 +685,9 @@ export default function BrokerTrackerClient({
                 <p className="text-xs text-black/40 dark:text-white/40">No lanes yet.</p>
               )}
             </div>
-            <p className="text-xs text-black/40 dark:text-white/40">Click a lane name to edit it.</p>
+            <p className="text-xs text-black/40 dark:text-white/40">
+              Drag ⠿ to reorder lanes (this also reorders the rate grid below). Click a lane name to edit it.
+            </p>
           </div>
         </div>
       )}
