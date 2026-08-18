@@ -86,6 +86,11 @@ export function parseApReportPaste(raw: string): ParseApReportResult {
     const balance = parseMoney(cell(cells, COL.balance));
     if (balance === null) continue;
 
+    // Only purchase-product payables belong here - the report also mixes
+    // in AR - Sales rows under other GL accounts, which aren't payables at
+    // all and shouldn't show up on this page.
+    if (!/purchase product/i.test(glAccountLabel)) continue;
+
     payables.push({
       vendorCode,
       vendorName: cell(cells, COL.vendorName),
