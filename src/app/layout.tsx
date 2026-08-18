@@ -82,7 +82,7 @@ export default async function RootLayout({
           {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
           {user && !isBrokerCarrier && <NotificationPopup />}
           {user && !isBrokerCarrier && <PushRegistration />}
-          <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
             {children}
           </main>
         </ConfirmProvider>

@@ -194,7 +194,7 @@ export default async function HomePage() {
   const otrBrokers = brokers.filter((b) => b.category === "otr");
   const currentStats = computeLaneWeekStats(lanes, otrBrokers, currentEntries);
   const prevStats = computeLaneWeekStats(lanes, otrBrokers, prevEntries);
-  const changedLanes = topChangedLanes(lanes, currentStats, prevStats, 3);
+  const changedLanes = topChangedLanes(lanes, currentStats, prevStats, 10);
 
   const holdoverSlices = [
     { label: "Pending Inbound", value: holdoverPendingInboundRes.count ?? 0, colorVar: "var(--series-1)" },
@@ -255,31 +255,31 @@ export default async function HomePage() {
         </section>
 
         <section>
-          <SubHeading>Freight Rates - Most Changed Lanes</SubHeading>
+          <SubHeading>Freight Rates - Most Changed Lanes (Top 10)</SubHeading>
           {changedLanes.length === 0 ? (
             <p className="text-sm text-black/40 dark:text-white/40">
               Not enough submitted rate history yet - need at least two weeks of quotes on the same lane to compare.
             </p>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {changedLanes.map(({ lane, prevLo, currLo, pctChange }) => {
                 const up = pctChange > 0;
                 return (
                   <Link
                     href="/logistics/rates"
                     key={lane.id}
-                    className={`rounded-lg border p-4 shadow-sm ${
+                    className={`rounded-lg border p-2.5 shadow-sm ${
                       up ? "border-red-300 dark:border-red-800" : "border-green-300 dark:border-green-800"
                     }`}
                   >
-                    <p className="font-medium">
+                    <p className="text-sm font-medium">
                       {lane.from_hub} → {lane.destination}
                     </p>
-                    <p className="text-sm text-black/60 dark:text-white/60">
+                    <p className="text-xs text-black/60 dark:text-white/60">
                       {money(prevLo)} → {money(currLo)}
                     </p>
                     <p
-                      className={`mt-1 text-lg font-bold ${
+                      className={`mt-0.5 text-sm font-bold ${
                         up ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
                       }`}
                     >
