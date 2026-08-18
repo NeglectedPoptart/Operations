@@ -783,6 +783,7 @@ export default function OldAgeClient({
                     <td className="px-2 py-1.5">{item.size}</td>
                     <td className="min-w-[5rem] px-1 py-1">
                       <input
+                        key={item.qty_moved}
                         type="number"
                         step="any"
                         defaultValue={remaining ?? ""}
