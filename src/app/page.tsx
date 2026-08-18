@@ -262,7 +262,7 @@ export default async function HomePage() {
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-3">
-              {changedLanes.map(({ lane, prevAvg, currAvg, pctChange }) => {
+              {changedLanes.map(({ lane, prevLo, currLo, pctChange }) => {
                 const up = pctChange > 0;
                 return (
                   <Link
@@ -276,7 +276,7 @@ export default async function HomePage() {
                       {lane.from_hub} → {lane.destination}
                     </p>
                     <p className="text-sm text-black/60 dark:text-white/60">
-                      {money(prevAvg)} → {money(currAvg)}
+                      {money(prevLo)} → {money(currLo)}
                     </p>
                     <p
                       className={`mt-1 text-lg font-bold ${

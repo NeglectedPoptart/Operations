@@ -3,12 +3,12 @@ import type { LaneWeekStat } from "@/lib/laneStats";
 
 export interface LaneChange {
   lane: Lane;
-  prevAvg: number;
-  currAvg: number;
+  prevLo: number;
+  currLo: number;
   pctChange: number;
 }
 
-// Lanes with a submitted quote average in both weeks, ranked by the biggest
+// Lanes with a submitted low quote in both weeks, ranked by the biggest
 // swing (up or down) so the Home dashboard can surface what moved the most.
 export function topChangedLanes(
   lanes: Lane[],
@@ -19,14 +19,14 @@ export function topChangedLanes(
   const changes: LaneChange[] = [];
 
   for (const lane of lanes) {
-    const curr = currentStats.get(lane.id)?.avg;
-    const prev = prevStats.get(lane.id)?.avg;
+    const curr = currentStats.get(lane.id)?.lo?.rate;
+    const prev = prevStats.get(lane.id)?.lo?.rate;
     if (curr == null || prev == null || prev === 0) continue;
 
     changes.push({
       lane,
-      prevAvg: prev,
-      currAvg: curr,
+      prevLo: prev,
+      currLo: curr,
       pctChange: ((curr - prev) / prev) * 100,
     });
   }
