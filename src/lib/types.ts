@@ -14,6 +14,11 @@ export interface Broker {
   request_statement: boolean;
   position: number;
   last_activity_at: string | null;
+  // Backend-only categorization - excludes this broker from the Freight
+  // Rates page (Broker Tracker + Route Averages) since local hauls don't
+  // belong in long-haul lane pricing, but changes nothing else (Invoicing,
+  // Board's carrier picker, etc. still show them same as any OTR broker).
+  is_local: boolean;
 }
 
 // Logistics: Invoicing ---------------------------------------------------

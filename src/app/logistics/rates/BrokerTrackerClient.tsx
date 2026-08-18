@@ -7,7 +7,16 @@ import { formatWeekLabel, nextWeekStart, prevWeekStart as prevWeek, currentWeekS
 import { computeLaneWeekStats } from "@/lib/laneStats";
 import { matchRateLines, parseRateEmail, type MatchedRateLine } from "@/lib/rateEmailParse";
 import type { Broker, BrokerRateEntry, Lane, RateSubmission } from "@/lib/types";
-import { createBroker, createLane, deleteBroker, deleteLane, submitWeek, unlockWeek, upsertRateEntry } from "./actions";
+import {
+  createBroker,
+  createLane,
+  deleteBroker,
+  deleteLane,
+  submitWeek,
+  unlockWeek,
+  updateBrokerIsLocal,
+  upsertRateEntry,
+} from "./actions";
 
 function money(n: number | null): string {
   if (n == null) return "—";
@@ -259,13 +268,21 @@ export default function BrokerTrackerClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
 
+  // Local brokers/carriers don't belong on the Freight Rates page at all -
+  // local hauls aren't the long-haul lanes this page tracks - so the rate
+  // grid, its stats, and the "Broker these rates are from" dropdown all
+  // use this OTR-only subset. The full `brokers` list (including local
+  // ones) is still used for the Manage panel below, since that's where
+  // Local/OTR gets toggled and brokers get added/removed.
+  const otrBrokers = useMemo(() => brokers.filter((b) => !b.is_local), [brokers]);
+
   const currentStats = useMemo(
-    () => computeLaneWeekStats(lanes, brokers, entries),
-    [lanes, brokers, entries],
+    () => computeLaneWeekStats(lanes, otrBrokers, entries),
+    [lanes, otrBrokers, entries],
   );
   const prevStats = useMemo(
-    () => computeLaneWeekStats(lanes, brokers, prevEntries),
-    [lanes, brokers, prevEntries],
+    () => computeLaneWeekStats(lanes, otrBrokers, prevEntries),
+    [lanes, otrBrokers, prevEntries],
   );
 
   const sortedLanes = useMemo(
@@ -365,6 +382,11 @@ export default function BrokerTrackerClient({
     }
   }
 
+  function handleToggleBrokerLocal(id: string, isLocal: boolean) {
+    setBrokers((prev) => prev.map((b) => (b.id === id ? { ...b, is_local: isLocal } : b)));
+    updateBrokerIsLocal(id, isLocal).catch(() => {});
+  }
+
   async function handleDeleteBroker(id: string, name: string) {
     if (
       !(await confirm(
@@ -416,7 +438,7 @@ export default function BrokerTrackerClient({
         </button>
       </div>
 
-      <RateEmailPanel lanes={lanes} brokers={brokers} onApply={handleApplyEmailRates} />
+      <RateEmailPanel lanes={lanes} brokers={otrBrokers} onApply={handleApplyEmailRates} />
 
       {locked ? (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300">
@@ -455,6 +477,11 @@ export default function BrokerTrackerClient({
                 Add
               </button>
             </form>
+            <p className="text-xs text-black/40 dark:text-white/40">
+              Local brokers/carriers are dropped from the rate grid below and the pricing-email
+              dropdown - they still show up everywhere else (Invoicing, Board, etc.) same as any
+              other broker.
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {brokers.map((b) => (
                 <span
@@ -462,6 +489,17 @@ export default function BrokerTrackerClient({
                   className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
                 >
                   {b.name}
+                  <button
+                    onClick={() => handleToggleBrokerLocal(b.id, !b.is_local)}
+                    title={b.is_local ? "Local - click to mark OTR" : "OTR - click to mark Local"}
+                    className={`rounded px-1 text-[10px] font-semibold ${
+                      b.is_local
+                        ? "bg-amber-200 text-amber-900 dark:bg-amber-900/50 dark:text-amber-300"
+                        : "bg-black/10 text-black/50 dark:bg-white/10 dark:text-white/50"
+                    }`}
+                  >
+                    {b.is_local ? "Local" : "OTR"}
+                  </button>
                   <button
                     onClick={() => handleDeleteBroker(b.id, b.name)}
                     title={`Delete ${b.name}`}
@@ -520,7 +558,7 @@ export default function BrokerTrackerClient({
           <thead className="bg-black/5 text-left dark:bg-white/5">
             <tr>
               <th className="sticky left-0 z-10 bg-black/5 px-2 py-2 dark:bg-neutral-900">Lane</th>
-              {brokers.map((b) => (
+              {otrBrokers.map((b) => (
                 <th key={b.id} className="px-1 py-2">
                   {b.name}
                 </th>
@@ -541,7 +579,7 @@ export default function BrokerTrackerClient({
                   <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-2 py-1.5 font-medium dark:bg-neutral-950">
                     {lane.from_hub} → {lane.destination}
                   </td>
-                  {brokers.map((broker) => (
+                  {otrBrokers.map((broker) => (
                     <td key={broker.id} className="px-0.5 py-1">
                       <input
                         type="number"
@@ -590,7 +628,7 @@ export default function BrokerTrackerClient({
             })}
             {lanes.length === 0 && (
               <tr>
-                <td colSpan={brokers.length + 5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={otrBrokers.length + 5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No lanes yet. Use &quot;Manage brokers &amp; lanes&quot; to add one.
                 </td>
               </tr>

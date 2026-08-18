@@ -50,6 +50,13 @@ export async function createBroker(name: string) {
   return data;
 }
 
+export async function updateBrokerIsLocal(id: string, isLocal: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("brokers").update({ is_local: isLocal }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/logistics/rates");
+}
+
 // Deletes a broker everywhere it's referenced: broker_rate_entries and
 // invoice_statements both cascade-delete (their FKs are ON DELETE CASCADE),
 // so this broker's rate history and invoicing list go with it. loads.broker_id

@@ -16,7 +16,11 @@ export function computeLaneWeekStats(
 
   for (const entry of entries) {
     if (entry.rate == null) continue;
-    const brokerName = brokerNameById.get(entry.broker_id) ?? "?";
+    // A broker missing from the list (e.g. filtered out as local) is
+    // excluded entirely, not just shown with an unknown name - otherwise
+    // their rate would still silently count toward the average.
+    const brokerName = brokerNameById.get(entry.broker_id);
+    if (brokerName === undefined) continue;
     const list = byLane.get(entry.lane_id) ?? [];
     list.push({ rate: entry.rate, brokerName });
     byLane.set(entry.lane_id, list);
