@@ -72,6 +72,20 @@ export async function deleteBroker(id: string) {
   revalidatePath("/");
 }
 
+export async function updateLane(id: string, fromHub: string, destination: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lanes")
+    .update({ from_hub: fromHub, destination })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/logistics/rates");
+  revalidatePath("/");
+  return data;
+}
+
 export async function deleteLane(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("lanes").delete().eq("id", id);

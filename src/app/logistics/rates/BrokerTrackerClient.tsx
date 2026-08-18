@@ -15,6 +15,7 @@ import {
   submitWeek,
   unlockWeek,
   updateBrokerIsLocal,
+  updateLane,
   upsertRateEntry,
 } from "./actions";
 
@@ -212,6 +213,9 @@ export default function BrokerTrackerClient({
   const [brokers, setBrokers] = useState(initialBrokers);
   const [weekStart, setWeekStart] = useState(initialWeekStart);
   const [showManage, setShowManage] = useState(false);
+  const [editingLaneId, setEditingLaneId] = useState<string | null>(null);
+  const [editFromHub, setEditFromHub] = useState("");
+  const [editDestination, setEditDestination] = useState("");
   const [, startTransition] = useTransition();
   const [submitting, setSubmitting] = useState(false);
 
@@ -382,6 +386,29 @@ export default function BrokerTrackerClient({
     }
   }
 
+  function handleStartEditLane(lane: Lane) {
+    setEditingLaneId(lane.id);
+    setEditFromHub(lane.from_hub);
+    setEditDestination(lane.destination);
+  }
+
+  async function handleSaveEditLane() {
+    const fromHub = editFromHub.trim();
+    const destination = editDestination.trim();
+    const id = editingLaneId;
+    if (!id || !fromHub || !destination) {
+      setEditingLaneId(null);
+      return;
+    }
+    setEditingLaneId(null);
+    try {
+      const updated = (await updateLane(id, fromHub, destination)) as Lane;
+      setLanes((prev) => prev.map((l) => (l.id === id ? updated : l)));
+    } catch (err) {
+      alert(err instanceof Error ? `Couldn't update lane: ${err.message}` : "Couldn't update lane - try again.");
+    }
+  }
+
   function handleToggleBrokerLocal(id: string, isLocal: boolean) {
     setBrokers((prev) => prev.map((b) => (b.id === id ? { ...b, is_local: isLocal } : b)));
     updateBrokerIsLocal(id, isLocal).catch(() => {});
@@ -530,25 +557,74 @@ export default function BrokerTrackerClient({
               </button>
             </form>
             <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
-              {sortedLanes.map((lane) => (
-                <span
-                  key={lane.id}
-                  className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
-                >
-                  {lane.from_hub} → {lane.destination}
-                  <button
-                    onClick={() => handleDeleteLane(lane.id)}
-                    title={`Delete ${lane.from_hub} → ${lane.destination}`}
-                    className="font-bold text-red-600 hover:text-red-800"
+              {sortedLanes.map((lane) =>
+                editingLaneId === lane.id ? (
+                  <span
+                    key={lane.id}
+                    className="inline-flex items-center gap-1 rounded-full bg-black/10 px-2 py-1 text-xs dark:bg-white/20"
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    <input
+                      autoFocus
+                      value={editFromHub}
+                      onChange={(e) => setEditFromHub(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveEditLane();
+                        if (e.key === "Escape") setEditingLaneId(null);
+                      }}
+                      className="w-20 rounded border border-black/20 bg-white px-1 py-0.5 text-xs dark:border-white/20 dark:bg-black/40"
+                    />
+                    →
+                    <input
+                      value={editDestination}
+                      onChange={(e) => setEditDestination(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveEditLane();
+                        if (e.key === "Escape") setEditingLaneId(null);
+                      }}
+                      className="w-28 rounded border border-black/20 bg-white px-1 py-0.5 text-xs dark:border-white/20 dark:bg-black/40"
+                    />
+                    <button
+                      onClick={handleSaveEditLane}
+                      title="Save"
+                      className="font-bold text-green-600 hover:text-green-800"
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={() => setEditingLaneId(null)}
+                      title="Cancel"
+                      className="font-bold text-black/40 hover:text-black/60 dark:text-white/40 dark:hover:text-white/60"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : (
+                  <span
+                    key={lane.id}
+                    className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
+                  >
+                    <button
+                      onClick={() => handleStartEditLane(lane)}
+                      title={`Edit ${lane.from_hub} → ${lane.destination}`}
+                      className="hover:underline"
+                    >
+                      {lane.from_hub} → {lane.destination}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteLane(lane.id)}
+                      title={`Delete ${lane.from_hub} → ${lane.destination}`}
+                      className="font-bold text-red-600 hover:text-red-800"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ),
+              )}
               {sortedLanes.length === 0 && (
                 <p className="text-xs text-black/40 dark:text-white/40">No lanes yet.</p>
               )}
             </div>
+            <p className="text-xs text-black/40 dark:text-white/40">Click a lane name to edit it.</p>
           </div>
         </div>
       )}
