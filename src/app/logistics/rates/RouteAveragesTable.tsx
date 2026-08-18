@@ -42,18 +42,18 @@ export default function RouteAveragesTable({
         shows what actually got booked on the Board this week for comparison.
       </p>
       <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[640px] text-xs">
           <thead className="bg-black/5 text-left dark:bg-white/5">
             <tr>
-              <th className="px-3 py-2">Lane</th>
-              <th className="px-3 py-2">Prev Week ({formatWeekLabel(prevWeekStart)})</th>
-              <th className="px-3 py-2">Current Week ({formatWeekLabel(currentWeekStart)})</th>
+              <th className="px-2 py-1.5">Lane</th>
+              <th className="px-2 py-1.5">Prev Week ({formatWeekLabel(prevWeekStart)})</th>
+              <th className="px-2 py-1.5">Current Week ({formatWeekLabel(currentWeekStart)})</th>
             </tr>
           </thead>
           <tbody>
             {sortedLanes.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={3} className="px-2 py-3 text-center text-black/40 dark:text-white/40">
                   No lanes yet. Add some in the Broker Tracker tab.
                 </td>
               </tr>
@@ -75,16 +75,16 @@ export default function RouteAveragesTable({
                       noQuote ? "bg-amber-50 dark:bg-amber-900/20" : ""
                     }`}
                   >
-                    <td className="px-3 py-2 font-medium">
+                    <td className="px-2 py-1 font-medium">
                       {lane.from_hub} → {lane.destination}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-1">
                       {money(prevLo)}
                       {prev?.avg != null && (
-                        <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">avg {money(prev.avg)}</p>
+                        <p className="text-[11px] text-black/50 dark:text-white/50">avg {money(prev.avg)}</p>
                       )}
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-2 py-1">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           {noQuote ? (
@@ -93,10 +93,10 @@ export default function RouteAveragesTable({
                             money(currLo)
                           )}
                           {!noQuote && curr?.avg != null && (
-                            <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">avg {money(curr.avg)}</p>
+                            <p className="text-[11px] text-black/50 dark:text-white/50">avg {money(curr.avg)}</p>
                           )}
                           {booked && (
-                            <p className="mt-0.5 text-xs text-black/50 dark:text-white/50">
+                            <p className="text-[11px] text-black/50 dark:text-white/50">
                               {booked.count} {booked.count === 1 ? "load" : "loads"} booked, avg{" "}
                               {money(booked.avgRate)}
                             </p>
@@ -104,7 +104,7 @@ export default function RouteAveragesTable({
                         </div>
                         {pctChange != null && (
                           <div
-                            className={`shrink-0 text-sm font-bold ${
+                            className={`shrink-0 text-xs font-bold ${
                               up ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
                             }`}
                           >

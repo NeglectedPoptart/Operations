@@ -686,7 +686,8 @@ export default function BrokerTrackerClient({
               )}
             </div>
             <p className="text-xs text-black/40 dark:text-white/40">
-              Drag ⠿ to reorder lanes (this also reorders the rate grid below). Click a lane name to edit it.
+              Drag ⠿ to reorder lanes, or drag any row by its lane name in the rate grid below - either
+              one works. Click a lane name here to edit it.
             </p>
           </div>
         </div>
@@ -710,12 +711,31 @@ export default function BrokerTrackerClient({
             </tr>
           </thead>
           <tbody>
-            {sortedLanes.map((lane) => {
+            {sortedLanes.map((lane, index) => {
               const stat = currentStats.get(lane.id);
               const prevStat = prevStats.get(lane.id);
               return (
-                <tr key={lane.id} className="border-t border-black/10 dark:border-white/10">
-                  <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-2 py-1.5 font-medium dark:bg-neutral-950">
+                <tr
+                  key={lane.id}
+                  draggable={showManage}
+                  onDragStart={showManage ? () => handleLaneDragStart(index) : undefined}
+                  onDragOver={showManage ? (e) => handleLaneDragOver(e, index) : undefined}
+                  onDrop={showManage ? handleLaneDrop : undefined}
+                  onDragEnd={showManage ? handleLaneDragEnd : undefined}
+                  className={`border-t border-black/10 dark:border-white/10 ${
+                    showManage && draggedLaneIndex === index ? "opacity-40" : ""
+                  }`}
+                >
+                  <td
+                    className={`sticky left-0 z-10 whitespace-nowrap bg-white px-2 py-1.5 font-medium dark:bg-neutral-950 ${
+                      showManage ? "cursor-grab select-none active:cursor-grabbing" : ""
+                    }`}
+                  >
+                    {showManage && (
+                      <span aria-hidden className="mr-1 text-black/30 dark:text-white/30">
+                        ⠿
+                      </span>
+                    )}
                     {lane.from_hub} → {lane.destination}
                   </td>
                   {otrBrokers.map((broker) => (
