@@ -51,11 +51,11 @@ export default async function RatesPage() {
   const currentSubmission = submissions.find((s) => s.week_start_date === currWeek) ?? null;
   const prevSubmission = submissions.find((s) => s.week_start_date === prevWeek) ?? null;
 
-  // Local brokers/carriers don't belong in long-haul lane pricing at all -
+  // Local/LTL brokers/carriers don't belong in long-haul lane pricing at all -
   // Route Averages gets the OTR-only subset so their rate history (if any)
   // can't skew an average; BrokerTrackerClient gets the full list since it
-  // also needs to show/manage local brokers in its own Manage panel.
-  const otrBrokers = brokers.filter((b) => !b.is_local);
+  // also needs to show/manage non-OTR brokers in its own Manage panel.
+  const otrBrokers = brokers.filter((b) => b.category === "otr");
 
   const bookedStats = computeBookedStatsByLane(
     (loadsRes.data ?? []) as unknown as {

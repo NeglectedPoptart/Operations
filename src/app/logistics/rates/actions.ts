@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { BrokerCategory } from "@/lib/types";
 
 export async function upsertRateEntry(
   laneId: string,
@@ -67,9 +68,9 @@ export async function createBroker(name: string) {
   return data;
 }
 
-export async function updateBrokerIsLocal(id: string, isLocal: boolean) {
+export async function updateBrokerCategory(id: string, category: BrokerCategory) {
   const supabase = await createClient();
-  const { error } = await supabase.from("brokers").update({ is_local: isLocal }).eq("id", id);
+  const { error } = await supabase.from("brokers").update({ category }).eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/logistics/rates");
 }

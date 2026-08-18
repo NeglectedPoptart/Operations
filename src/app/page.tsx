@@ -189,9 +189,9 @@ export default async function HomePage() {
   const currentEntries = allEntries.filter((e) => e.week_start_date === currWeek);
   const prevEntries = allEntries.filter((e) => e.week_start_date === prevWeek);
 
-  // Local brokers/carriers don't belong in long-haul lane pricing - see
+  // Local/LTL brokers/carriers don't belong in long-haul lane pricing - see
   // src/app/logistics/rates/page.tsx for the same filter.
-  const otrBrokers = brokers.filter((b) => !b.is_local);
+  const otrBrokers = brokers.filter((b) => b.category === "otr");
   const currentStats = computeLaneWeekStats(lanes, otrBrokers, currentEntries);
   const prevStats = computeLaneWeekStats(lanes, otrBrokers, prevEntries);
   const changedLanes = topChangedLanes(lanes, currentStats, prevStats, 3);

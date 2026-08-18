@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatWeekLabel, nextWeekStart, prevWeekStart as prevWeek, currentWeekStart } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
 import { matchRateLines, parseRateEmail, type MatchedRateLine } from "@/lib/rateEmailParse";
-import type { Broker, BrokerRateEntry, Lane, RateSubmission } from "@/lib/types";
+import { BROKER_CATEGORIES, type Broker, type BrokerCategory, type BrokerRateEntry, type Lane, type RateSubmission } from "@/lib/types";
 import {
   createBroker,
   createLane,
@@ -15,7 +15,7 @@ import {
   reorderLanes,
   submitWeek,
   unlockWeek,
-  updateBrokerIsLocal,
+  updateBrokerCategory,
   updateLane,
   upsertRateEntry,
 } from "./actions";
@@ -281,7 +281,7 @@ export default function BrokerTrackerClient({
   // use this OTR-only subset. The full `brokers` list (including local
   // ones) is still used for the Manage panel below, since that's where
   // Local/OTR gets toggled and brokers get added/removed.
-  const otrBrokers = useMemo(() => brokers.filter((b) => !b.is_local), [brokers]);
+  const otrBrokers = useMemo(() => brokers.filter((b) => b.category === "otr"), [brokers]);
 
   const currentStats = useMemo(
     () => computeLaneWeekStats(lanes, otrBrokers, entries),
@@ -460,9 +460,9 @@ export default function BrokerTrackerClient({
     dragStartLaneOrder.current = null;
   }
 
-  function handleToggleBrokerLocal(id: string, isLocal: boolean) {
-    setBrokers((prev) => prev.map((b) => (b.id === id ? { ...b, is_local: isLocal } : b)));
-    updateBrokerIsLocal(id, isLocal).catch(() => {});
+  function handleChangeBrokerCategory(id: string, category: BrokerCategory) {
+    setBrokers((prev) => prev.map((b) => (b.id === id ? { ...b, category } : b)));
+    updateBrokerCategory(id, category).catch(() => {});
   }
 
   async function handleDeleteBroker(id: string, name: string) {
@@ -556,9 +556,9 @@ export default function BrokerTrackerClient({
               </button>
             </form>
             <p className="text-xs text-black/40 dark:text-white/40">
-              Local brokers/carriers are dropped from the rate grid below and the pricing-email
-              dropdown - they still show up everywhere else (Invoicing, Board, etc.) same as any
-              other broker.
+              Local and LTL brokers/carriers are dropped from the rate grid below and the
+              pricing-email dropdown - they still show up everywhere else (Invoicing, Board,
+              etc.) same as any OTR broker.
             </p>
             <div className="flex flex-wrap gap-1.5">
               {brokers.map((b) => (
@@ -567,17 +567,24 @@ export default function BrokerTrackerClient({
                   className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
                 >
                   {b.name}
-                  <button
-                    onClick={() => handleToggleBrokerLocal(b.id, !b.is_local)}
-                    title={b.is_local ? "Local - click to mark OTR" : "OTR - click to mark Local"}
+                  <select
+                    value={b.category}
+                    onChange={(e) => handleChangeBrokerCategory(b.id, e.target.value as BrokerCategory)}
+                    title="Category"
                     className={`rounded px-1 text-[10px] font-semibold ${
-                      b.is_local
+                      b.category === "local"
                         ? "bg-amber-200 text-amber-900 dark:bg-amber-900/50 dark:text-amber-300"
-                        : "bg-black/10 text-black/50 dark:bg-white/10 dark:text-white/50"
+                        : b.category === "ltl"
+                          ? "bg-blue-200 text-blue-900 dark:bg-blue-900/50 dark:text-blue-300"
+                          : "bg-black/10 text-black/50 dark:bg-white/10 dark:text-white/50"
                     }`}
                   >
-                    {b.is_local ? "Local" : "OTR"}
-                  </button>
+                    {BROKER_CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => handleDeleteBroker(b.id, b.name)}
                     title={`Delete ${b.name}`}

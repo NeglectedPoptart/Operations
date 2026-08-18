@@ -8,17 +8,25 @@ export const LOAD_STATUSES: { value: LoadStatus; label: string }[] = [
   { value: "complete", label: "Complete Load" },
 ];
 
+export type BrokerCategory = "otr" | "local" | "ltl";
+
+export const BROKER_CATEGORIES: { value: BrokerCategory; label: string }[] = [
+  { value: "otr", label: "OTR" },
+  { value: "local", label: "Local" },
+  { value: "ltl", label: "LTL" },
+];
+
 export interface Broker {
   id: string;
   name: string;
   request_statement: boolean;
   position: number;
   last_activity_at: string | null;
-  // Backend-only categorization - excludes this broker from the Freight
-  // Rates page (Broker Tracker + Route Averages) since local hauls don't
-  // belong in long-haul lane pricing, but changes nothing else (Invoicing,
+  // Backend-only categorization - Local and LTL brokers are excluded from
+  // the Freight Rates page (Broker Tracker + Route Averages) since neither
+  // belongs in long-haul lane pricing, but changes nothing else (Invoicing,
   // Board's carrier picker, etc. still show them same as any OTR broker).
-  is_local: boolean;
+  category: BrokerCategory;
 }
 
 // Logistics: Invoicing ---------------------------------------------------
