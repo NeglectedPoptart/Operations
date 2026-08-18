@@ -357,8 +357,12 @@ export default function BrokerTrackerClient({
 
   async function handleDeleteLane(id: string) {
     if (!(await confirm("Delete this lane?"))) return;
-    await deleteLane(id);
-    setLanes((prev) => prev.filter((l) => l.id !== id));
+    try {
+      await deleteLane(id);
+      setLanes((prev) => prev.filter((l) => l.id !== id));
+    } catch (err) {
+      alert(err instanceof Error ? `Couldn't delete lane: ${err.message}` : "Couldn't delete lane - try again.");
+    }
   }
 
   async function handleDeleteBroker(id: string, name: string) {
@@ -469,23 +473,45 @@ export default function BrokerTrackerClient({
               ))}
             </div>
           </div>
-          <form action={handleAddLane} className="flex items-end gap-2">
-            <div className="flex-1">
-              <label className="text-xs font-medium text-black/60 dark:text-white/60">From hub</label>
-              <input name="from_hub" className="w-full rounded-md border border-black/20 px-2 py-1.5 text-sm dark:border-white/20 dark:bg-black/20" />
+          <div className="space-y-2">
+            <form action={handleAddLane} className="flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-xs font-medium text-black/60 dark:text-white/60">From hub</label>
+                <input name="from_hub" className="w-full rounded-md border border-black/20 px-2 py-1.5 text-sm dark:border-white/20 dark:bg-black/20" />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-medium text-black/60 dark:text-white/60">Destination</label>
+                <input
+                  name="destination"
+                  placeholder="Houston, TX"
+                  className="w-full rounded-md border border-black/20 px-2 py-1.5 text-sm dark:border-white/20 dark:bg-black/20"
+                />
+              </div>
+              <button type="submit" className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
+                Add
+              </button>
+            </form>
+            <div className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto">
+              {sortedLanes.map((lane) => (
+                <span
+                  key={lane.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-black/5 px-2 py-1 text-xs dark:bg-white/10"
+                >
+                  {lane.from_hub} → {lane.destination}
+                  <button
+                    onClick={() => handleDeleteLane(lane.id)}
+                    title={`Delete ${lane.from_hub} → ${lane.destination}`}
+                    className="font-bold text-red-600 hover:text-red-800"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {sortedLanes.length === 0 && (
+                <p className="text-xs text-black/40 dark:text-white/40">No lanes yet.</p>
+              )}
             </div>
-            <div className="flex-1">
-              <label className="text-xs font-medium text-black/60 dark:text-white/60">Destination</label>
-              <input
-                name="destination"
-                placeholder="Houston, TX"
-                className="w-full rounded-md border border-black/20 px-2 py-1.5 text-sm dark:border-white/20 dark:bg-black/20"
-              />
-            </div>
-            <button type="submit" className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white">
-              Add
-            </button>
-          </form>
+          </div>
         </div>
       )}
 
