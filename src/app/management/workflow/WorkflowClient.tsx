@@ -1,14 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { WORKFLOW_SECTIONS, type WorkflowSection, type WorkflowStatus, type WorkflowTask } from "@/lib/types";
 import {
   createWorkflowTask,
   deleteWorkflowTask,
+  reorderWorkflowTasks,
   resetWorkflowDay,
   updateWorkflowTaskNotes,
-  updateWorkflowTaskPosition,
   updateWorkflowTaskStatus,
 } from "./actions";
 
@@ -87,7 +87,11 @@ function SectionTable({
   onSaveNotes,
   onDelete,
   onAdd,
-  onMove,
+  draggedIndex,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   label: string;
   tasks: WorkflowTask[];
@@ -95,7 +99,11 @@ function SectionTable({
   onSaveNotes: (id: string, notes: string) => void;
   onDelete: (id: string) => void;
   onAdd: (name: string, isPermanent: boolean) => void;
-  onMove: (task: WorkflowTask, direction: "up" | "down") => void;
+  draggedIndex: number | null;
+  onDragStart: (index: number) => void;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
 }) {
   return (
     <section className="space-y-2">
@@ -106,18 +114,27 @@ function SectionTable({
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">
             <tr>
-              <th className="w-10 px-2 py-2">#</th>
+              <th className="w-8 px-2 py-2 print:hidden" />
               <th className="px-2 py-2">Task</th>
               <th className="w-24 px-2 py-2">Status</th>
               <th className="px-2 py-2">Notes / Follow-up</th>
-              <th className="w-16 px-2 py-2 print:hidden" />
               <th className="w-16 px-2 py-2 print:hidden" />
             </tr>
           </thead>
           <tbody>
             {tasks.map((task, i) => (
-              <tr key={task.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="px-2 py-1.5 text-black/50 dark:text-white/50">{i + 1}</td>
+              <tr
+                key={task.id}
+                draggable
+                onDragStart={() => onDragStart(i)}
+                onDragOver={(e) => onDragOver(e, i)}
+                onDrop={onDrop}
+                onDragEnd={onDragEnd}
+                className={`border-t border-black/10 dark:border-white/10 ${draggedIndex === i ? "opacity-40" : ""}`}
+              >
+                <td className="cursor-grab px-2 py-1.5 text-center text-black/30 select-none active:cursor-grabbing print:hidden dark:text-white/30">
+                  ⠿
+                </td>
                 <td className="px-2 py-1.5">
                   {task.name}
                   {!task.is_permanent && (
@@ -145,26 +162,6 @@ function SectionTable({
                     className={field}
                   />
                 </td>
-                <td className="whitespace-nowrap px-1 py-1.5 text-center print:hidden">
-                  <button
-                    type="button"
-                    onClick={() => onMove(task, "up")}
-                    disabled={i === 0}
-                    title="Move up"
-                    className="px-1 text-black/40 hover:text-black disabled:opacity-30 dark:text-white/40 dark:hover:text-white"
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMove(task, "down")}
-                    disabled={i === tasks.length - 1}
-                    title="Move down"
-                    className="px-1 text-black/40 hover:text-black disabled:opacity-30 dark:text-white/40 dark:hover:text-white"
-                  >
-                    ▼
-                  </button>
-                </td>
                 <td className="px-2 py-1.5 print:hidden">
                   <button
                     onClick={() => onDelete(task.id)}
@@ -177,7 +174,7 @@ function SectionTable({
             ))}
             {tasks.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No tasks yet.
                 </td>
               </tr>
@@ -194,6 +191,8 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
   const confirm = useConfirm();
   const [tasks, setTasks] = useState(initialTasks);
   const [resetting, setResetting] = useState(false);
+  const [draggedTask, setDraggedTask] = useState<{ section: WorkflowSection; index: number } | null>(null);
+  const dragStartOrder = useRef<WorkflowTask[] | null>(null);
 
   const bySection = useMemo(() => {
     const map = new Map<WorkflowSection, WorkflowTask[]>();
@@ -229,16 +228,45 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
     if (row) setTasks((prev) => [...prev, row as WorkflowTask]);
   }
 
-  function handleMove(task: WorkflowTask, direction: "up" | "down") {
-    const siblings = (bySection.get(task.section) ?? []).slice().sort((a, b) => a.position - b.position);
-    const idx = siblings.findIndex((t) => t.id === task.id);
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= siblings.length) return;
-    const other = siblings[swapIdx];
-    updateLocal(task.id, { position: other.position });
-    updateLocal(other.id, { position: task.position });
-    updateWorkflowTaskPosition(task.id, other.position).catch(() => {});
-    updateWorkflowTaskPosition(other.id, task.position).catch(() => {});
+  function handleDragStart(section: WorkflowSection, index: number) {
+    dragStartOrder.current = bySection.get(section) ?? [];
+    setDraggedTask({ section, index });
+  }
+
+  // Reassigns every task's position to match the dragged-over order, not
+  // just array order - bySection re-sorts by position on every render, so a
+  // plain array reorder would get silently undone by that sort.
+  function handleDragOver(section: WorkflowSection, e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (!draggedTask || draggedTask.section !== section || draggedTask.index === index) return;
+    const current = bySection.get(section) ?? [];
+    const reordered = [...current];
+    const [moved] = reordered.splice(draggedTask.index, 1);
+    reordered.splice(index, 0, moved);
+    const positionById = new Map(reordered.map((t, i) => [t.id, i]));
+    setTasks((prev) => prev.map((t) => (positionById.has(t.id) ? { ...t, position: positionById.get(t.id)! } : t)));
+    setDraggedTask({ section, index });
+  }
+
+  function handleDrop(section: WorkflowSection, e: React.DragEvent) {
+    e.preventDefault();
+    const previous = dragStartOrder.current;
+    const finalOrder = bySection.get(section) ?? [];
+    setDraggedTask(null);
+    dragStartOrder.current = null;
+    if (!previous || previous.map((t) => t.id).join() === finalOrder.map((t) => t.id).join()) return;
+    const orderedIds = finalOrder.map((t) => t.id);
+    reorderWorkflowTasks(orderedIds).catch(() => {
+      setTasks((prev) => {
+        const positionById = new Map(previous.map((t, i) => [t.id, i]));
+        return prev.map((t) => (positionById.has(t.id) ? { ...t, position: positionById.get(t.id)! } : t));
+      });
+    });
+  }
+
+  function handleDragEnd() {
+    setDraggedTask(null);
+    dragStartOrder.current = null;
   }
 
   async function handleResetDay() {
@@ -284,7 +312,11 @@ export default function WorkflowClient({ initialTasks }: { initialTasks: Workflo
           onSaveNotes={handleSaveNotes}
           onDelete={handleDelete}
           onAdd={(name, isPermanent) => handleAdd(section.value, name, isPermanent)}
-          onMove={handleMove}
+          draggedIndex={draggedTask?.section === section.value ? draggedTask.index : null}
+          onDragStart={(index) => handleDragStart(section.value, index)}
+          onDragOver={(e, index) => handleDragOver(section.value, e, index)}
+          onDrop={(e) => handleDrop(section.value, e)}
+          onDragEnd={handleDragEnd}
         />
       ))}
     </div>

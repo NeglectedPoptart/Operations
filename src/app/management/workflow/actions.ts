@@ -45,6 +45,16 @@ export async function updateWorkflowTaskPosition(id: string, position: number) {
   revalidateAll();
 }
 
+export async function reorderWorkflowTasks(orderedIds: string[]) {
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from("workflow_tasks").update({ position: index }).eq("id", id)),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+  revalidateAll();
+}
+
 export async function updateWorkflowTaskNotes(id: string, notes: string) {
   const supabase = await createClient();
   const { error } = await supabase
