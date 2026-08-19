@@ -48,8 +48,12 @@ export async function importArReport(rows: ParsedArInvoice[]): Promise<{ custome
 
   // Anything open before that isn't in this pull has been paid off/closed.
   const toRemove = (existing ?? []).filter((r) => !importedInvoiceNos.has(r.invoice_no)).map((r) => r.id);
-  if (toRemove.length > 0) {
-    const { error: deleteError } = await supabase.from("ar_invoices").delete().in("id", toRemove);
+  // Chunked so a large one-time removal doesn't build an .in() filter long
+  // enough to blow past request URL length limits.
+  const REMOVE_CHUNK_SIZE = 200;
+  for (let i = 0; i < toRemove.length; i += REMOVE_CHUNK_SIZE) {
+    const chunk = toRemove.slice(i, i + REMOVE_CHUNK_SIZE);
+    const { error: deleteError } = await supabase.from("ar_invoices").delete().in("id", chunk);
     if (deleteError) throw new Error(deleteError.message);
   }
 

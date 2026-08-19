@@ -54,8 +54,13 @@ export async function importApReport(
   const toRemove = (existing ?? [])
     .filter((r) => !importedKeys.has(rowKey(r.vendor_id, r.document, r.concept)))
     .map((r) => r.id);
-  if (toRemove.length > 0) {
-    const { error: deleteError } = await supabase.from("ap_payables").delete().in("id", toRemove);
+  // Chunked so a large one-time removal (e.g. excluding a whole GL account
+  // that was previously synced by mistake) doesn't build an .in() filter
+  // long enough to blow past request URL length limits.
+  const REMOVE_CHUNK_SIZE = 200;
+  for (let i = 0; i < toRemove.length; i += REMOVE_CHUNK_SIZE) {
+    const chunk = toRemove.slice(i, i + REMOVE_CHUNK_SIZE);
+    const { error: deleteError } = await supabase.from("ap_payables").delete().in("id", chunk);
     if (deleteError) throw new Error(deleteError.message);
   }
 
