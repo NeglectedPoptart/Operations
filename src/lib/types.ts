@@ -287,6 +287,18 @@ export interface WorkflowTask {
   updated_at: string;
 }
 
+// Management: Schedules ----------------------------------------------------
+
+export interface RoleSchedule {
+  id: string;
+  department: string;
+  role_name: string;
+  hours_text: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Management: Call Out Sheet -------------------------------------------------
 
 export type CalloutApproved = "yes" | "no";
