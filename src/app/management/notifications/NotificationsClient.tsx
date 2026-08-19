@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatTimestamp } from "@/lib/dates";
 import { NOTIFY_BREAKDOWN } from "@/lib/notificationBreakdown";
 import { ROLES, type Role } from "@/lib/roles";
+import type { PageStatusLogEntry } from "@/app/actions";
 import type { NotificationTargetType, Profile, SentNotification } from "@/lib/types";
 import { sendNotification } from "./actions";
 
@@ -21,11 +23,13 @@ export default function NotificationsClient({
   lastEditedMap,
   sent,
   currentUserEmail,
+  pageStatusLog,
 }: {
   profiles: Profile[];
   lastEditedMap: Record<string, string | null>;
   sent: SentNotification[];
   currentUserEmail: string | null;
+  pageStatusLog: PageStatusLogEntry[];
 }) {
   const [composing, setComposing] = useState<Composing | null>(null);
   const [targetType, setTargetType] = useState<NotificationTargetType>("user");
@@ -158,6 +162,29 @@ export default function NotificationsClient({
                     );
                   })}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Up to Date Activity</h2>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Every click of a page&apos;s &quot;Mark as Up to Date&quot; button - who clicked it, on what page, and when.
+        </p>
+        {pageStatusLog.length === 0 ? (
+          <p className="text-sm text-black/40 dark:text-white/40">No activity yet.</p>
+        ) : (
+          <div className="divide-y divide-black/10 dark:divide-white/10">
+            {pageStatusLog.map((entry) => (
+              <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                <Link href={entry.pageHref} className="font-medium text-green-700 hover:underline dark:text-green-400">
+                  {entry.pageLabel}
+                </Link>
+                <span className="text-black/60 dark:text-white/60">
+                  {entry.markedByEmail ?? "Unknown"} · {formatTimestamp(entry.markedAt)}
+                </span>
               </div>
             ))}
           </div>

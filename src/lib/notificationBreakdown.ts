@@ -102,6 +102,18 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
   },
 ];
 
+// Every UpdateStatusButton pageKey across the app, mapped to a display
+// label + link - keep in sync if a page adds/removes the button.
+export const PAGE_STATUS_LABELS: Record<string, { label: string; href: string }> = {
+  "pas-files": { label: "PAS Files", href: "/compliance/pas-files" },
+  "local-inbounds": { label: "Local Inbounds", href: "/buyers/local-inbounds" },
+  "am-holdovers": { label: "AM Holdovers", href: "/warehouse/am-holdovers" },
+  "cold-inventory": { label: "Cold Inventory", href: "/warehouse/cold-inventory" },
+  "qc-agenda": { label: "QC Agenda", href: "/qc/agenda" },
+  "pending-to-invoice": { label: "Pending to Invoice", href: "/sales/pending-to-invoice" },
+  "fob-pharr": { label: "FOB - Pharr", href: "/sales/fob-pharr" },
+};
+
 async function maxUpdatedAt(supabase: SupabaseServerClient, table: string): Promise<string | null> {
   const { data } = await supabase
     .from(table)

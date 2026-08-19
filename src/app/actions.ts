@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/dates";
+import { PAGE_STATUS_LABELS } from "@/lib/notificationBreakdown";
 import type { PushPlatform } from "@/lib/types";
 
 // Called by the mobile app shell right after it gets a device token from
@@ -167,21 +168,68 @@ export async function getPageStatus(pageKey: string): Promise<PageStatusInfo> {
 
 // Marks every key in pageKeys at once (e.g. FOB Pharr's button also covers
 // the three Delivered pages derived from the same pricing data) with the
-// same timestamp/person, so they all read as confirmed together.
+// same timestamp/person, so they all read as confirmed together. Also logs
+// each click to page_status_log (append-only) since page_status itself only
+// ever holds the current mark - one click overwrites the last, with no
+// history of who/when before that.
 export async function markPageUpToDate(pageKeys: string[]): Promise<PageStatusInfo> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   const now = new Date().toISOString();
-  const { error } = await supabase
-    .from("page_status")
-    .upsert(
-      pageKeys.map((key) => ({ page_key: key, marked_at: now, marked_by: user?.id ?? null })),
-      { onConflict: "page_key" },
-    );
+  const rows = pageKeys.map((key) => ({ page_key: key, marked_at: now, marked_by: user?.id ?? null }));
+
+  const { error } = await supabase.from("page_status").upsert(rows, { onConflict: "page_key" });
   if (error) throw new Error(error.message);
+
+  const { error: logError } = await supabase.from("page_status_log").insert(rows);
+  if (logError) throw new Error(logError.message);
+
+  revalidatePath("/management/notifications");
   return { markedAt: now, markedByEmail: user?.email ?? null };
+}
+
+export interface PageStatusLogEntry {
+  id: string;
+  pageKey: string;
+  pageLabel: string;
+  pageHref: string;
+  markedAt: string;
+  markedByEmail: string | null;
+}
+
+// Recent history of "Mark as Up to Date" clicks across every page that has
+// the button, for the Notifications page - who clicked it, on what page,
+// and when.
+export async function getPageStatusLog(limit = 100): Promise<PageStatusLogEntry[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("page_status_log")
+    .select("id, page_key, marked_at, marked_by")
+    .order("marked_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as { id: string; page_key: string; marked_at: string; marked_by: string | null }[];
+  const markedByIds = Array.from(new Set(rows.map((r) => r.marked_by).filter((id): id is string => id !== null)));
+  let emailById = new Map<string, string>();
+  if (markedByIds.length > 0) {
+    const { data: profileRows } = await supabase.from("profiles").select("id, email").in("id", markedByIds);
+    emailById = new Map((profileRows ?? []).map((p) => [p.id as string, p.email as string]));
+  }
+
+  return rows.map((r) => {
+    const meta = PAGE_STATUS_LABELS[r.page_key];
+    return {
+      id: r.id,
+      pageKey: r.page_key,
+      pageLabel: meta?.label ?? r.page_key,
+      pageHref: meta?.href ?? "#",
+      markedAt: r.marked_at,
+      markedByEmail: r.marked_by ? emailById.get(r.marked_by) ?? null : null,
+    };
+  });
 }
 
 // Wipes every page's confirmation at once - there's no per-page "unmark",

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getLastEditedMap } from "@/lib/notificationBreakdown";
+import { getPageStatusLog } from "@/app/actions";
 import type { AppNotification, NotificationRecipient, Profile, SentNotification } from "@/lib/types";
 import NotificationsClient from "./NotificationsClient";
 
@@ -15,11 +16,13 @@ export default async function NotificationsPage() {
     lastEditedMap,
     profilesRes,
     notificationsRes,
+    pageStatusLog,
   ] = await Promise.all([
     supabase.auth.getUser(),
     getLastEditedMap(supabase),
     supabase.from("profiles").select("*").order("email", { ascending: true }),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
+    getPageStatusLog(100),
   ]);
 
   if (profilesRes.error) {
@@ -60,6 +63,7 @@ export default async function NotificationsPage() {
       lastEditedMap={lastEditedMap}
       sent={sent}
       currentUserEmail={user?.email ?? null}
+      pageStatusLog={pageStatusLog}
     />
   );
 }
