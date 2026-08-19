@@ -110,7 +110,7 @@ export default function ApClient({
   const [search, setSearch] = useState("");
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
-  const [glFilter, setGlFilter] = useState<Set<string>>(new Set());
+  const [conceptFilter, setConceptFilter] = useState<Set<string>>(new Set());
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
@@ -122,29 +122,27 @@ export default function ApClient({
   const [payListError, setPayListError] = useState<string | null>(null);
   const [justSubmittedTitle, setJustSubmittedTitle] = useState<string | null>(null);
 
-  const glAccounts = useMemo(() => {
-    const byCode = new Map<string, string>();
-    for (const p of payables) {
-      if (!byCode.has(p.gl_account_code)) byCode.set(p.gl_account_code, p.gl_account_label || p.gl_account_code);
-    }
-    return Array.from(byCode.entries()).map(([code, label]) => ({ code, label }));
+  const concepts = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of payables) set.add(p.concept || "(none)");
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [payables]);
 
   const totals = useMemo(() => {
     let total = 0;
     let escalated = 0;
-    const byGl = new Map<string, number>();
+    const byConcept = new Map<string, number>();
     for (const p of payables) {
       total += p.balance;
       if (p.highlight === "red") escalated++;
-      const label = p.gl_account_label || p.gl_account_code;
-      byGl.set(label, (byGl.get(label) ?? 0) + p.balance);
+      const concept = p.concept || "(none)";
+      byConcept.set(concept, (byConcept.get(concept) ?? 0) + p.balance);
     }
-    return { total, escalated, byGl };
+    return { total, escalated, byConcept };
   }, [payables]);
 
   const highlightFilterActive = filterRed || filterYellow;
-  const glFilterActive = glFilter.size > 0;
+  const conceptFilterActive = conceptFilter.size > 0;
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
     const all = buildGroups(vendors, payables);
@@ -154,8 +152,8 @@ export default function ApClient({
         if (highlightFilterActive) {
           ps = ps.filter((p) => (filterRed && p.highlight === "red") || (filterYellow && p.highlight === "yellow"));
         }
-        if (glFilterActive) {
-          ps = ps.filter((p) => glFilter.has(p.gl_account_code));
+        if (conceptFilterActive) {
+          ps = ps.filter((p) => conceptFilter.has(p.concept || "(none)"));
         }
         if (q) {
           const nameMatches = g.vendor.vendor_name.toLowerCase().includes(q) || g.vendor.vendor_code.toLowerCase().includes(q);
@@ -166,13 +164,13 @@ export default function ApClient({
         return { ...g, payables: ps };
       })
       .filter((g) => g.payables.length > 0);
-  }, [vendors, payables, search, highlightFilterActive, filterRed, filterYellow, glFilterActive, glFilter]);
+  }, [vendors, payables, search, highlightFilterActive, filterRed, filterYellow, conceptFilterActive, conceptFilter]);
 
-  function toggleGlFilter(code: string) {
-    setGlFilter((prev) => {
+  function toggleConceptFilter(concept: string) {
+    setConceptFilter((prev) => {
       const next = new Set(prev);
-      if (next.has(code)) next.delete(code);
-      else next.add(code);
+      if (next.has(concept)) next.delete(concept);
+      else next.add(concept);
       return next;
     });
   }
@@ -343,7 +341,7 @@ export default function ApClient({
     }
   }
 
-  const glChartData = Array.from(totals.byGl.entries()).map(([label, value]) => ({ label, value }));
+  const conceptChartData = Array.from(totals.byConcept.entries()).map(([label, value]) => ({ label, value }));
 
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
@@ -471,8 +469,8 @@ export default function ApClient({
             </div>
           </div>
           <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-            <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Outstanding by GL Account</h2>
-            <HorizontalBarChart data={glChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
+            <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Outstanding by Concept</h2>
+            <HorizontalBarChart data={conceptChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
           </div>
         </div>
 
@@ -549,10 +547,14 @@ export default function ApClient({
             <input type="checkbox" checked={filterYellow} onChange={(e) => setFilterYellow(e.target.checked)} />
             Needs Contact
           </label>
-          {glAccounts.map((gl) => (
-            <label key={gl.code} className="flex items-center gap-1.5">
-              <input type="checkbox" checked={glFilter.has(gl.code)} onChange={() => toggleGlFilter(gl.code)} />
-              {gl.label}
+          {concepts.map((concept) => (
+            <label key={concept} className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={conceptFilter.has(concept)}
+                onChange={() => toggleConceptFilter(concept)}
+              />
+              {concept}
             </label>
           ))}
         </div>
