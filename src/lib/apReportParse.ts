@@ -91,6 +91,12 @@ export function parseApReportPaste(raw: string): ParseApReportResult {
     // all and shouldn't show up on this page.
     if (!/purchase product/i.test(glAccountLabel)) continue;
 
+    // Only the "Product" concept is wanted here - Freight, Customs, Carton
+    // Expense, USDA Inspection, etc. are all real Purchase Product rows too,
+    // but this page should only track the product cost itself.
+    const concept = cell(cells, COL.concept);
+    if (concept.toLowerCase() !== "product") continue;
+
     payables.push({
       vendorCode,
       vendorName: cell(cells, COL.vendorName),
@@ -98,7 +104,7 @@ export function parseApReportPaste(raw: string): ParseApReportResult {
       glAccountLabel,
       docDate: parseDate(cell(cells, COL.date)),
       type: cell(cells, COL.type),
-      concept: cell(cells, COL.concept),
+      concept,
       document,
       balance,
     });
