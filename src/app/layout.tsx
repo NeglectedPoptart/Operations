@@ -75,16 +75,26 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={`${rajdhani.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full">
         <ConfirmProvider>
-          <AppHeader />
-          <NavBar role={role} />
-          {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
-          {user && !isBrokerCarrier && <NotificationPopup />}
-          {user && !isBrokerCarrier && <PushRegistration />}
-          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">
-            {children}
-          </main>
+          {user ? (
+            <div className="flex min-h-screen">
+              <NavBar role={role} email={user.email ?? null} />
+              <div className="flex min-h-screen flex-1 flex-col">
+                {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
+                {!isBrokerCarrier && <NotificationPopup />}
+                {!isBrokerCarrier && <PushRegistration />}
+                <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:px-0 print:py-0">
+                  <div className="mx-auto w-full max-w-7xl">{children}</div>
+                </main>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-screen flex-col">
+              <AppHeader />
+              <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6">{children}</main>
+            </div>
+          )}
         </ConfirmProvider>
       </body>
     </html>

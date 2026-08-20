@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { BROKER_CARRIER_PATH, canAccessTab, type Role, type Tab } from "@/lib/roles";
+import { BROKER_CARRIER_PATH, canAccessTab, ROLES, type Role, type Tab } from "@/lib/roles";
 
 interface NavItem {
   href: string;
@@ -107,10 +107,120 @@ const NAV: NavCategory[] = [
   },
 ];
 
-export default function NavBar({ role }: { role: Role | null }) {
+// One small stroke icon per category - hand-drawn rather than pulled from
+// an icon library, since the app doesn't depend on one anywhere else.
+function CategoryIcon({ label, className }: { label: string; className?: string }) {
+  const common = {
+    className,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.6,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+  };
+  switch (label) {
+    case "Home":
+      return (
+        <svg {...common}>
+          <path d="M4 11.5 12 4l8 7.5" />
+          <path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9" />
+        </svg>
+      );
+    case "Logistics":
+      return (
+        <svg {...common}>
+          <path d="M3 7h10v9H3z" />
+          <path d="M13 11h4l3 3v2h-7z" />
+          <circle cx="7" cy="18" r="1.6" />
+          <circle cx="17" cy="18" r="1.6" />
+        </svg>
+      );
+    case "Warehouse":
+      return (
+        <svg {...common}>
+          <path d="M3 10 12 4l9 6v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
+          <path d="M9 20v-6h6v6" />
+        </svg>
+      );
+    case "QC":
+      return (
+        <svg {...common}>
+          <path d="M7 4h10v3a5 5 0 0 1-10 0z" />
+          <path d="M7 20h10v-3a5 5 0 0 0-10 0z" />
+          <path d="M9.5 11.5 11 13l3.5-3.5" />
+        </svg>
+      );
+    case "Sales":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5v9M9.5 15c0 1.1 1.1 2 2.5 2s2.5-.9 2.5-2-1.1-1.5-2.5-1.8S9.5 12.6 9.5 11.5 10.6 9.5 12 9.5s2.5.6 2.5 1.5" />
+        </svg>
+      );
+    case "Buyers":
+      return (
+        <svg {...common}>
+          <path d="M6 8h12l-1 12H7z" />
+          <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+        </svg>
+      );
+    case "Management":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="2.75" />
+          <path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M6.3 17.7l1.6-1.6M16.1 7.9l1.6-1.6" />
+        </svg>
+      );
+    case "Compliance":
+      return (
+        <svg {...common}>
+          <path d="M12 4l7 2.5v5.5c0 4.5-3 7.2-7 8-4-.8-7-3.5-7-8V6.5z" />
+          <path d="M9.5 12l2 2 3.5-4" />
+        </svg>
+      );
+    case "Accounting":
+      return (
+        <svg {...common}>
+          <rect x="5" y="3.5" width="14" height="17" rx="1.5" />
+          <path d="M8.5 7.5h7M8.5 11h2M13.5 11h2M8.5 14.5h2M13.5 14.5h2M8.5 18h2M13.5 18h2" />
+        </svg>
+      );
+    case "Marketing":
+      return (
+        <svg {...common}>
+          <path d="M4 10v4h3l6 4V6l-6 4z" />
+          <path d="M13 9.5a3 3 0 0 1 0 5" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="8.5" />
+        </svg>
+      );
+  }
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+export default function NavBar({ role, email }: { role: Role | null; email: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [openCategory, setOpenCategory] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
   const isBrokerCarrier = role === "broker_carrier";
   // A broker/carrier login gets none of the normal categories - not even
@@ -118,15 +228,21 @@ export default function NavBar({ role }: { role: Role | null }) {
   // filter below would otherwise always keep it).
   const nav = isBrokerCarrier ? [] : NAV.filter((category) => !category.tab || canAccessTab(role, category.tab));
 
+  const activeCategoryLabel = useMemo(
+    () =>
+      nav.find((category) =>
+        (category.items ?? []).some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)),
+      )?.label ?? null,
+    [nav, pathname],
+  );
+  const [openCategory, setOpenCategory] = useState<string | null>(activeCategoryLabel);
+
+  // Re-expand whichever group contains the page just navigated to, so the
+  // sidebar always shows the current location's siblings without the user
+  // having to click the group open again.
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) {
-        setOpenCategory(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    if (activeCategoryLabel) setOpenCategory(activeCategoryLabel);
+  }, [activeCategoryLabel]);
 
   if (pathname === "/login") return null;
 
@@ -137,78 +253,119 @@ export default function NavBar({ role }: { role: Role | null }) {
     router.refresh();
   }
 
-  const buttonClass = (active: boolean) =>
-    `rounded-md px-3 py-2 text-sm font-medium ${
-      active
-        ? "bg-green-600 text-white"
-        : "text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10"
+  const roleLabel = ROLES.find((r) => r.value === role)?.label ?? null;
+  const initials = (email ?? "?").trim().slice(0, 1).toUpperCase();
+
+  const topLevelClass = (active: boolean) =>
+    `flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium transition ${
+      active ? "bg-brand text-white" : "text-sidebar-text hover:bg-sidebar-hover hover:text-white"
     }`;
 
   return (
-    <header className="sticky top-0 z-20 border-b border-black/10 bg-white/90 backdrop-blur print:hidden dark:border-white/10 dark:bg-black/70">
-      <nav
-        ref={navRef}
-        className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-3"
-      >
-        <div className="flex flex-wrap items-center gap-1">
-          {isBrokerCarrier && (
-            <Link href={BROKER_CARRIER_PATH} className="px-3 py-2 text-sm font-medium text-black/70 dark:text-white/70">
-              Broker Rate Entry
-            </Link>
-          )}
-          {nav.map((category) => {
-            if (category.href) {
-              const active = pathname === category.href;
-              return (
-                <Link key={category.label} href={category.href} className={buttonClass(active)}>
-                  {category.label}
-                </Link>
-              );
-            }
+    <header className="flex h-full w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-text print:hidden">
+      <div className="flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4">
+        <img
+          src="/logo-harvest-best.png"
+          alt="Harvest Best"
+          className="h-9 w-9 shrink-0 rounded-full border border-sidebar-border bg-white object-cover"
+        />
+        <div className="min-w-0 leading-tight">
+          <p className="truncate text-sm font-bold text-white">HOPS</p>
+          <p className="truncate text-[11px] text-sidebar-text-muted">Harvest Best Operations</p>
+        </div>
+      </div>
 
-            const items = category.items ?? [];
-            const active = items.some(
-              (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-            );
-            const open = openCategory === category.label;
-
+      <nav ref={navRef} className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
+        {isBrokerCarrier && (
+          <Link
+            href={BROKER_CARRIER_PATH}
+            className={topLevelClass(pathname.startsWith(BROKER_CARRIER_PATH))}
+          >
+            <CategoryIcon label="Logistics" className="h-5 w-5 shrink-0" />
+            Broker Rate Entry
+          </Link>
+        )}
+        {nav.map((category) => {
+          if (category.href) {
+            const active = pathname === category.href;
             return (
-              <div key={category.label} className="relative">
-                <button
-                  onClick={() => setOpenCategory(open ? null : category.label)}
-                  className={buttonClass(active)}
-                >
-                  {category.label} <span className="text-xs">▾</span>
-                </button>
-                {open && (
-                  <div className="absolute left-0 top-full z-30 mt-1 min-w-[11rem] rounded-md border border-black/10 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-neutral-900">
-                    {items.map((item) => (
+              <Link key={category.label} href={category.href} className={topLevelClass(active)}>
+                <CategoryIcon label={category.label} className="h-5 w-5 shrink-0" />
+                {category.label}
+              </Link>
+            );
+          }
+
+          const items = category.items ?? [];
+
+          // A single-item category has nothing to expand into - link
+          // straight to that one page instead of a pointless accordion.
+          if (items.length === 1) {
+            const only = items[0];
+            const active = pathname === only.href || pathname.startsWith(`${only.href}/`);
+            return (
+              <Link key={category.label} href={only.href} className={topLevelClass(active)}>
+                <CategoryIcon label={category.label} className="h-5 w-5 shrink-0" />
+                {category.label}
+              </Link>
+            );
+          }
+
+          const active = items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+          const open = openCategory === category.label;
+
+          return (
+            <div key={category.label}>
+              <button
+                onClick={() => setOpenCategory(open ? null : category.label)}
+                className={topLevelClass(active)}
+              >
+                <CategoryIcon label={category.label} className="h-5 w-5 shrink-0" />
+                <span className="flex-1">{category.label}</span>
+                <ChevronIcon open={open} />
+              </button>
+              {open && (
+                <div className="mt-0.5 ml-4 space-y-0.5 border-l border-sidebar-border pl-3">
+                  {items.map((item) => {
+                    const itemActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                    return (
                       <Link
                         key={item.href}
                         href={item.href}
-                        onClick={() => setOpenCategory(null)}
-                        className={`block px-3 py-2 text-sm ${
-                          pathname === item.href
-                            ? "font-medium text-green-600"
-                            : "text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10"
+                        className={`block rounded-md px-2.5 py-1.5 text-sm ${
+                          itemActive
+                            ? "font-medium text-white"
+                            : "text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
                         }`}
                       >
                         {item.label}
                       </Link>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </nav>
+
+      <div className="border-t border-sidebar-border p-3">
+        <div className="flex items-center gap-2.5 rounded-md px-1 py-1.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-bold text-white">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-sm font-medium text-white">{email ?? "Signed in"}</p>
+            {roleLabel && <p className="truncate text-[11px] text-sidebar-text-muted">{roleLabel}</p>}
+          </div>
         </div>
         <button
           onClick={signOut}
-          className="rounded-md px-3 py-2 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+          className="mt-1 w-full rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
         >
           Sign out
         </button>
-      </nav>
+      </div>
     </header>
   );
 }
