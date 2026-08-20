@@ -278,15 +278,15 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
 
   const sidebarInner = (
     <>
-      <div className="flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4">
+      <div className="border-b border-sidebar-border px-4 py-4">
         <img
           src="/logo-harvest-best.png"
           alt="Harvest Best"
-          className="h-9 w-9 shrink-0 rounded-full border border-sidebar-border bg-white object-cover"
+          className="mx-auto h-16 w-auto rounded-md bg-white p-1.5 object-contain"
         />
-        <div className="min-w-0 leading-tight">
-          <p className="truncate text-sm font-bold text-white">HOPS</p>
-          <p className="truncate text-[11px] text-sidebar-text-muted">Harvest Best Operations</p>
+        <div className="mt-2 text-center leading-tight">
+          <p className="text-sm font-bold text-white">HOPS</p>
+          <p className="text-[11px] text-sidebar-text-muted">Harvest Best Operations Platform</p>
         </div>
       </div>
 
@@ -395,7 +395,7 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
           <img
             src="/logo-harvest-best.png"
             alt="Harvest Best"
-            className="h-7 w-7 rounded-full border border-sidebar-border bg-white object-cover"
+            className="h-8 w-auto rounded bg-white p-1 object-contain"
           />
           <span className="text-sm font-bold text-white">HOPS</span>
         </div>
