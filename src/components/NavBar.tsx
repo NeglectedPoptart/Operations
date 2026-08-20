@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { BROKER_CARRIER_PATH, canAccessTab, ROLES, type Role, type Tab } from "@/lib/roles";
 
@@ -218,15 +218,26 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function MenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="h-5 w-5">
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
 export default function NavBar({ role, email }: { role: Role | null; email: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
-  const navRef = useRef<HTMLElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isBrokerCarrier = role === "broker_carrier";
   // A broker/carrier login gets none of the normal categories - not even
   // Home, which every other role gets for free (it has no `.tab`, so the
   // filter below would otherwise always keep it).
-  const nav = isBrokerCarrier ? [] : NAV.filter((category) => !category.tab || canAccessTab(role, category.tab));
+  const nav = useMemo(
+    () => (isBrokerCarrier ? [] : NAV.filter((category) => !category.tab || canAccessTab(role, category.tab))),
+    [isBrokerCarrier, role],
+  );
 
   const activeCategoryLabel = useMemo(
     () =>
@@ -237,12 +248,16 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
   );
   const [openCategory, setOpenCategory] = useState<string | null>(activeCategoryLabel);
 
-  // Re-expand whichever group contains the page just navigated to, so the
-  // sidebar always shows the current location's siblings without the user
-  // having to click the group open again.
-  useEffect(() => {
+  // Adjust state in response to navigation, during render rather than in an
+  // effect (React's recommended pattern for this - avoids an extra
+  // commit/paint cycle): re-expand whichever group contains the page just
+  // navigated to, and close the mobile drawer since it did its job.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
+    setMobileOpen(false);
     if (activeCategoryLabel) setOpenCategory(activeCategoryLabel);
-  }, [activeCategoryLabel]);
+  }
 
   if (pathname === "/login") return null;
 
@@ -261,8 +276,8 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
       active ? "bg-brand text-white" : "text-sidebar-text hover:bg-sidebar-hover hover:text-white"
     }`;
 
-  return (
-    <header className="flex h-full w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-text print:hidden">
+  const sidebarInner = (
+    <>
       <div className="flex items-center gap-2.5 border-b border-sidebar-border px-4 py-4">
         <img
           src="/logo-harvest-best.png"
@@ -275,7 +290,7 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
         </div>
       </div>
 
-      <nav ref={navRef} className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
         {isBrokerCarrier && (
           <Link
             href={BROKER_CARRIER_PATH}
@@ -366,6 +381,51 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
           Sign out
         </button>
       </div>
-    </header>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile top bar - the sidebar itself is hidden below lg, so this is
+          the only way to reach navigation on a phone-width screen (this app
+          also ships as an Android/Capacitor + PWA install, where narrow
+          viewports are the norm, not the exception). */}
+      <div className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 lg:hidden print:hidden">
+        <div className="flex items-center gap-2">
+          <img
+            src="/logo-harvest-best.png"
+            alt="Harvest Best"
+            className="h-7 w-7 rounded-full border border-sidebar-border bg-white object-cover"
+          />
+          <span className="text-sm font-bold text-white">HOPS</span>
+        </div>
+        <button
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+          className="rounded-md p-2 text-sidebar-text hover:bg-sidebar-hover hover:text-white"
+        >
+          <MenuIcon />
+        </button>
+      </div>
+
+      {/* Desktop sidebar - always visible, part of the normal flex layout */}
+      <header className="hidden h-full w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-text print:hidden lg:flex">
+        {sidebarInner}
+      </header>
+
+      {/* Mobile drawer - only mounted while open, sits above everything */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 flex lg:hidden">
+          <header className="flex h-full w-72 max-w-[80vw] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-text">
+            {sidebarInner}
+          </header>
+          <button
+            onClick={() => setMobileOpen(false)}
+            aria-label="Close menu"
+            className="flex-1 bg-black/50"
+          />
+        </div>
+      )}
+    </>
   );
 }

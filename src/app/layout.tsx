@@ -78,7 +78,7 @@ export default async function RootLayout({
       <body className="min-h-full">
         <ConfirmProvider>
           {user ? (
-            <div className="flex min-h-screen">
+            <div className="flex min-h-screen flex-col lg:flex-row">
               <NavBar role={role} email={user.email ?? null} />
               <div className="flex min-h-screen flex-1 flex-col">
                 {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
