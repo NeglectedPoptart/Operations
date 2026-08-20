@@ -282,7 +282,7 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
         <img
           src="/logo-harvest-best.png"
           alt="Harvest Best"
-          className="mx-auto h-16 w-auto rounded-md bg-white p-1.5 object-contain"
+          className="mx-auto h-16 w-auto object-contain"
         />
         <div className="mt-2 text-center leading-tight">
           <p className="text-sm font-bold text-white">HOPS</p>
@@ -395,7 +395,7 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
           <img
             src="/logo-harvest-best.png"
             alt="Harvest Best"
-            className="h-8 w-auto rounded bg-white p-1 object-contain"
+            className="h-8 w-auto object-contain"
           />
           <span className="text-sm font-bold text-white">HOPS</span>
         </div>
