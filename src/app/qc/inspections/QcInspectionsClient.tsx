@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import type { QcInspection } from "@/lib/types";
+import { QC_RESULTS, type QcInspection } from "@/lib/types";
 import { addQcInspectionRow, deleteQcInspectionRow, updateQcInspectionRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -182,12 +182,19 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
                       className={field}
                     />
                   </td>
-                  <td className="min-w-[5rem] px-1 py-1">
-                    <input
-                      defaultValue={item.result ?? ""}
-                      onBlur={(e) => handleFieldSave(item.id, { result: e.target.value })}
+                  <td className="min-w-[8rem] px-1 py-1">
+                    <select
+                      value={item.result ?? ""}
+                      onChange={(e) => handleFieldSave(item.id, { result: e.target.value || null })}
                       className={field}
-                    />
+                    >
+                      <option value="">-</option>
+                      {QC_RESULTS.map((r) => (
+                        <option key={r.label} value={r.label}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="min-w-[16rem] px-1 py-1">
                     <input

@@ -105,6 +105,11 @@ const NAV: NavCategory[] = [
     tab: "marketing",
     items: [{ href: "/marketing/assets", label: "Brand Assets" }],
   },
+  {
+    label: "Meetings",
+    tab: "meetings",
+    items: [{ href: "/meetings/weekly-company-call", label: "Weekly Company Call" }],
+  },
 ];
 
 // One small stroke icon per category - hand-drawn rather than pulled from
@@ -191,6 +196,15 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
         <svg {...common}>
           <path d="M4 10v4h3l6 4V6l-6 4z" />
           <path d="M13 9.5a3 3 0 0 1 0 5" />
+        </svg>
+      );
+    case "Meetings":
+      return (
+        <svg {...common}>
+          <rect x="4" y="5" width="16" height="15" rx="1.5" />
+          <path d="M4 9.5h16M8 3.5v3M16 3.5v3" />
+          <circle cx="9" cy="14" r="1" fill="currentColor" stroke="none" />
+          <circle cx="15" cy="14" r="1" fill="currentColor" stroke="none" />
         </svg>
       );
     default:

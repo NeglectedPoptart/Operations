@@ -28,7 +28,8 @@ export type Tab =
   | "compliance"
   | "buyers"
   | "marketing"
-  | "accounting";
+  | "accounting"
+  | "meetings";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -42,15 +43,26 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // permission levels round, and middleware.ts for the broker_carrier
 // exception).
 const ROLE_TABS: Record<Role, Tab[]> = {
-  admin: ["logistics", "warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing", "accounting"],
+  admin: [
+    "logistics",
+    "warehouse",
+    "qc",
+    "sales",
+    "management",
+    "compliance",
+    "buyers",
+    "marketing",
+    "accounting",
+    "meetings",
+  ],
   // Sees everything except Management.
-  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting"],
-  warehouse_qc: ["warehouse", "qc", "buyers"],
-  sales: ["sales", "qc", "buyers", "marketing"],
-  accounting: ["sales", "compliance", "accounting"],
-  buyer: ["warehouse", "qc", "sales", "buyers"],
+  operations: ["logistics", "warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting", "meetings"],
+  warehouse_qc: ["warehouse", "qc", "buyers", "meetings"],
+  sales: ["sales", "qc", "buyers", "marketing", "meetings"],
+  accounting: ["sales", "compliance", "accounting", "meetings"],
+  buyer: ["warehouse", "qc", "sales", "buyers", "meetings"],
   // Sees everything except Logistics and Management.
-  executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting"],
+  executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting", "meetings"],
   // No tabs at all - access to BROKER_CARRIER_PATH is a hardcoded exception
   // in middleware.ts, not tab-based like every other role.
   broker_carrier: [],
@@ -77,5 +89,6 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/buyers")) return "buyers";
   if (pathname.startsWith("/marketing")) return "marketing";
   if (pathname.startsWith("/accounting")) return "accounting";
+  if (pathname.startsWith("/meetings")) return "meetings";
   return null;
 }

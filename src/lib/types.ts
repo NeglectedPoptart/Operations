@@ -448,6 +448,21 @@ export interface PendingToInvoiceItem {
 
 // QC: Inspections -------------------------------------------------------------
 
+// A fixed scale rather than free text, so results can be scored/averaged
+// (see Meetings > Weekly Company Call) - score is 0-100, used directly as
+// a "quality" percentage.
+export const QC_RESULTS: { label: string; score: number }[] = [
+  { label: "Pass", score: 100 },
+  { label: "Slight caution", score: 75 },
+  { label: "Caution", score: 50 },
+  { label: "Urgent", score: 25 },
+  { label: "Fail", score: 0 },
+];
+
+export const QC_RESULT_SCORE: Record<string, number> = Object.fromEntries(
+  QC_RESULTS.map((r) => [r.label, r.score]),
+);
+
 export interface QcInspection {
   id: string;
   position: number;
