@@ -78,13 +78,13 @@ export default async function RootLayout({
       <body className="min-h-full">
         <ConfirmProvider>
           {user ? (
-            <div className="flex min-h-screen flex-col lg:flex-row">
+            <div className="flex h-screen flex-col lg:flex-row print:h-auto">
               <NavBar role={role} email={user.email ?? null} />
-              <div className="flex min-h-screen flex-1 flex-col">
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
                 {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
                 {!isBrokerCarrier && <NotificationPopup />}
                 {!isBrokerCarrier && <PushRegistration />}
-                <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:px-0 print:py-0">
+                <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:px-0 print:py-0">
                   <div className="mx-auto w-full max-w-7xl">{children}</div>
                 </main>
               </div>
