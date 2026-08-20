@@ -282,7 +282,7 @@ export default function EastCoastPricingClient({
   }
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <UpdateStatusButton pageKey="fob-pharr" readOnly />
         <div className="flex items-center justify-between">

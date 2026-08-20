@@ -259,7 +259,7 @@ export default function LocalInboundsClient({
   }
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
       <div className="space-y-6">
         <UpdateStatusButton pageKey="local-inbounds" />
         <div className="flex flex-wrap items-center justify-between gap-2">

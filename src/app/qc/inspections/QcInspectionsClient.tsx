@@ -12,6 +12,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   const [items, setItems] = useState(initialItems);
   const [adding, setAdding] = useState(false);
   const [filterDate, setFilterDate] = useState("");
+  const [search, setSearch] = useState("");
 
   // Newest date on top; same-day rows stay in the order they were entered.
   const sortedItems = useMemo(() => {
@@ -22,7 +23,18 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
     });
   }, [items]);
 
-  const displayedItems = filterDate ? sortedItems.filter((i) => i.entry_date === filterDate) : sortedItems;
+  const displayedItems = useMemo(() => {
+    let list = filterDate ? sortedItems.filter((i) => i.entry_date === filterDate) : sortedItems;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((i) =>
+        [i.entry_date, i.po, i.lot, i.product, i.qc, i.status, i.result, i.notes].some((field) =>
+          (field ?? "").toLowerCase().includes(q),
+        ),
+      );
+    }
+    return list;
+  }, [sortedItems, filterDate, search]);
 
   async function handleAddRow() {
     setAdding(true);
@@ -47,7 +59,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   }
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">QC Inspections</h1>
@@ -61,6 +73,18 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-sm">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search PO, lot, product, QC, status, result, notes..."
+            className="w-72 rounded border border-gray-300 bg-white px-2 py-1 text-black"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="text-black/60 hover:underline dark:text-white/60">
+              Clear search
+            </button>
+          )}
+          <span className="mx-1 text-black/20 dark:text-white/20">|</span>
           <label htmlFor="qc-date-filter" className="text-black/60 dark:text-white/60">
             Filter by date:
           </label>
@@ -185,8 +209,8 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
               {displayedItems.length === 0 && (
                 <tr>
                   <td colSpan={11} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                    {filterDate
-                      ? "No inspections on this date."
+                    {search || filterDate
+                      ? "Nothing matches the current search/filter."
                       : 'No inspections yet - click "+ Add Row" above to log one.'}
                   </td>
                 </tr>

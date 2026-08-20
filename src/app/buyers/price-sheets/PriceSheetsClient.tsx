@@ -824,7 +824,7 @@ export default function PriceSheetsClient({
   }
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-2 sm:px-4">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-2 sm:px-4">
       <div className="mx-auto max-w-[110rem] space-y-6">
       <datalist id="price-sheet-categories">
         {PRODUCE_CATEGORIES.map((c) => (

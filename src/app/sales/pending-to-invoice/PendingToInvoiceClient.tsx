@@ -121,7 +121,7 @@ export default function PendingToInvoiceClient({ initialItems }: { initialItems:
   return (
     // Breaks out of the page's centered max-w container, same as PAS Files -
     // this is a wide list and needs the room before it has to scroll.
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
       <div className="space-y-8">
         <UpdateStatusButton pageKey="pending-to-invoice" />
         <div className="space-y-4">

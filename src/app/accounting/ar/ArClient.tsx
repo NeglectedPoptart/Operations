@@ -239,7 +239,7 @@ export default function ArClient({
   const bucketChartData = AR_AGING_BUCKETS.map((b) => ({ label: b.label, value: totals.byBucket.get(b.key) ?? 0 }));
 
   return (
-    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen px-4 sm:px-8">
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">Accounts Receivable</h1>
