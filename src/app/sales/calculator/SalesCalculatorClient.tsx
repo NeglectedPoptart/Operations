@@ -12,12 +12,12 @@ interface ProductRow {
   priceInput: string; // purchase price in "sales" mode, sales price in "buy" mode
   palletCount: string;
   inOutPerPallet: string;
-  totalCases: string;
+  casesPerPallet: string;
 }
 
 let nextId = 1;
 function makeRow(label = ""): ProductRow {
-  return { id: nextId++, label, priceInput: "", palletCount: "", inOutPerPallet: "", totalCases: "" };
+  return { id: nextId++, label, priceInput: "", palletCount: "", inOutPerPallet: "", casesPerPallet: "" };
 }
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -43,7 +43,7 @@ export default function SalesCalculatorClient() {
   const lines: ProductLine[] = rows.map((r) => ({
     palletCount: num(r.palletCount),
     inOutPerPallet: num(r.inOutPerPallet),
-    totalCases: num(r.totalCases),
+    casesPerPallet: num(r.casesPerPallet),
   }));
   const priceInputs = rows.map((r) => num(r.priceInput));
   const results = mode === "sales" ? calcSalesPrices(priceInputs, rate, freight, lines) : calcPurchasePrices(priceInputs, rate, freight, lines);
@@ -141,7 +141,7 @@ export default function SalesCalculatorClient() {
                 <th className="px-2 py-2">{mode === "sales" ? "Purchase Price" : "Sales Price"} ($/case)</th>
                 <th className="px-2 py-2">Pallets</th>
                 <th className="px-2 py-2">In/Out ($/pallet)</th>
-                <th className="px-2 py-2">Total Cases</th>
+                <th className="px-2 py-2">Cases/Pallet</th>
                 <th className="w-16 px-2 py-2" />
               </tr>
             </thead>
@@ -190,9 +190,9 @@ export default function SalesCalculatorClient() {
                     <input
                       type="number"
                       step="any"
-                      value={r.totalCases}
-                      onChange={(e) => updateRow(r.id, { totalCases: e.target.value })}
-                      placeholder="80"
+                      value={r.casesPerPallet}
+                      onChange={(e) => updateRow(r.id, { casesPerPallet: e.target.value })}
+                      placeholder="32"
                       className={field}
                     />
                   </td>
@@ -231,13 +231,13 @@ export default function SalesCalculatorClient() {
             <tbody>
               {rows.map((r, i) => {
                 const res = results[i];
-                const hasInputs = lines[i].totalCases > 0 && r.priceInput.trim() !== "";
+                const hasInputs = lines[i].casesPerPallet > 0 && r.priceInput.trim() !== "";
                 return (
                   <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
                     <td className="px-2 py-1.5 font-medium">{r.label || `Product ${i + 1}`}</td>
                     {!hasInputs ? (
                       <td colSpan={6} className="px-2 py-1.5 text-black/40 dark:text-white/40">
-                        Enter {mode === "sales" ? "a purchase price" : "a sales price"} and total cases.
+                        Enter {mode === "sales" ? "a purchase price" : "a sales price"} and cases per pallet.
                       </td>
                     ) : (
                       <>

@@ -14,7 +14,7 @@
 export interface ProductLine {
   palletCount: number;
   inOutPerPallet: number;
-  totalCases: number;
+  casesPerPallet: number;
 }
 
 export function freightShares(totalFreight: number, lines: ProductLine[]): number[] {
@@ -36,7 +36,10 @@ export interface ProductLineResult {
 function buildResult(purchasePrice: number, commissionRate: number, line: ProductLine, freightShare: number): ProductLineResult {
   const inOutTotal = line.palletCount * line.inOutPerPallet;
   const warehouseCost = freightShare + inOutTotal;
-  const costPerCase = line.totalCases > 0 ? warehouseCost / line.totalCases : 0;
+  // casesPerPallet is per pallet, not the shipment's grand total, so the
+  // actual case count to divide the shared cost across is pallets x that.
+  const totalCases = line.palletCount * line.casesPerPallet;
+  const costPerCase = totalCases > 0 ? warehouseCost / totalCases : 0;
   const commission = purchasePrice * commissionRate;
   return {
     freightShare,
@@ -71,7 +74,8 @@ export function calcPurchasePrices(
   return lines.map((line, i) => {
     const inOutTotal = line.palletCount * line.inOutPerPallet;
     const warehouseCost = shares[i] + inOutTotal;
-    const costPerCase = line.totalCases > 0 ? warehouseCost / line.totalCases : 0;
+    const totalCases = line.palletCount * line.casesPerPallet;
+    const costPerCase = totalCases > 0 ? warehouseCost / totalCases : 0;
     const purchasePrice = ((salesPrices[i] ?? 0) - costPerCase) / (1 + commissionRate);
     return buildResult(purchasePrice, commissionRate, line, shares[i]);
   });
