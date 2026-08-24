@@ -34,15 +34,18 @@ function findColumn(header: string[], keywords: string[], claimed: Set<number>):
 // of whatever we stored ("20496" -> "INV-20496", but also "P-7566" ->
 // "INV-P-7566" - some invoice numbers already carry their own meaningful
 // letter prefix, e.g. a document-type code, which is NOT an ERP artifact
-// and must survive on both sides). Only that specific "INV" prefix is
-// stripped - stripping any/every leading letter run (as this used to do)
-// destroyed real prefixes like "P-" and made otherwise-identical numbers
-// compare unequal.
+// and must survive on both sides). Only that specific prefix (abbreviated
+// "INV-" or spelled out "Invoice", optionally with a "#") is stripped -
+// stripping any/every leading letter run (as this used to do) destroyed
+// real prefixes like "P-" and made otherwise-identical numbers compare
+// unequal. A row originally imported with the full word "Invoice #2055"
+// needs the same reduction to "2055" as the statement's "INV-2055", or
+// they silently never match (see Ali-Mat #2055 bug report).
 export function normalizeInvoiceNo(raw: string): string {
   return raw
     .trim()
     .toUpperCase()
-    .replace(/^INV-?/, "")
+    .replace(/^INV(?:OICE)?\s*#?\s*-?\s*/, "")
     .replace(/[^A-Z0-9]/g, "");
 }
 
