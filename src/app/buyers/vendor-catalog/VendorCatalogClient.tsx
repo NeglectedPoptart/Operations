@@ -100,6 +100,8 @@ export default function VendorCatalogClient({
     [vendors, itemsByVendor, today],
   );
 
+  const pricedTodayCount = useMemo(() => allVendors.filter((v) => v.isCurrent).length, [allVendors]);
+
   const sellersForSelected = useMemo(() => {
     if (!selectedCategory) return [];
     const vendorIds = vendorIdsByCategory.get(selectedCategory) ?? [];
@@ -124,6 +126,17 @@ export default function VendorCatalogClient({
           placeholder="Type a commodity..."
           className="w-56 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-black"
         />
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <div className="rounded-lg border border-black/10 px-4 py-2 shadow-sm dark:border-white/10">
+          <p className="text-xl font-bold">{vendors.length}</p>
+          <p className="text-xs text-black/50 dark:text-white/50">Total Vendors</p>
+        </div>
+        <div className="rounded-lg border border-black/10 px-4 py-2 shadow-sm dark:border-white/10">
+          <p className="text-xl font-bold text-green-700 dark:text-green-400">{pricedTodayCount}</p>
+          <p className="text-xs text-black/50 dark:text-white/50">Priced Today</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">

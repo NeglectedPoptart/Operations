@@ -117,6 +117,8 @@ export default async function HomePage() {
     missingAppointmentRes,
     missingRateConRes,
     arInvoicesRes,
+    vendorsTotalRes,
+    vendorsPricedTodayRes,
   ] = await Promise.all([
     supabase
       .from("loads")
@@ -159,6 +161,8 @@ export default async function HomePage() {
       .eq("rate_con_sent", false)
       .neq("status", "complete"),
     supabase.from("ar_invoices").select("due_date, balance, highlight, trouble_status"),
+    supabase.from("vendors").select("*", { count: "exact", head: true }),
+    supabase.from("vendors").select("*", { count: "exact", head: true }).eq("sheet_date", today),
   ]);
 
   const error =
@@ -178,7 +182,9 @@ export default async function HomePage() {
     pasEscalationRes.error ??
     missingAppointmentRes.error ??
     missingRateConRes.error ??
-    arInvoicesRes.error;
+    arInvoicesRes.error ??
+    vendorsTotalRes.error ??
+    vendorsPricedTodayRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load dashboard: {error.message}</p>;
   }
@@ -377,6 +383,18 @@ export default async function HomePage() {
             <div className="rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
               <HorizontalBarChart data={arBucketChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
             </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="space-y-5">
+        <CategoryHeading>Buyers</CategoryHeading>
+
+        <section>
+          <SubHeading>Vendor Catalog</SubHeading>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <StatTile label="Total Vendors" value={vendorsTotalRes.count ?? 0} href="/buyers/vendor-catalog" />
+            <StatTile label="Priced Today" value={vendorsPricedTodayRes.count ?? 0} href="/buyers/vendor-catalog" />
           </div>
         </section>
       </div>
