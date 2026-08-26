@@ -832,13 +832,13 @@ export default function FobPharrClient({
     try {
       const westernGroups = groupFobItems(items, "western_veg");
       const hotHouseGroups = groupFobItems(items, "hot_house");
-      const priceValues = (item: FobItem) => [formatFob(item.fob) ? `$${formatFob(item.fob)}` : "CALL"];
+      const priceValues = (item: FobItem) => [formatFob(item.fob) || "CALL"];
       const blocks = [
         ...buildCategoryBlocks(westernGroups, priceValues),
         ...buildCategoryBlocks(hotHouseGroups, priceValues),
       ];
       const blob = await renderBrandedPriceSheetPng({
-        badgeText: "Texas F.O.B.",
+        subheaderText: "Texas F.O.B.",
         priceColumns: ["FOB"],
         subtitle: EMAIL_INTRO,
         blocks,

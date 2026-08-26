@@ -262,7 +262,7 @@ export default function DeliveredPricingClient({
         ...buildCategoryBlocks(hotHouseGroups, priceValues),
       ];
       const blob = await renderBrandedPriceSheetPng({
-        badgeText: `${laneLabel} Delivered`,
+        subheaderText: `${laneLabel} Delivered`,
         priceColumns: ["LTL", "FTL"],
         subtitle: message,
         blocks,

@@ -57,10 +57,10 @@ export function buildCategoryBlocks(
   });
 }
 
-const FONT_TITLE = "bold 42px Georgia, 'Times New Roman', serif";
+const FONT_TITLE = "bold 58px Georgia, 'Times New Roman', serif";
 const FONT_LOGO_FALLBACK = "bold 20px Georgia, serif";
-const FONT_BADGE = "bold 15px Arial, sans-serif";
-const FONT_CATEGORY = "italic bold 14px Georgia, serif";
+const FONT_SUBHEADER = "bold 19px Arial, sans-serif";
+const FONT_CATEGORY = "bold 16px Georgia, 'Times New Roman', serif";
 const FONT_VARIETY = "bold 12px Arial, sans-serif";
 const FONT_VARIETY_SMALL = "bold 9px Arial, sans-serif";
 const FONT_ROW = "12px Arial, sans-serif";
@@ -70,16 +70,22 @@ const FONT_FOOTER = "9px Arial, sans-serif";
 const MARGIN = 24;
 const COL_GAP = 18;
 const BLOCK_GAP = 16;
-const CATEGORY_TITLE_H = 26;
+const CARD_PAD_TOP = 12;
+const CARD_PAD_BOTTOM = 10;
+const CARD_RADIUS = 10;
+const TITLE_PAD_X = 14;
+const CATEGORY_TITLE_H = 24;
 const VARIETY_BAR_H = 22;
 const ROW_H = 20;
 const CELL_PAD_X = 10;
-const HEADER_H = 170;
+const HEADER_H = 175;
 const PRICE_COL_W = 56;
 
-const GREEN_DARK = "#2B4E38";
+const BRACKET_GREEN = "#8DC63F";
 const VARIETY_BAR_COLOR = "#C0532D";
-const ROW_STRIPE = "#EAF3DE";
+const ROW_STRIPE = "#EFF2D6";
+const ROW_PLAIN = "#FFFFFF";
+const CARD_BORDER = "#E4E1CE";
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -91,18 +97,38 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 function measureBlockHeight(block: PriceSheetCategoryBlock): number {
-  let h = CATEGORY_TITLE_H;
+  let h = CARD_PAD_TOP + CATEGORY_TITLE_H;
   for (const g of block.groups) {
     if (g.label) h += VARIETY_BAR_H;
     h += g.rows.length * ROW_H;
   }
-  return h;
+  return h + CARD_PAD_BOTTOM;
 }
 
 function priceColBounds(rightEdge: number, priceZoneW: number, colCount: number, colIndex: number) {
   const colW = priceZoneW / colCount;
   const left = rightEdge - priceZoneW + colW * colIndex;
   return { right: left + colW, center: left + colW / 2 };
+}
+
+// Two-tone "[ CATEGORY ]" title: green brackets, orange-red category name -
+// canvas fillText is single-color per call, so this draws the three
+// segments back to back, measuring each to place the next.
+function drawBracketTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
+  ctx.font = FONT_CATEGORY;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  let cursorX = x;
+  const segments: [string, string][] = [
+    ["[ ", BRACKET_GREEN],
+    [text.toUpperCase(), VARIETY_BAR_COLOR],
+    [" ]", BRACKET_GREEN],
+  ];
+  for (const [segment, color] of segments) {
+    ctx.fillStyle = color;
+    ctx.fillText(segment, cursorX, y);
+    cursorX += ctx.measureText(segment).width;
+  }
 }
 
 function drawCategoryBlock(
@@ -113,31 +139,46 @@ function drawCategoryBlock(
   width: number,
   priceColumns: string[],
 ) {
-  let cursorY = y;
+  const totalHeight = measureBlockHeight(block);
   const priceZoneW = Math.min(width * 0.6, PRICE_COL_W * priceColumns.length);
 
-  ctx.font = FONT_CATEGORY;
-  ctx.fillStyle = GREEN_DARK;
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.fillText(`[ ${block.category.toUpperCase()} ]`, x, cursorY + 16);
-  ctx.strokeStyle = "#D9DBC9";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, cursorY + 22);
-  ctx.lineTo(x + width, cursorY + 22);
-  ctx.stroke();
+  ctx.save();
+  ctx.shadowColor = "rgba(30, 25, 10, 0.12)";
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
+  drawRoundedRect(ctx, x, y, width, totalHeight, CARD_RADIUS);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  drawRoundedRect(ctx, x, y, width, totalHeight, CARD_RADIUS);
+  ctx.clip();
+
+  let cursorY = y + CARD_PAD_TOP;
+  drawBracketTitle(ctx, block.category, x + TITLE_PAD_X, cursorY + 15);
   cursorY += CATEGORY_TITLE_H;
 
   for (const group of block.groups) {
+    // A single price column (e.g. plain FOB) has no separate column-header
+    // text competing for the bar's right side, so the label itself sits
+    // there instead - multi-column pages (LTL/FTL, lane rates) keep it on
+    // the left so it doesn't collide with those column headers.
+    const labelAlignRight = priceColumns.length <= 1;
+
     if (group.label) {
       ctx.fillStyle = VARIETY_BAR_COLOR;
       ctx.fillRect(x, cursorY, width, VARIETY_BAR_H);
       ctx.fillStyle = "#ffffff";
       ctx.font = FONT_VARIETY;
-      ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillText(group.label.toUpperCase(), x + CELL_PAD_X, cursorY + VARIETY_BAR_H / 2 + 1);
+      if (labelAlignRight) {
+        ctx.textAlign = "right";
+        ctx.fillText(group.label.toUpperCase(), x + width - CELL_PAD_X, cursorY + VARIETY_BAR_H / 2 + 1);
+      } else {
+        ctx.textAlign = "left";
+        ctx.fillText(group.label.toUpperCase(), x + CELL_PAD_X, cursorY + VARIETY_BAR_H / 2 + 1);
+      }
 
       if (priceColumns.length > 1) {
         ctx.font = FONT_VARIETY_SMALL;
@@ -151,10 +192,8 @@ function drawCategoryBlock(
     }
 
     group.rows.forEach((row, i) => {
-      if (i % 2 === 0) {
-        ctx.fillStyle = ROW_STRIPE;
-        ctx.fillRect(x, cursorY, width, ROW_H);
-      }
+      ctx.fillStyle = i % 2 === 0 ? ROW_STRIPE : ROW_PLAIN;
+      ctx.fillRect(x, cursorY, width, ROW_H);
       ctx.font = FONT_ROW;
       ctx.fillStyle = "#1F2B22";
       ctx.textAlign = "left";
@@ -171,6 +210,13 @@ function drawCategoryBlock(
       cursorY += ROW_H;
     });
   }
+
+  ctx.restore();
+
+  ctx.strokeStyle = CARD_BORDER;
+  ctx.lineWidth = 1;
+  drawRoundedRect(ctx, x + 0.5, y + 0.5, width - 1, totalHeight - 1, CARD_RADIUS);
+  ctx.stroke();
 }
 
 // Greedy column-balancing (masonry-style): each block goes into whichever
@@ -193,7 +239,7 @@ function packColumns(blocks: PriceSheetCategoryBlock[], columns: number): PriceS
 }
 
 export async function renderBrandedPriceSheetPng(opts: {
-  badgeText: string;
+  subheaderText: string;
   priceColumns: string[];
   blocks: PriceSheetCategoryBlock[];
   subtitle?: string;
@@ -202,7 +248,7 @@ export async function renderBrandedPriceSheetPng(opts: {
   scale?: number;
 }): Promise<Blob> {
   const {
-    badgeText,
+    subheaderText,
     priceColumns,
     blocks,
     subtitle,
@@ -266,22 +312,26 @@ export async function renderBrandedPriceSheetPng(opts: {
 
   ctx.font = FONT_TITLE;
   ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "left";
+  ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText("DAILY PRICE LIST", MARGIN, 122);
+  ctx.fillText("DAILY PRICE LIST", canvasWidth / 2, 128);
 
-  ctx.font = FONT_BADGE;
-  const badgePadX = 16;
-  const badgeW = ctx.measureText(badgeText).width + badgePadX * 2;
-  const badgeH = 32;
-  const badgeY = 134;
-  drawRoundedRect(ctx, MARGIN, badgeY, badgeW, badgeH, 16);
-  ctx.fillStyle = "#7DB63A";
-  ctx.fill();
-  ctx.fillStyle = "#ffffff";
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(badgeText, MARGIN + badgePadX, badgeY + badgeH / 2 + 1);
+  ctx.font = FONT_SUBHEADER;
+  ctx.fillStyle = "#FFF6E6";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  try {
+    ctx.letterSpacing = "3px";
+  } catch {
+    // letterSpacing isn't supported by every canvas implementation - the
+    // subheader still reads fine without the extra tracking.
+  }
+  ctx.fillText(subheaderText.toUpperCase(), canvasWidth / 2, 158);
+  try {
+    ctx.letterSpacing = "0px";
+  } catch {
+    /* see above */
+  }
 
   if (subtitleLines.length > 0) {
     ctx.fillStyle = "#FDFCF7";

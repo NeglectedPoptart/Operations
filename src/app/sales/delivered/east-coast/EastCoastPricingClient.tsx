@@ -270,7 +270,7 @@ export default function EastCoastPricingClient({
         ...buildCategoryBlocks(hotHouseGroups, priceValues),
       ];
       const blob = await renderBrandedPriceSheetPng({
-        badgeText: "East Coast Delivered",
+        subheaderText: "East Coast Delivered",
         priceColumns: lanes,
         subtitle: message,
         blocks,
