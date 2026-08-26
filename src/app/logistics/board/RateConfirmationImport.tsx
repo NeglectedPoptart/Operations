@@ -341,7 +341,7 @@ export default function RateConfirmationImport({
                       onChange={(e) => {
                         if (e.target.value) combineInto(draft.id, e.target.value);
                       }}
-                      className={`${field} w-auto bg-white text-xs`}
+                      className={`${field} w-auto bg-white text-xs text-black`}
                     >
                       <option value="">Combine into another load...</option>
                       {drafts
@@ -413,7 +413,7 @@ export default function RateConfirmationImport({
                             : { mode: "existing", brokerId: e.target.value },
                       })
                     }
-                    className={`${field} bg-white`}
+                    className={`${field} bg-white text-black`}
                   >
                     <option value="__new__">+ Create new broker</option>
                     {brokers.map((b) => (
