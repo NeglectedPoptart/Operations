@@ -8,12 +8,10 @@ import {
   copyOrDownloadPng,
   escapeHtml,
   groupFobItems,
-  renderPriceSheetPng,
   roundUpToNickel,
-  toMonoRows,
-  type CanvasBlock,
   type FobItemGroup,
 } from "@/lib/fobPricing";
+import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
 import { updateDeliveredMessage } from "./actions";
 
 function formatMoney(n: number | null) {
@@ -255,16 +253,20 @@ export default function DeliveredPricingClient({
     try {
       const westernGroups = groupFobItems(items, "western_veg");
       const hotHouseGroups = groupFobItems(items, "hot_house");
-      const headers = ["Commodity", "Unit Per", `${laneLabel} LTL`, `${laneLabel} FTL`];
-      const rowValues = (item: FobItem) => {
+      const priceValues = (item: FobItem) => {
         const { ltl, ftl } = computeDelivered(item, freightRate);
-        return [item.variety ?? "", item.unit_per !== null ? String(item.unit_per) : "", formatMoney(ltl) || "-", formatMoney(ftl) || "-"];
+        return [formatMoney(ltl) || "CALL", formatMoney(ftl) || "CALL"];
       };
-      const blocks: CanvasBlock[] = [
-        { title: "Western Veg", headerColor: "#8DC63F", columnHeaders: headers, rows: toMonoRows(westernGroups, rowValues) },
-        { title: "Hot House", headerColor: "#FF3333", columnHeaders: headers, rows: toMonoRows(hotHouseGroups, rowValues) },
+      const blocks = [
+        ...buildCategoryBlocks(westernGroups, priceValues),
+        ...buildCategoryBlocks(hotHouseGroups, priceValues),
       ];
-      const blob = await renderPriceSheetPng({ title: emailTitle, message, blocks });
+      const blob = await renderBrandedPriceSheetPng({
+        badgeText: `${laneLabel} Delivered`,
+        priceColumns: ["LTL", "FTL"],
+        subtitle: message,
+        blocks,
+      });
       const result = await copyOrDownloadPng(blob, `${lane}-delivered-pricing.png`);
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
       setTimeout(() => setImageStatus(null), 2500);

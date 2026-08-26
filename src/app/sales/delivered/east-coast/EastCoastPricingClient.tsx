@@ -8,12 +8,10 @@ import {
   copyOrDownloadPng,
   escapeHtml,
   groupFobItems,
-  renderPriceSheetPng,
   roundUpToNickel,
-  toMonoRows,
-  type CanvasBlock,
   type FobItemGroup,
 } from "@/lib/fobPricing";
+import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
 import { updateEastCoastMessage } from "./actions";
 
 function formatMoney(n: number | null) {
@@ -262,17 +260,22 @@ export default function EastCoastPricingClient({
     try {
       const westernGroups = groupFobItems(items, "western_veg");
       const hotHouseGroups = groupFobItems(items, "hot_house");
-      const headers = ["Commodity", "Unit Per PLT", ...lanes];
-      const rowValues = (item: FobItem) => [
-        item.variety ?? "",
-        item.unit_per !== null ? String(item.unit_per) : "",
-        ...lanes.map((lane) => formatMoney(computeDelivered(item, freightByLane[lane]))),
+      const priceValues = (item: FobItem) =>
+        lanes.map((lane) => {
+          const price = computeDelivered(item, freightByLane[lane]);
+          return price === null ? "CALL" : formatMoney(price);
+        });
+      const blocks = [
+        ...buildCategoryBlocks(westernGroups, priceValues),
+        ...buildCategoryBlocks(hotHouseGroups, priceValues),
       ];
-      const blocks: CanvasBlock[] = [
-        { title: "Western Veg", headerColor: "#8DC63F", columnHeaders: headers, rows: toMonoRows(westernGroups, rowValues) },
-        { title: "Hot House", headerColor: "#FF3333", columnHeaders: headers, rows: toMonoRows(hotHouseGroups, rowValues) },
-      ];
-      const blob = await renderPriceSheetPng({ title: emailTitle, message, blocks });
+      const blob = await renderBrandedPriceSheetPng({
+        badgeText: "East Coast Delivered",
+        priceColumns: lanes,
+        subtitle: message,
+        blocks,
+        columns: 2,
+      });
       const result = await copyOrDownloadPng(blob, "east-coast-delivered-pricing.png");
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
       setTimeout(() => setImageStatus(null), 2500);

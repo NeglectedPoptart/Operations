@@ -12,11 +12,9 @@ import {
   copyOrDownloadPng,
   escapeHtml,
   groupFobItems,
-  renderPriceSheetPng,
-  toMonoRows,
-  type CanvasBlock,
   type FobItemGroup as Group,
 } from "@/lib/fobPricing";
+import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
 import { matchFobPriceLines, parseFobPriceEmail, type FobPriceMatch } from "@/lib/fobEmailParse";
 import {
   addFobItem,
@@ -834,21 +832,17 @@ export default function FobPharrClient({
     try {
       const westernGroups = groupFobItems(items, "western_veg");
       const hotHouseGroups = groupFobItems(items, "hot_house");
-      const blocks: CanvasBlock[] = [
-        {
-          title: "Western Veg",
-          headerColor: "#8DC63F",
-          columnHeaders: FOB_COLUMN_HEADERS,
-          rows: toMonoRows(westernGroups, fobRowValues),
-        },
-        {
-          title: "Hot House",
-          headerColor: "#FF3333",
-          columnHeaders: FOB_COLUMN_HEADERS,
-          rows: toMonoRows(hotHouseGroups, fobRowValues),
-        },
+      const priceValues = (item: FobItem) => [formatFob(item.fob) ? `$${formatFob(item.fob)}` : "CALL"];
+      const blocks = [
+        ...buildCategoryBlocks(westernGroups, priceValues),
+        ...buildCategoryBlocks(hotHouseGroups, priceValues),
       ];
-      const blob = await renderPriceSheetPng({ title: EMAIL_TITLE, message: EMAIL_INTRO, blocks });
+      const blob = await renderBrandedPriceSheetPng({
+        badgeText: "Texas F.O.B.",
+        priceColumns: ["FOB"],
+        subtitle: EMAIL_INTRO,
+        blocks,
+      });
       const result = await copyOrDownloadPng(blob, "mcallen-fob-pricing.png");
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
       setTimeout(() => setImageStatus(null), 2500);
