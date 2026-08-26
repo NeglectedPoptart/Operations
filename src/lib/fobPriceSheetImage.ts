@@ -57,35 +57,77 @@ export function buildCategoryBlocks(
   });
 }
 
+// Color scheme for the sheet - header gradient, bracket/accent colors, row
+// stripes. PALETTE_DEFAULT matches the original branded reference image;
+// the other two are alternates to experiment with, passed via the
+// `palette` option on renderBrandedPriceSheetPng.
+export interface PriceSheetPalette {
+  headerGradient: [string, string, string];
+  bracket: string;
+  accent: string;
+  rowStripe: string;
+  rowPlain: string;
+  cardBorder: string;
+  subheaderText: string;
+}
+
+export const PALETTE_DEFAULT: PriceSheetPalette = {
+  headerGradient: ["#C0532D", "#B87A1B", "#7DB63A"],
+  bracket: "#8DC63F",
+  accent: "#C0532D",
+  rowStripe: "#EFF2D6",
+  rowPlain: "#FFFFFF",
+  cardBorder: "#E4E1CE",
+  subheaderText: "#FFF6E6",
+};
+
+// Deeper, warmer, more rustic - terracotta and olive instead of bright
+// orange and lime.
+export const PALETTE_SUNSET_HARVEST: PriceSheetPalette = {
+  headerGradient: ["#A63D22", "#C97C1F", "#5B8C3A"],
+  bracket: "#5B8C3A",
+  accent: "#A63D22",
+  rowStripe: "#F0E6D2",
+  rowPlain: "#FFFFFF",
+  cardBorder: "#E6DCC4",
+  subheaderText: "#FCEFD9",
+};
+
+// Brighter and cleaner - vivid orange/gold into a kelly green, cooler mint
+// row tint.
+export const PALETTE_FRESH_MARKET: PriceSheetPalette = {
+  headerGradient: ["#E8622C", "#F2A93C", "#2F9E44"],
+  bracket: "#2F9E44",
+  accent: "#E8622C",
+  rowStripe: "#E9F5E1",
+  rowPlain: "#FFFFFF",
+  cardBorder: "#DCEBD6",
+  subheaderText: "#FFF3E3",
+};
+
 const FONT_TITLE = "bold 58px Georgia, 'Times New Roman', serif";
 const FONT_LOGO_FALLBACK = "bold 20px Georgia, serif";
-const FONT_SUBHEADER = "bold 19px Arial, sans-serif";
-const FONT_CATEGORY = "bold 16px Georgia, 'Times New Roman', serif";
-const FONT_VARIETY = "bold 12px Arial, sans-serif";
-const FONT_VARIETY_SMALL = "bold 9px Arial, sans-serif";
-const FONT_ROW = "12px Arial, sans-serif";
-const FONT_ROW_PRICE = "bold 11px Arial, sans-serif";
-const FONT_FOOTER = "9px Arial, sans-serif";
+const FONT_SUBHEADER = "bold 21px Arial, sans-serif";
+const FONT_CATEGORY = "bold 19px Georgia, 'Times New Roman', serif";
+const FONT_VARIETY = "bold 15px Arial, sans-serif";
+const FONT_VARIETY_SMALL = "bold 11px Arial, sans-serif";
+const FONT_ROW = "15px Arial, sans-serif";
+const FONT_ROW_PRICE = "bold 15px Arial, sans-serif";
+const FONT_FOOTER = "10px Arial, sans-serif";
 
 const MARGIN = 24;
 const COL_GAP = 18;
 const BLOCK_GAP = 16;
-const CARD_PAD_TOP = 12;
-const CARD_PAD_BOTTOM = 10;
+const CARD_PAD_TOP = 14;
+const CARD_PAD_BOTTOM = 12;
 const CARD_RADIUS = 10;
-const TITLE_PAD_X = 14;
-const CATEGORY_TITLE_H = 24;
-const VARIETY_BAR_H = 22;
-const ROW_H = 20;
-const CELL_PAD_X = 10;
+const TITLE_PAD_X = 16;
+const CATEGORY_TITLE_H = 30;
+const VARIETY_BAR_H = 28;
+const ROW_H = 26;
+const CELL_PAD_X = 12;
 const HEADER_H = 175;
-const PRICE_COL_W = 56;
-
-const BRACKET_GREEN = "#8DC63F";
-const VARIETY_BAR_COLOR = "#C0532D";
-const ROW_STRIPE = "#EFF2D6";
-const ROW_PLAIN = "#FFFFFF";
-const CARD_BORDER = "#E4E1CE";
+const PRICE_COL_W = 68;
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -111,18 +153,18 @@ function priceColBounds(rightEdge: number, priceZoneW: number, colCount: number,
   return { right: left + colW, center: left + colW / 2 };
 }
 
-// Two-tone "[ CATEGORY ]" title: green brackets, orange-red category name -
-// canvas fillText is single-color per call, so this draws the three
+// Two-tone "[ CATEGORY ]" title: accent-colored brackets, accent category
+// name - canvas fillText is single-color per call, so this draws the three
 // segments back to back, measuring each to place the next.
-function drawBracketTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number) {
+function drawBracketTitle(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, palette: PriceSheetPalette) {
   ctx.font = FONT_CATEGORY;
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
   let cursorX = x;
   const segments: [string, string][] = [
-    ["[ ", BRACKET_GREEN],
-    [text.toUpperCase(), VARIETY_BAR_COLOR],
-    [" ]", BRACKET_GREEN],
+    ["[ ", palette.bracket],
+    [text.toUpperCase(), palette.accent],
+    [" ]", palette.bracket],
   ];
   for (const [segment, color] of segments) {
     ctx.fillStyle = color;
@@ -138,6 +180,7 @@ function drawCategoryBlock(
   y: number,
   width: number,
   priceColumns: string[],
+  palette: PriceSheetPalette,
 ) {
   const totalHeight = measureBlockHeight(block);
   const priceZoneW = Math.min(width * 0.6, PRICE_COL_W * priceColumns.length);
@@ -156,7 +199,7 @@ function drawCategoryBlock(
   ctx.clip();
 
   let cursorY = y + CARD_PAD_TOP;
-  drawBracketTitle(ctx, block.category, x + TITLE_PAD_X, cursorY + 15);
+  drawBracketTitle(ctx, block.category, x + TITLE_PAD_X, cursorY + 19, palette);
   cursorY += CATEGORY_TITLE_H;
 
   for (const group of block.groups) {
@@ -167,7 +210,7 @@ function drawCategoryBlock(
     const labelAlignRight = priceColumns.length <= 1;
 
     if (group.label) {
-      ctx.fillStyle = VARIETY_BAR_COLOR;
+      ctx.fillStyle = palette.accent;
       ctx.fillRect(x, cursorY, width, VARIETY_BAR_H);
       ctx.fillStyle = "#ffffff";
       ctx.font = FONT_VARIETY;
@@ -192,7 +235,7 @@ function drawCategoryBlock(
     }
 
     group.rows.forEach((row, i) => {
-      ctx.fillStyle = i % 2 === 0 ? ROW_STRIPE : ROW_PLAIN;
+      ctx.fillStyle = i % 2 === 0 ? palette.rowStripe : palette.rowPlain;
       ctx.fillRect(x, cursorY, width, ROW_H);
       ctx.font = FONT_ROW;
       ctx.fillStyle = "#1F2B22";
@@ -213,7 +256,7 @@ function drawCategoryBlock(
 
   ctx.restore();
 
-  ctx.strokeStyle = CARD_BORDER;
+  ctx.strokeStyle = palette.cardBorder;
   ctx.lineWidth = 1;
   drawRoundedRect(ctx, x + 0.5, y + 0.5, width - 1, totalHeight - 1, CARD_RADIUS);
   ctx.stroke();
@@ -246,6 +289,7 @@ export async function renderBrandedPriceSheetPng(opts: {
   footerNote?: string;
   columns?: number;
   scale?: number;
+  palette?: PriceSheetPalette;
 }): Promise<Blob> {
   const {
     subheaderText,
@@ -255,6 +299,7 @@ export async function renderBrandedPriceSheetPng(opts: {
     footerNote = "***All prices are F.O.B. ***Prices and availability subject to change without notice. ***Good delivery standards apply, excluding bruising and/or discoloration following bruising and/or freeze damage.",
     columns = 3,
     scale = 2,
+    palette = PALETTE_DEFAULT,
   } = opts;
 
   const canvasWidth = 1000;
@@ -288,12 +333,12 @@ export async function renderBrandedPriceSheetPng(opts: {
   ctx.fillStyle = "#F3F1E7";
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Header band - diagonal orange-to-green gradient, matching the brand's
-  // reference "Daily Price List" letterhead.
+  // Header band - diagonal gradient, matching the brand's reference "Daily
+  // Price List" letterhead.
   const gradient = ctx.createLinearGradient(0, 0, canvasWidth, HEADER_H);
-  gradient.addColorStop(0, "#C0532D");
-  gradient.addColorStop(0.55, "#B87A1B");
-  gradient.addColorStop(1, "#7DB63A");
+  gradient.addColorStop(0, palette.headerGradient[0]);
+  gradient.addColorStop(0.55, palette.headerGradient[1]);
+  gradient.addColorStop(1, palette.headerGradient[2]);
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, canvasWidth, HEADER_H);
 
@@ -317,7 +362,7 @@ export async function renderBrandedPriceSheetPng(opts: {
   ctx.fillText("DAILY PRICE LIST", canvasWidth / 2, 128);
 
   ctx.font = FONT_SUBHEADER;
-  ctx.fillStyle = "#FFF6E6";
+  ctx.fillStyle = palette.subheaderText;
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   try {
@@ -352,7 +397,7 @@ export async function renderBrandedPriceSheetPng(opts: {
     const x = MARGIN + i * (colWidth + COL_GAP);
     let y = bodyY;
     for (const block of col) {
-      drawCategoryBlock(ctx, block, x, y, colWidth, priceColumns);
+      drawCategoryBlock(ctx, block, x, y, colWidth, priceColumns, palette);
       y += measureBlockHeight(block) + BLOCK_GAP;
     }
   });
