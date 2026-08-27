@@ -81,16 +81,16 @@ export const PALETTE_DEFAULT: PriceSheetPalette = {
   subheaderText: "#FFF6E6",
 };
 
-// Rich and moody - no orange or green at all. Deep plum into wine into a
-// warm gold, gold brackets instead of the usual brand lime.
-export const PALETTE_PLUM_GOLD: PriceSheetPalette = {
-  headerGradient: ["#4A2545", "#7A2E4D", "#C9A227"],
-  bracket: "#C9A227",
+// Same plum base as PALETTE_PLUM_GOLD, swapped for a softer, more neutral
+// beige instead of gold - muted and understated rather than shiny/metallic.
+export const PALETTE_PLUM_BEIGE: PriceSheetPalette = {
+  headerGradient: ["#4A2545", "#8B5A6B", "#C9B08A"],
+  bracket: "#C9B08A",
   accent: "#4A2545",
-  rowStripe: "#F4E9E9",
+  rowStripe: "#F2EAE0",
   rowPlain: "#FFFFFF",
-  cardBorder: "#E3D6D9",
-  subheaderText: "#F8EFE0",
+  cardBorder: "#E3DCD0",
+  subheaderText: "#F7F0E6",
 };
 
 // Cool and crisp - navy into slate blue into a soft teal, mustard-gold
