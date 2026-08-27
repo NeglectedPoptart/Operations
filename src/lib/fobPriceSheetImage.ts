@@ -58,9 +58,9 @@ export function buildCategoryBlocks(
 }
 
 // Color scheme for the sheet - header gradient, bracket/accent colors, row
-// stripes. PALETTE_DEFAULT matches the original branded reference image;
-// the other two are alternates to experiment with, passed via the
-// `palette` option on renderBrandedPriceSheetPng.
+// stripes. PALETTE_DEFAULT (plum/wine into beige) is what all three pages
+// render with; the others are alternates to experiment with, passed via
+// the `palette` option on renderBrandedPriceSheetPng.
 export interface PriceSheetPalette {
   headerGradient: [string, string, string];
   bracket: string;
@@ -72,18 +72,6 @@ export interface PriceSheetPalette {
 }
 
 export const PALETTE_DEFAULT: PriceSheetPalette = {
-  headerGradient: ["#C0532D", "#B87A1B", "#7DB63A"],
-  bracket: "#8DC63F",
-  accent: "#C0532D",
-  rowStripe: "#EFF2D6",
-  rowPlain: "#FFFFFF",
-  cardBorder: "#E4E1CE",
-  subheaderText: "#FFF6E6",
-};
-
-// Same plum base as PALETTE_PLUM_GOLD, swapped for a softer, more neutral
-// beige instead of gold - muted and understated rather than shiny/metallic.
-export const PALETTE_PLUM_BEIGE: PriceSheetPalette = {
   headerGradient: ["#4A2545", "#8B5A6B", "#C9B08A"],
   bracket: "#C9B08A",
   accent: "#4A2545",
@@ -91,6 +79,18 @@ export const PALETTE_PLUM_BEIGE: PriceSheetPalette = {
   rowPlain: "#FFFFFF",
   cardBorder: "#E3DCD0",
   subheaderText: "#F7F0E6",
+};
+
+// The original orange-to-green branded reference look - kept around in
+// case there's ever a reason to switch back, but no longer the default.
+export const PALETTE_ORIGINAL_ORANGE: PriceSheetPalette = {
+  headerGradient: ["#C0532D", "#B87A1B", "#7DB63A"],
+  bracket: "#8DC63F",
+  accent: "#C0532D",
+  rowStripe: "#EFF2D6",
+  rowPlain: "#FFFFFF",
+  cardBorder: "#E4E1CE",
+  subheaderText: "#FFF6E6",
 };
 
 // Cool and crisp - navy into slate blue into a soft teal, mustard-gold
