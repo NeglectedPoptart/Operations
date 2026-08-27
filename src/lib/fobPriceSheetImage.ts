@@ -81,28 +81,28 @@ export const PALETTE_DEFAULT: PriceSheetPalette = {
   subheaderText: "#FFF6E6",
 };
 
-// Deeper, warmer, more rustic - terracotta and olive instead of bright
-// orange and lime.
-export const PALETTE_SUNSET_HARVEST: PriceSheetPalette = {
-  headerGradient: ["#A63D22", "#C97C1F", "#5B8C3A"],
-  bracket: "#5B8C3A",
-  accent: "#A63D22",
-  rowStripe: "#F0E6D2",
+// Rich and moody - no orange or green at all. Deep plum into wine into a
+// warm gold, gold brackets instead of the usual brand lime.
+export const PALETTE_PLUM_GOLD: PriceSheetPalette = {
+  headerGradient: ["#4A2545", "#7A2E4D", "#C9A227"],
+  bracket: "#C9A227",
+  accent: "#4A2545",
+  rowStripe: "#F4E9E9",
   rowPlain: "#FFFFFF",
-  cardBorder: "#E6DCC4",
-  subheaderText: "#FCEFD9",
+  cardBorder: "#E3D6D9",
+  subheaderText: "#F8EFE0",
 };
 
-// Brighter and cleaner - vivid orange/gold into a kelly green, cooler mint
-// row tint.
-export const PALETTE_FRESH_MARKET: PriceSheetPalette = {
-  headerGradient: ["#E8622C", "#F2A93C", "#2F9E44"],
-  bracket: "#2F9E44",
-  accent: "#E8622C",
-  rowStripe: "#E9F5E1",
+// Cool and crisp - navy into slate blue into a soft teal, mustard-gold
+// brackets for contrast.
+export const PALETTE_HARBOR_BLUE: PriceSheetPalette = {
+  headerGradient: ["#1F3350", "#3B5B7A", "#5FA8A0"],
+  bracket: "#D4A017",
+  accent: "#1F3350",
+  rowStripe: "#E7EEF2",
   rowPlain: "#FFFFFF",
-  cardBorder: "#DCEBD6",
-  subheaderText: "#FFF3E3",
+  cardBorder: "#D6E0E6",
+  subheaderText: "#EFF5F7",
 };
 
 const FONT_TITLE = "bold 58px Georgia, 'Times New Roman', serif";
