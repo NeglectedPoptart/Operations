@@ -288,7 +288,7 @@ function FobVsVendorBadge({
   return (
     <span
       title={`Today's vendor average for ${label}: $${avg.average.toFixed(2)} across ${avg.count} quote${avg.count === 1 ? "" : "s"}`}
-      className={`ml-1 whitespace-nowrap text-xs font-semibold ${
+      className={`whitespace-nowrap text-xs font-semibold ${
         over ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
       }`}
     >
@@ -464,14 +464,14 @@ function FobItemsSection({
                         className={field}
                       />
                     </td>
-                    <td className="min-w-[8rem] px-1 py-1">
-                      <div className="flex items-center">
+                    <td className="min-w-[9rem] px-1 py-1">
+                      <div className="flex items-center gap-1">
                         <input
                           type="number"
                           step="any"
                           defaultValue={item.fob ?? ""}
                           onBlur={(e) => onFieldSave(item.id, { fob: parseNum(e.target.value) })}
-                          className={`${field} font-semibold`}
+                          className="w-20 rounded border border-gray-300 bg-white px-2 py-1 text-sm font-semibold text-black"
                         />
                         <FobVsVendorBadge
                           fob={item.fob}
