@@ -130,6 +130,7 @@ export default function EastCoastPricingClient({
         subtitle: message,
         blocks,
         columns: 2,
+        showSoldOutNote: true,
       });
       const result = await copyOrDownloadPng(blob, "east-coast-delivered-pricing.png");
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
