@@ -27,34 +27,49 @@ export interface PriceSheetVarietyGroup {
 export interface PriceSheetCategoryBlock {
   category: string;
   groups: PriceSheetVarietyGroup[];
+  // Rows dropped because every price column came back "CALL" - not shown
+  // as rows at all by default, but renderBrandedPriceSheetPng's
+  // `showSoldOutNote` option can surface this as one condensed line
+  // instead of leaving the missing items unmentioned.
+  soldOutCount: number;
 }
 
 // Sub-groups each commodity group's rows by variety (blank variety just
 // gets an unlabeled group, rendered without a colored bar) and turns each
 // item into a {size, prices} row via the caller's own price math - shared
 // so FOB Pharr / Delivered / East Coast don't each reimplement the same
-// variety split three times.
+// variety split three times. A row with no real price in any column (every
+// price came back "CALL") is dropped rather than shown - it's dead weight
+// on a customer-facing sheet, and this is the one place all three pages'
+// rows funnel through.
 export function buildCategoryBlocks(
   groups: FobItemGroup[],
   priceValues: (item: FobItem) => string[],
 ): PriceSheetCategoryBlock[] {
-  return groups.map((g) => {
-    const varietyMap = new Map<string, FobItem[]>();
-    for (const item of g.rows) {
-      const key = item.variety?.trim() || "";
-      const arr = varietyMap.get(key) ?? [];
-      arr.push(item);
-      varietyMap.set(key, arr);
-    }
-    const varietyGroups: PriceSheetVarietyGroup[] = Array.from(varietyMap.entries()).map(([label, varietyItems]) => ({
-      label,
-      rows: varietyItems.map((item) => ({
-        size: [item.unit_per !== null ? String(item.unit_per) : null, item.size].filter(Boolean).join(" / ") || "-",
-        prices: priceValues(item),
-      })),
-    }));
-    return { category: g.name, groups: varietyGroups };
-  });
+  return groups
+    .map((g) => {
+      const varietyMap = new Map<string, FobItem[]>();
+      for (const item of g.rows) {
+        const key = item.variety?.trim() || "";
+        const arr = varietyMap.get(key) ?? [];
+        arr.push(item);
+        varietyMap.set(key, arr);
+      }
+      let soldOutCount = 0;
+      const varietyGroups: PriceSheetVarietyGroup[] = Array.from(varietyMap.entries())
+        .map(([label, varietyItems]) => {
+          const rows = varietyItems.map((item) => ({
+            size: [item.unit_per !== null ? String(item.unit_per) : null, item.size].filter(Boolean).join(" / ") || "-",
+            prices: priceValues(item),
+          }));
+          const priced = rows.filter((row) => row.prices.some((p) => p !== "CALL"));
+          soldOutCount += rows.length - priced.length;
+          return { label, rows: priced };
+        })
+        .filter((group) => group.rows.length > 0);
+      return { category: g.name, groups: varietyGroups, soldOutCount };
+    })
+    .filter((block) => block.groups.length > 0 || block.soldOutCount > 0);
 }
 
 // Color scheme for the sheet - header gradient, bracket/accent colors, row
@@ -114,6 +129,7 @@ const FONT_VARIETY_SMALL = "bold 11px Arial, sans-serif";
 const FONT_ROW = "15px Arial, sans-serif";
 const FONT_ROW_PRICE = "bold 15px Arial, sans-serif";
 const FONT_FOOTER = "10px Arial, sans-serif";
+const FONT_SOLD_OUT = "italic 12px Arial, sans-serif";
 
 const MARGIN = 24;
 const COL_GAP = 18;
@@ -128,6 +144,8 @@ const ROW_H = 26;
 const CELL_PAD_X = 12;
 const HEADER_H = 175;
 const PRICE_COL_W = 68;
+const SOLD_OUT_NOTE_H = 34;
+const SOLD_OUT_NOTE_TEXT = "Items currently sold out - please call for prebook.";
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -138,12 +156,13 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function measureBlockHeight(block: PriceSheetCategoryBlock): number {
+function measureBlockHeight(block: PriceSheetCategoryBlock, showSoldOutNote: boolean): number {
   let h = CARD_PAD_TOP + CATEGORY_TITLE_H;
   for (const g of block.groups) {
     if (g.label) h += VARIETY_BAR_H;
     h += g.rows.length * ROW_H;
   }
+  if (showSoldOutNote && block.soldOutCount > 0) h += SOLD_OUT_NOTE_H;
   return h + CARD_PAD_BOTTOM;
 }
 
@@ -181,8 +200,9 @@ function drawCategoryBlock(
   width: number,
   priceColumns: string[],
   palette: PriceSheetPalette,
+  showSoldOutNote: boolean,
 ) {
-  const totalHeight = measureBlockHeight(block);
+  const totalHeight = measureBlockHeight(block, showSoldOutNote);
   const priceZoneW = Math.min(width * 0.6, PRICE_COL_W * priceColumns.length);
 
   ctx.save();
@@ -254,6 +274,17 @@ function drawCategoryBlock(
     });
   }
 
+  if (showSoldOutNote && block.soldOutCount > 0) {
+    ctx.fillStyle = "#F4F1EA";
+    ctx.fillRect(x, cursorY, width, SOLD_OUT_NOTE_H);
+    ctx.font = FONT_SOLD_OUT;
+    ctx.fillStyle = "#6B6459";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(SOLD_OUT_NOTE_TEXT, x + width / 2, cursorY + SOLD_OUT_NOTE_H / 2 + 1, width - CELL_PAD_X * 2);
+    cursorY += SOLD_OUT_NOTE_H;
+  }
+
   ctx.restore();
 
   ctx.strokeStyle = palette.cardBorder;
@@ -266,8 +297,12 @@ function drawCategoryBlock(
 // column is currently shortest, so a tall block (e.g. Bell Peppers with
 // four varieties) doesn't leave the rest of that column's page half-empty
 // the way simple round-robin or row-major placement would.
-function packColumns(blocks: PriceSheetCategoryBlock[], columns: number): PriceSheetCategoryBlock[][] {
-  const heights = blocks.map((b) => measureBlockHeight(b));
+function packColumns(
+  blocks: PriceSheetCategoryBlock[],
+  columns: number,
+  showSoldOutNote: boolean,
+): PriceSheetCategoryBlock[][] {
+  const heights = blocks.map((b) => measureBlockHeight(b, showSoldOutNote));
   const columnBlocks: PriceSheetCategoryBlock[][] = Array.from({ length: columns }, () => []);
   const columnHeights = new Array(columns).fill(0);
   blocks.forEach((block, i) => {
@@ -290,6 +325,11 @@ export async function renderBrandedPriceSheetPng(opts: {
   columns?: number;
   scale?: number;
   palette?: PriceSheetPalette;
+  // Rows with no real price are always left out - this only controls
+  // whether a category that had any get one condensed note at the bottom
+  // of its card ("Items currently sold out...") instead of no mention at
+  // all. Off by default.
+  showSoldOutNote?: boolean;
 }): Promise<Blob> {
   const {
     subheaderText,
@@ -300,14 +340,22 @@ export async function renderBrandedPriceSheetPng(opts: {
     columns = 3,
     scale = 2,
     palette = PALETTE_DEFAULT,
+    showSoldOutNote = false,
   } = opts;
 
   const canvasWidth = 1000;
   const contentWidth = canvasWidth - MARGIN * 2;
   const colWidth = (contentWidth - COL_GAP * (columns - 1)) / columns;
 
-  const columnBlocks = packColumns(blocks, columns);
-  const columnHeights = columnBlocks.map((col) => col.reduce((sum, b) => sum + measureBlockHeight(b) + BLOCK_GAP, 0));
+  // A block with zero priced rows only earns its place on the sheet when
+  // the sold-out note is actually going to be shown - otherwise there'd be
+  // nothing left to draw in its card at all.
+  const visibleBlocks = blocks.filter((b) => b.groups.length > 0 || (showSoldOutNote && b.soldOutCount > 0));
+
+  const columnBlocks = packColumns(visibleBlocks, columns, showSoldOutNote);
+  const columnHeights = columnBlocks.map((col) =>
+    col.reduce((sum, b) => sum + measureBlockHeight(b, showSoldOutNote) + BLOCK_GAP, 0),
+  );
   const bodyHeight = Math.max(...columnHeights, 0);
 
   const measureCanvas = document.createElement("canvas");
@@ -397,8 +445,8 @@ export async function renderBrandedPriceSheetPng(opts: {
     const x = MARGIN + i * (colWidth + COL_GAP);
     let y = bodyY;
     for (const block of col) {
-      drawCategoryBlock(ctx, block, x, y, colWidth, priceColumns, palette);
-      y += measureBlockHeight(block) + BLOCK_GAP;
+      drawCategoryBlock(ctx, block, x, y, colWidth, priceColumns, palette, showSoldOutNote);
+      y += measureBlockHeight(block, showSoldOutNote) + BLOCK_GAP;
     }
   });
   bodyY += bodyHeight;
