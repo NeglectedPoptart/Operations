@@ -725,7 +725,7 @@ export default function FobPharrClient({
         priceColumns: ["FOB"],
         subtitle: EMAIL_INTRO,
         blocks,
-        showSoldOutNote: true,
+        showSoldOutSection: true,
       });
       const result = await copyOrDownloadPng(blob, "mcallen-fob-pricing.png");
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");

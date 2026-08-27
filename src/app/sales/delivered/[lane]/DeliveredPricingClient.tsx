@@ -129,7 +129,7 @@ export default function DeliveredPricingClient({
         priceColumns: ["LTL", "FTL"],
         subtitle: message,
         blocks,
-        showSoldOutNote: true,
+        showSoldOutSection: true,
       });
       const result = await copyOrDownloadPng(blob, `${lane}-delivered-pricing.png`);
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
