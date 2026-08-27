@@ -7,13 +7,7 @@ import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { categoryForFobRow, gradeForFobRow, vendorAverageKeyForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
 import { createClient } from "@/lib/supabase/client";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
-import {
-  buildWhatsAppSection,
-  copyOrDownloadPng,
-  escapeHtml,
-  groupFobItems,
-  type FobItemGroup as Group,
-} from "@/lib/fobPricing";
+import { copyOrDownloadPng, groupFobItems } from "@/lib/fobPricing";
 import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
 import { matchFobPriceLines, parseFobPriceEmail, type FobPriceMatch } from "@/lib/fobEmailParse";
 import {
@@ -37,69 +31,8 @@ function formatFob(n: number | null) {
   return n === null ? "" : `$${n.toFixed(2)}`;
 }
 
-const EMAIL_TITLE = "McAllen FOB Pricing";
 const EMAIL_INTRO =
   "Please find our current price sheet attached for your review, If you have any questions or would like to discuss volume pricing or specific product needs please let us know!";
-
-function buildEmailHeaderHtml() {
-  return `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-family:Calibri,Arial,sans-serif;margin-bottom:10px;background:#ffffff;">
-      <tr><td style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;background:#ffffff;color:#000000;">${escapeHtml(EMAIL_TITLE)}</td></tr>
-      <tr><td style="text-align:center;border:1px solid #000;padding:6px;font-size:12.5px;background:#ffffff;color:#000000;">${escapeHtml(EMAIL_INTRO)}</td></tr>
-    </table>`;
-}
-
-function buildSectionHtml(title: string, headerBg: string, groups: Group[]) {
-  const cell = "padding:3px 6px;border:1px solid #000;background:#ffffff;color:#000000;";
-  const rows = groups
-    .map(
-      (g) => `
-      <tr><td colspan="4" style="background:#f0f0f0;color:#000000;font-weight:bold;padding:4px 6px;border:1px solid #000;">${escapeHtml(g.name)}</td></tr>
-      ${g.rows
-        .map(
-          (r) => `
-        <tr>
-          <td style="${cell}">${escapeHtml(r.variety ?? "")}</td>
-          <td style="${cell}text-align:right;">${r.unit_per ?? ""}</td>
-          <td style="${cell}">${escapeHtml(r.size ?? "")}</td>
-          <td style="${cell}text-align:right;">${escapeHtml(formatFob(r.fob))}</td>
-        </tr>`,
-        )
-        .join("")}`,
-    )
-    .join("");
-  return `<table cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #000;font-family:Calibri,Arial,sans-serif;font-size:12.5px;background:#ffffff;color:#000000;">
-      <tr><td colspan="4" style="background:${headerBg};color:#000000;font-weight:bold;text-align:center;padding:6px;border:1px solid #000;">${escapeHtml(title)}</td></tr>
-      <tr style="background:#dddddd;color:#000000;font-weight:bold;">
-        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">Commodity</td>
-        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">Unit Per</td>
-        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">Size</td>
-        <td style="padding:3px 6px;border:1px solid #000;background:#dddddd;color:#000000;">FOB</td>
-      </tr>
-      ${rows}
-    </table>`;
-}
-
-function buildPlainText(title: string, groups: Group[]) {
-  const lines = [title, "Commodity\tUnit Per\tSize\tFOB"];
-  for (const g of groups) {
-    lines.push(g.name);
-    for (const r of g.rows) {
-      lines.push(`${r.variety ?? ""}\t${r.unit_per ?? ""}\t${r.size ?? ""}\t${formatFob(r.fob)}`);
-    }
-  }
-  return lines.join("\n");
-}
-
-const FOB_COLUMN_HEADERS = ["Commodity", "Unit Per", "Size", "FOB"];
-function fobRowValues(item: FobItem) {
-  return [item.variety ?? "", item.unit_per !== null ? String(item.unit_per) : "", item.size ?? "", formatFob(item.fob) || "-"];
-}
-
-function buildWhatsAppMessage(westernGroups: Group[], hotHouseGroups: Group[]) {
-  const western = buildWhatsAppSection("WESTERN VEG", westernGroups, FOB_COLUMN_HEADERS, fobRowValues);
-  const hotHouse = buildWhatsAppSection("HOT HOUSE", hotHouseGroups, FOB_COLUMN_HEADERS, fobRowValues);
-  return `*${EMAIL_TITLE}*\n\n${EMAIL_INTRO}\n\n${western}\n\n${hotHouse}`;
-}
 
 function FreightRatesPanel({
   rates,
@@ -666,8 +599,6 @@ export default function FobPharrClient({
   const [date, setDate] = useState(initialDate);
   const [cache, setCache] = useState<Record<string, FobItem[]>>(() => ({ [initialDate]: initialItems }));
   const [rates, setRates] = useState(initialFreightRates);
-  const [copied, setCopied] = useState(false);
-  const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const items = cache[date] ?? [];
@@ -780,54 +711,6 @@ export default function FobPharrClient({
     await deleteFreightRate(id).catch(() => {});
   }
 
-  function buildFullHtml() {
-    const westernGroups = groupFobItems(items, "western_veg");
-    const hotHouseGroups = groupFobItems(items, "hot_house");
-    return `${buildEmailHeaderHtml()}<table cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr>
-        <td valign="top" style="background:#ffffff;">${buildSectionHtml("Western Veg", "#8DC63F", westernGroups)}</td>
-        <td style="width:24px;background:#ffffff;">&nbsp;</td>
-        <td valign="top" style="background:#ffffff;">${buildSectionHtml("Hot House", "#FF3333", hotHouseGroups)}</td>
-      </tr></table>`;
-  }
-
-  async function handleCopy() {
-    const westernGroups = groupFobItems(items, "western_veg");
-    const hotHouseGroups = groupFobItems(items, "hot_house");
-    const html = buildFullHtml();
-    const text = `${EMAIL_TITLE}\n\n${EMAIL_INTRO}\n\n${buildPlainText("Western Veg", westernGroups)}\n\n${buildPlainText("Hot House", hotHouseGroups)}`;
-
-    try {
-      if (typeof ClipboardItem !== "undefined") {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            "text/html": new Blob([html], { type: "text/html" }),
-            "text/plain": new Blob([text], { type: "text/plain" }),
-          }),
-        ]);
-      } else {
-        await navigator.clipboard.writeText(text);
-      }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      alert("Could not copy to clipboard - your browser may not support it.");
-    }
-  }
-
-  async function handleCopyWhatsApp() {
-    const westernGroups = groupFobItems(items, "western_veg");
-    const hotHouseGroups = groupFobItems(items, "hot_house");
-    const text = buildWhatsAppMessage(westernGroups, hotHouseGroups);
-
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedWhatsApp(true);
-      setTimeout(() => setCopiedWhatsApp(false), 2000);
-    } catch {
-      alert("Could not copy to clipboard - your browser may not support it.");
-    }
-  }
-
   async function handleCopyImage() {
     try {
       const westernGroups = groupFobItems(items, "western_veg");
@@ -905,18 +788,6 @@ export default function FobPharrClient({
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">McAllen FOB Pricing</h2>
           <div className="flex gap-2">
-            <button
-              onClick={handleCopy}
-              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-            >
-              {copied ? "Copied!" : "Copy Price Sheet"}
-            </button>
-            <button
-              onClick={handleCopyWhatsApp}
-              className="rounded-md bg-emerald-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-800"
-            >
-              {copiedWhatsApp ? "Copied!" : "Copy for WhatsApp"}
-            </button>
             <button
               onClick={handleCopyImage}
               className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
