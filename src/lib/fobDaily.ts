@@ -39,23 +39,41 @@ export async function ensureTodayFobItems(supabase: SupabaseServerClient, today:
     .eq("entry_date", priorDateRow.entry_date);
   if (priorItemsError) throw new Error(priorItemsError.message);
 
+  // variety/size are coalesced to "" (never null) specifically so the
+  // fob_items_unique_row index below - a plain column-list unique index,
+  // since Postgres treats every NULL as distinct and would let a null
+  // column duplicate itself right past it - can actually catch a repeat of
+  // this call.
   const newRows = (priorItems ?? []).map((item) => ({
     entry_date: today,
     section: item.section,
     commodity_group: item.commodity_group,
-    variety: item.variety,
+    variety: item.variety ?? "",
     unit_per: item.unit_per,
-    size: item.size,
+    size: item.size ?? "",
     fob: null,
     position: item.position,
   }));
 
-  const { data: inserted, error: insertError } = await supabase
+  // Two pages can both hit this function for the same brand-new day at
+  // once (FOB Pharr and a Delivered lane, say) and both see zero existing
+  // rows before either has inserted - upsert+ignoreDuplicates makes the
+  // loser of that race a no-op instead of a second full copy of the
+  // catalog (see fob_items_unique_row migration).
+  const { error: insertError } = await supabase
     .from("fob_items")
-    .insert(newRows)
-    .select()
+    .upsert(newRows, {
+      onConflict: "entry_date,section,commodity_group,variety,size",
+      ignoreDuplicates: true,
+    });
+  if (insertError) throw new Error(insertError.message);
+
+  const { data: inserted, error: reselectError } = await supabase
+    .from("fob_items")
+    .select("*")
+    .eq("entry_date", today)
     .order("section", { ascending: true })
     .order("position", { ascending: true });
-  if (insertError) throw new Error(insertError.message);
+  if (reselectError) throw new Error(reselectError.message);
   return (inserted ?? []) as FobItem[];
 }

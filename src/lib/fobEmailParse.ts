@@ -59,10 +59,10 @@ function resolveTargets(category: string, label: string): Target[] {
     if (lbl === "medium") return [{ group: "Bell Pepper 25lb", variety: "Green - MED" }];
     if (lbl === "choice") return [{ group: "Bell Pepper 25lb", variety: "Green - CH" }];
   }
-  if (cat === "red pepper 11#" && lbl === "jbo/xl") return [{ group: "Bell Pepper 1lb", variety: "Red - XLG/JBO" }];
-  if (cat === "yellow pepper 11#" && lbl === "jbo/xl") return [{ group: "Bell Pepper 1lb", variety: "Yellow - XLG/JBO" }];
+  if (cat === "red pepper 11#" && lbl === "jbo/xl") return [{ group: "Bell Pepper 11lb", variety: "Red - XLG/JBO" }];
+  if (cat === "yellow pepper 11#" && lbl === "jbo/xl") return [{ group: "Bell Pepper 11lb", variety: "Yellow - XLG/JBO" }];
   if ((cat === "orange pepper#" || cat === "orange pepper") && lbl === "jbo/xl") {
-    return [{ group: "Bell Pepper 1lb", variety: "Orange - XLG/JBO" }];
+    return [{ group: "Bell Pepper 11lb", variety: "Orange - XLG/JBO" }];
   }
   if (cat === "red pepper 25#") {
     if (lbl === "xl") return [{ group: "Bell Pepper 25lb", variety: "Red - XLG/JBO" }];
