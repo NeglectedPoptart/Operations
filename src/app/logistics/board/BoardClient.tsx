@@ -107,8 +107,11 @@ export default function BoardClient({
               <p className="text-sm text-black/40 dark:text-white/40">No loads here.</p>
             ) : section.value === "pending_to_load" ? (
               <div className="space-y-5">
-                {groupByLoadingDate(sectionLoads).map((group) => (
-                  <div key={group.date ?? "no-date"}>
+                {groupByLoadingDate(sectionLoads).map((group, idx) => (
+                  <div
+                    key={group.date ?? "no-date"}
+                    className={idx > 0 ? "border-t border-dashed border-black/15 pt-4 dark:border-white/20" : undefined}
+                  >
                     <h3 className="mb-2 text-sm font-semibold text-black/60 dark:text-white/60">
                       {group.date ? formatDate(group.date) : "No Date Set"}{" "}
                       <span className="font-normal text-black/40">({group.loads.length})</span>
