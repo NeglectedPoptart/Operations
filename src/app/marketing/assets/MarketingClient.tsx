@@ -1,15 +1,17 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import LockedCombobox from "@/components/LockedCombobox";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatTimestamp } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/client";
-import type { MarketingFile, MarketingTask, MarketingTaskStatus } from "@/lib/types";
+import type { MarketingFile, MarketingTask, MarketingTaskStatus, Profile } from "@/lib/types";
 import {
   addMarketingTask,
   deleteMarketingFile,
   deleteMarketingTask,
   recordMarketingFile,
+  updateMarketingFileCategory,
   updateMarketingFileLabel,
   updateMarketingNotes,
   updateMarketingTask,
@@ -35,13 +37,17 @@ function formatBytes(n: number | null): string {
 function FileCard({
   file,
   url,
+  categoryOptions,
   onLabelSave,
+  onCategorySave,
   onDelete,
   onPreview,
 }: {
   file: MarketingFile;
   url: string;
+  categoryOptions: string[];
   onLabelSave: (id: string, label: string) => void;
+  onCategorySave: (id: string, category: string) => void;
   onDelete: (file: MarketingFile) => void;
   onPreview: () => void;
 }) {
@@ -90,6 +96,13 @@ function FileCard({
         onBlur={(e) => onLabelSave(file.id, e.target.value)}
         className={`${field} text-xs`}
       />
+      <LockedCombobox
+        value={file.category ?? ""}
+        onChange={(v) => onCategorySave(file.id, v)}
+        options={categoryOptions}
+        placeholder="Category..."
+        className={`${field} text-xs`}
+      />
       <p className="truncate text-xs font-medium" title={file.file_name}>
         {file.file_name}
       </p>
@@ -106,15 +119,19 @@ function FileCard({
 
 function TaskRow({
   task,
+  profiles,
   onToggle,
   onNameSave,
   onNotesSave,
+  onAssigneeSave,
   onDelete,
 }: {
   task: MarketingTask;
+  profiles: Profile[];
   onToggle: (id: string, status: MarketingTaskStatus) => void;
   onNameSave: (id: string, name: string) => void;
   onNotesSave: (id: string, notes: string) => void;
+  onAssigneeSave: (id: string, userId: string | null) => void;
   onDelete: (id: string) => void;
 }) {
   return (
@@ -137,6 +154,18 @@ function TaskRow({
           onBlur={(e) => onNotesSave(task.id, e.target.value)}
           className={`${field} text-xs text-black/60`}
         />
+        <select
+          value={task.assigned_to ?? ""}
+          onChange={(e) => onAssigneeSave(task.id, e.target.value || null)}
+          className={`${field} bg-white text-xs text-black/60`}
+        >
+          <option value="">Unassigned</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.email ?? p.id}
+            </option>
+          ))}
+        </select>
       </div>
       <button onClick={() => onDelete(task.id)} className="mt-1.5 text-xs font-medium text-red-600 hover:underline">
         Delete
@@ -151,12 +180,14 @@ export default function MarketingClient({
   initialTasks,
   notesId,
   initialNotes,
+  profiles,
 }: {
   initialFiles: MarketingFile[];
   fileUrls: Record<string, string>;
   initialTasks: MarketingTask[];
   notesId: string | null;
   initialNotes: string;
+  profiles: Profile[];
 }) {
   const confirm = useConfirm();
   const [files, setFiles] = useState(initialFiles);
@@ -165,9 +196,40 @@ export default function MarketingClient({
   const [notes, setNotes] = useState(initialNotes);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadCategory, setUploadCategory] = useState("");
   const [newTaskName, setNewTaskName] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Every distinct category already in use, for the "+ New Category" style
+  // suggestions on each LockedCombobox - categories are just a free-text
+  // column on marketing_files, not a separate lookup table (same pattern as
+  // FOB Pharr's commodity_group), so this list is derived, not stored.
+  const categoryOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const file of files) {
+      if (file.category?.trim()) set.add(file.category.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [files]);
+
+  // Groups files by category for display (uncategorized last) - purely a
+  // client-side grouping over the flat list, same idea as FOB Pharr's
+  // groupFobItems.
+  const groupedFiles = useMemo(() => {
+    const map = new Map<string, MarketingFile[]>();
+    for (const file of files) {
+      const key = file.category?.trim() || "Uncategorized";
+      const arr = map.get(key) ?? [];
+      arr.push(file);
+      map.set(key, arr);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === "Uncategorized") return 1;
+      if (b === "Uncategorized") return -1;
+      return a.localeCompare(b);
+    });
+  }, [files]);
 
   // Uploads go straight from the browser to Supabase Storage - a big file's
   // bytes never touch a Server Action, which is capped at ~4.5MB on Vercel
@@ -198,6 +260,7 @@ export default function MarketingClient({
           contentType: file.type || null,
           sizeBytes: file.size,
           label: null,
+          category: uploadCategory.trim() || null,
         });
         setFiles((prev) => [saved, ...prev]);
         setUrls((prev) => ({ ...prev, [saved.id]: publicUrl }));
@@ -212,6 +275,11 @@ export default function MarketingClient({
   function handleLabelSave(id: string, label: string) {
     setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, label: label.trim() || null } : f)));
     updateMarketingFileLabel(id, label).catch(() => {});
+  }
+
+  function handleCategorySave(id: string, category: string) {
+    setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, category: category.trim() || null } : f)));
+    updateMarketingFileCategory(id, category).catch(() => {});
   }
 
   async function handleDeleteFile(file: MarketingFile) {
@@ -243,6 +311,11 @@ export default function MarketingClient({
     updateMarketingTask(id, { notes: notesValue || null }).catch(() => {});
   }
 
+  function handleTaskAssigneeSave(id: string, userId: string | null) {
+    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, assigned_to: userId } : t)));
+    updateMarketingTask(id, { assigned_to: userId }).catch(() => {});
+  }
+
   async function handleDeleteTask(id: string) {
     if (!(await confirm("Delete this task?"))) return;
     setTasks((prev) => prev.filter((t) => t.id !== id));
@@ -263,7 +336,17 @@ export default function MarketingClient({
             Brand assets, packaging previews, and everything left to do before they go out.
           </p>
         </div>
-        <div>
+        <div className="flex items-end gap-2">
+          <label className="flex flex-col gap-0.5 text-xs">
+            <span className="font-medium text-black/60 dark:text-white/60">Category (optional)</span>
+            <LockedCombobox
+              value={uploadCategory}
+              onChange={setUploadCategory}
+              options={categoryOptions}
+              placeholder="e.g. Packaging"
+              className="w-40 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
+            />
+          </label>
           <input
             ref={fileInputRef}
             type="file"
@@ -283,7 +366,7 @@ export default function MarketingClient({
       </div>
       {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
 
-      <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+      <div className="space-y-4 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
         <h2 className="text-lg font-bold text-green-700 dark:text-green-400">
           Files <span className="text-sm font-normal text-black/40">({files.length})</span>
         </h2>
@@ -292,18 +375,27 @@ export default function MarketingClient({
             Nothing uploaded yet - drop in packaging mockups, logos, or anything else to preview here.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {files.map((file) => (
-              <FileCard
-                key={file.id}
-                file={file}
-                url={urls[file.id] ?? ""}
-                onLabelSave={handleLabelSave}
-                onDelete={handleDeleteFile}
-                onPreview={() => setPreviewUrl(urls[file.id] ?? null)}
-              />
-            ))}
-          </div>
+          groupedFiles.map(([category, categoryFiles]) => (
+            <div key={category} className="space-y-2">
+              <h3 className="text-sm font-semibold text-black/60 dark:text-white/60">
+                {category} <span className="font-normal text-black/40">({categoryFiles.length})</span>
+              </h3>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {categoryFiles.map((file) => (
+                  <FileCard
+                    key={file.id}
+                    file={file}
+                    url={urls[file.id] ?? ""}
+                    categoryOptions={categoryOptions}
+                    onLabelSave={handleLabelSave}
+                    onCategorySave={handleCategorySave}
+                    onDelete={handleDeleteFile}
+                    onPreview={() => setPreviewUrl(urls[file.id] ?? null)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </div>
 
@@ -338,9 +430,11 @@ export default function MarketingClient({
                 <TaskRow
                   key={task.id}
                   task={task}
+                  profiles={profiles}
                   onToggle={handleToggleTask}
                   onNameSave={handleTaskNameSave}
                   onNotesSave={handleTaskNotesSave}
+                  onAssigneeSave={handleTaskAssigneeSave}
                   onDelete={handleDeleteTask}
                 />
               ))}

@@ -627,6 +627,7 @@ export interface MarketingFile {
   content_type: string | null;
   size_bytes: number | null;
   label: string | null;
+  category: string | null;
   uploaded_by: string | null;
   created_at: string;
 }
@@ -639,6 +640,7 @@ export interface MarketingTask {
   name: string;
   status: MarketingTaskStatus;
   notes: string | null;
+  assigned_to: string | null;
   created_at: string;
   updated_at: string;
 }

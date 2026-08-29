@@ -23,6 +23,7 @@ export async function recordMarketingFile(input: {
   contentType: string | null;
   sizeBytes: number;
   label: string | null;
+  category: string | null;
 }): Promise<MarketingFile> {
   const supabase = await createClient();
   const {
@@ -37,6 +38,7 @@ export async function recordMarketingFile(input: {
       content_type: input.contentType,
       size_bytes: input.sizeBytes,
       label: input.label?.trim() || null,
+      category: input.category?.trim() || null,
       uploaded_by: user?.id ?? null,
     })
     .select()
@@ -65,6 +67,16 @@ export async function updateMarketingFileLabel(id: string, label: string) {
   revalidateAll();
 }
 
+export async function updateMarketingFileCategory(id: string, category: string) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("marketing_files")
+    .update({ category: category.trim() || null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
 export async function addMarketingTask(name: string): Promise<MarketingTask> {
   const supabase = await createClient();
   const { data: maxRow } = await supabase
@@ -87,7 +99,7 @@ export async function addMarketingTask(name: string): Promise<MarketingTask> {
 
 export async function updateMarketingTask(
   id: string,
-  patch: Partial<Pick<MarketingTask, "name" | "status" | "notes">>,
+  patch: Partial<Pick<MarketingTask, "name" | "status" | "notes" | "assigned_to">>,
 ) {
   const supabase = await createClient();
   const { error } = await supabase.from("marketing_tasks").update(patch).eq("id", id);
