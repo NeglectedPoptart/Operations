@@ -645,6 +645,22 @@ export interface MarketingTask {
   updated_at: string;
 }
 
+// Management: Meal Plans -----------------------------------------------------
+
+export type RecipeType = "main" | "snack";
+
+export interface Recipe {
+  id: string;
+  recipe_type: RecipeType;
+  name: string;
+  servings: string | null;
+  ingredients: string[];
+  steps: string[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Manual "up to date" confirmation per page -------------------------------
 
 export interface PageStatus {

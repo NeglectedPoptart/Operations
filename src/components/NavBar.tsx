@@ -80,6 +80,7 @@ const NAV: NavCategory[] = [
       { href: "/management/workflow", label: "Workflow" },
       { href: "/management/callout-sheet", label: "Callout Sheet" },
       { href: "/management/schedules", label: "Schedules" },
+      { href: "/management/meal-plans", label: "Meal Plans" },
       { href: "/management/users", label: "User Roles" },
       { href: "/management/notifications", label: "Notifications" },
       { href: "/management/reset", label: "Reset Tools" },
