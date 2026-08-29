@@ -211,7 +211,17 @@ export default function MarketingClient({
   const [uploadCategory, setUploadCategory] = useState("");
   const [newTaskName, setNewTaskName] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function toggleCategory(category: string) {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }
 
   // Every distinct category already in use, for the "+ New Category" style
   // suggestions on each LockedCombobox - categories are just a free-text
@@ -387,27 +397,37 @@ export default function MarketingClient({
             Nothing uploaded yet - drop in packaging mockups, logos, or anything else to preview here.
           </p>
         ) : (
-          groupedFiles.map(([category, categoryFiles]) => (
-            <div key={category} className="space-y-2">
-              <h3 className="text-sm font-semibold text-black/60 dark:text-white/60">
-                {category} <span className="font-normal text-black/40">({categoryFiles.length})</span>
-              </h3>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {categoryFiles.map((file) => (
-                  <FileCard
-                    key={file.id}
-                    file={file}
-                    url={urls[file.id] ?? ""}
-                    categoryOptions={categoryOptions}
-                    onLabelSave={handleLabelSave}
-                    onCategorySave={handleCategorySave}
-                    onDelete={handleDeleteFile}
-                    onPreview={() => setPreviewUrl(urls[file.id] ?? null)}
-                  />
-                ))}
+          groupedFiles.map(([category, categoryFiles]) => {
+            const collapsed = collapsedCategories.has(category);
+            return (
+              <div key={category} className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(category)}
+                  className="flex w-full items-center gap-1.5 text-left text-sm font-semibold text-black/60 hover:text-black dark:text-white/60 dark:hover:text-white"
+                >
+                  <span className={`inline-block transition-transform ${collapsed ? "-rotate-90" : ""}`}>▼</span>
+                  {category} <span className="font-normal text-black/40">({categoryFiles.length})</span>
+                </button>
+                {!collapsed && (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                    {categoryFiles.map((file) => (
+                      <FileCard
+                        key={file.id}
+                        file={file}
+                        url={urls[file.id] ?? ""}
+                        categoryOptions={categoryOptions}
+                        onLabelSave={handleLabelSave}
+                        onCategorySave={handleCategorySave}
+                        onDelete={handleDeleteFile}
+                        onPreview={() => setPreviewUrl(urls[file.id] ?? null)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
