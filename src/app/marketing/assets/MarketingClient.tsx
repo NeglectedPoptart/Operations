@@ -96,13 +96,25 @@ function FileCard({
         onBlur={(e) => onLabelSave(file.id, e.target.value)}
         className={`${field} text-xs`}
       />
-      <LockedCombobox
-        value={file.category ?? ""}
-        onChange={(v) => onCategorySave(file.id, v)}
-        options={categoryOptions}
-        placeholder="Category..."
-        className={`${field} text-xs`}
-      />
+      <div className="flex items-center gap-1">
+        <LockedCombobox
+          value={file.category ?? ""}
+          onChange={(v) => onCategorySave(file.id, v)}
+          options={categoryOptions}
+          placeholder="Category..."
+          className={`${field} text-xs`}
+        />
+        {file.category && (
+          <button
+            type="button"
+            onClick={() => onCategorySave(file.id, "")}
+            title="Clear category"
+            className="shrink-0 text-xs text-black/40 hover:text-black dark:text-white/40 dark:hover:text-white"
+          >
+            ✕
+          </button>
+        )}
+      </div>
       <p className="truncate text-xs font-medium" title={file.file_name}>
         {file.file_name}
       </p>
