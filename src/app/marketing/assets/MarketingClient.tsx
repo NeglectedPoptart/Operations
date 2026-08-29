@@ -21,6 +21,10 @@ function isImage(contentType: string | null): boolean {
   return Boolean(contentType?.startsWith("image/"));
 }
 
+function isPdf(contentType: string | null): boolean {
+  return contentType === "application/pdf";
+}
+
 function formatBytes(n: number | null): string {
   if (n === null) return "";
   if (n < 1024) return `${n} B`;
@@ -51,6 +55,24 @@ function FileCard({
           {/* eslint-disable-next-line @next/next/no-img-element -- external Supabase Storage URL, not a local/optimizable asset */}
           <img src={url} alt={file.file_name} className="h-full w-full object-cover" />
         </button>
+      ) : isPdf(file.content_type) ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="relative block aspect-square w-full overflow-hidden rounded-md border border-black/10 bg-white dark:border-white/10"
+        >
+          {/* Browser's native PDF viewer renders page 1 in place of a real
+              thumbnail - pointer-events-none so the click/tap always goes to
+              the wrapping link instead of the embedded viewer's own toolbar
+              or scroll area. */}
+          <iframe
+            src={`${url}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+            title={file.file_name}
+            tabIndex={-1}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+          />
+        </a>
       ) : (
         <a
           href={url}
