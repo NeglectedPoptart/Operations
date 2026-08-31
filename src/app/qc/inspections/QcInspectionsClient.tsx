@@ -1,11 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { QC_RESULTS, type QcInspection } from "@/lib/types";
 import { addQcInspectionRow, deleteQcInspectionRow, updateQcInspectionRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+
+// Left-to-right column order for arrow-key navigation, each tagged with how
+// it should treat Left/Right: a "text" cell only hands the key over to
+// navigation once the caret is already at that edge (so normal in-text
+// cursor movement still works while editing); every other kind has no such
+// native use for Left/Right, so it always navigates.
+const COLUMNS = [
+  { key: "entry_date", kind: "other" },
+  { key: "po", kind: "text" },
+  { key: "lot", kind: "text" },
+  { key: "product", kind: "text" },
+  { key: "qc", kind: "text" },
+  { key: "chat", kind: "other" },
+  { key: "report", kind: "other" },
+  { key: "status", kind: "text" },
+  { key: "result", kind: "other" },
+  { key: "notes", kind: "text" },
+] as const;
+type ColKey = (typeof COLUMNS)[number]["key"];
 
 export default function QcInspectionsClient({ initialItems }: { initialItems: QcInspection[] }) {
   const confirm = useConfirm();
@@ -13,6 +32,63 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   const [adding, setAdding] = useState(false);
   const [filterDate, setFilterDate] = useState("");
   const [search, setSearch] = useState("");
+  const cellRefs = useRef<Map<string, HTMLInputElement | HTMLSelectElement>>(new Map());
+
+  function cellKey(rowIndex: number, col: ColKey) {
+    return `${rowIndex}-${col}`;
+  }
+
+  function registerCell(rowIndex: number, col: ColKey) {
+    return (el: HTMLInputElement | HTMLSelectElement | null) => {
+      const key = cellKey(rowIndex, col);
+      if (el) cellRefs.current.set(key, el);
+      else cellRefs.current.delete(key);
+    };
+  }
+
+  function focusCell(rowIndex: number, col: ColKey) {
+    cellRefs.current.get(cellKey(rowIndex, col))?.focus();
+  }
+
+  function handleCellKeyDown(e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>, rowIndex: number, col: ColKey) {
+    const colIndex = COLUMNS.findIndex((c) => c.key === col);
+    const isTextCol = COLUMNS[colIndex].kind === "text";
+    const target = e.currentTarget;
+
+    switch (e.key) {
+      case "ArrowDown":
+      case "Enter":
+        e.preventDefault();
+        focusCell(rowIndex + 1, col);
+        return;
+      case "ArrowUp":
+        e.preventDefault();
+        focusCell(rowIndex - 1, col);
+        return;
+      case "ArrowLeft": {
+        if (isTextCol && target instanceof HTMLInputElement) {
+          if (target.selectionStart !== 0 || target.selectionEnd !== 0) return;
+        }
+        const prev = COLUMNS[colIndex - 1];
+        if (prev) {
+          e.preventDefault();
+          focusCell(rowIndex, prev.key);
+        }
+        return;
+      }
+      case "ArrowRight": {
+        if (isTextCol && target instanceof HTMLInputElement) {
+          if (target.selectionStart !== target.value.length || target.selectionEnd !== target.value.length) return;
+        }
+        const next = COLUMNS[colIndex + 1];
+        if (next) {
+          e.preventDefault();
+          focusCell(rowIndex, next.key);
+        }
+        return;
+      }
+    }
+  }
 
   // Newest date on top; same-day rows stay in the order they were entered.
   const sortedItems = useMemo(() => {
@@ -123,69 +199,87 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
               </tr>
             </thead>
             <tbody>
-              {displayedItems.map((item) => (
+              {displayedItems.map((item, rowIndex) => (
                 <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
                   <td className="min-w-[8rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "entry_date")}
                       type="date"
                       defaultValue={item.entry_date ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { entry_date: e.target.value || null })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "entry_date")}
                       className={field}
                     />
                   </td>
                   <td className="min-w-[5rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "po")}
                       defaultValue={item.po ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { po: e.target.value })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "po")}
                       className={field}
                     />
                   </td>
                   <td className="min-w-[4rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "lot")}
                       defaultValue={item.lot ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { lot: e.target.value })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "lot")}
                       className={field}
                     />
                   </td>
                   <td className="min-w-[10rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "product")}
                       defaultValue={item.product ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { product: e.target.value })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "product")}
                       className={field}
                     />
                   </td>
                   <td className="min-w-[3rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "qc")}
                       defaultValue={item.qc ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { qc: e.target.value })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "qc")}
                       className={field}
                     />
                   </td>
                   <td className="px-1 py-1 text-center">
                     <input
+                      ref={registerCell(rowIndex, "chat")}
                       type="checkbox"
                       checked={item.chat}
                       onChange={(e) => handleFieldSave(item.id, { chat: e.target.checked })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "chat")}
                     />
                   </td>
                   <td className="px-1 py-1 text-center">
                     <input
+                      ref={registerCell(rowIndex, "report")}
                       type="checkbox"
                       checked={item.report}
                       onChange={(e) => handleFieldSave(item.id, { report: e.target.checked })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "report")}
                     />
                   </td>
                   <td className="min-w-[5rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "status")}
                       defaultValue={item.status ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { status: e.target.value })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "status")}
                       className={field}
                     />
                   </td>
                   <td className="min-w-[8rem] px-1 py-1">
                     <select
+                      ref={registerCell(rowIndex, "result")}
                       value={item.result ?? ""}
                       onChange={(e) => handleFieldSave(item.id, { result: e.target.value || null })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "result")}
                       className={field}
                     >
                       <option value="">-</option>
@@ -198,8 +292,10 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
                   </td>
                   <td className="min-w-[16rem] px-1 py-1">
                     <input
+                      ref={registerCell(rowIndex, "notes")}
                       defaultValue={item.notes ?? ""}
                       onBlur={(e) => handleFieldSave(item.id, { notes: e.target.value })}
+                      onKeyDown={(e) => handleCellKeyDown(e, rowIndex, "notes")}
                       className={field}
                     />
                   </td>
