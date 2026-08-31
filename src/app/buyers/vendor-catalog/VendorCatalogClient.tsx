@@ -192,32 +192,56 @@ export default function VendorCatalogClient({
                           : "No sheet pasted yet"}
                     </span>
                   </div>
-                  {rows.length > 0 && (
-                    <table className="mt-2 w-full text-sm">
-                      <thead className="bg-black/5 text-left dark:bg-white/5">
-                        <tr>
-                          <th className="px-2 py-1">Item</th>
-                          <th className="px-2 py-1">Size</th>
-                          <th className="px-2 py-1">Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.map((r) => (
-                          <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
-                            <td className="px-2 py-1">{r.item_label}</td>
-                            <td className="px-2 py-1">
-                              <input
-                                defaultValue={r.size ?? ""}
-                                onBlur={(e) => handleSizeSave(r.id, e.target.value)}
-                                className={sizeInput}
-                              />
-                            </td>
-                            <td className="px-2 py-1">{formatMoney(r.price)}</td>
+                  {rows.length > 0 &&
+                    (isCurrent ? (
+                      <table className="mt-2 w-full text-sm">
+                        <thead className="bg-black/5 text-left dark:bg-white/5">
+                          <tr>
+                            <th className="px-2 py-1">Item</th>
+                            <th className="px-2 py-1">Size</th>
+                            <th className="px-2 py-1">Price</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                        </thead>
+                        <tbody>
+                          {rows.map((r) => (
+                            <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
+                              <td className="px-2 py-1">{r.item_label}</td>
+                              <td className="px-2 py-1">
+                                <input
+                                  defaultValue={r.size ?? ""}
+                                  onBlur={(e) => handleSizeSave(r.id, e.target.value)}
+                                  className={sizeInput}
+                                />
+                              </td>
+                              <td className="px-2 py-1">{formatMoney(r.price)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      // Muted, note-style rendering (same treatment as the
+                      // "Last sheet {date}" line above) - this isn't a
+                      // current quote, so it shouldn't read with the same
+                      // visual weight as a live price table.
+                      <table className="mt-2 w-full text-xs text-black/40 dark:text-white/40">
+                        <thead className="text-left">
+                          <tr>
+                            <th className="px-2 py-1 font-medium">Item</th>
+                            <th className="px-2 py-1 font-medium">Size</th>
+                            <th className="px-2 py-1 font-medium">Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r) => (
+                            <tr key={r.id} className="border-t border-black/5 dark:border-white/5">
+                              <td className="px-2 py-1">{r.item_label}</td>
+                              <td className="px-2 py-1">{r.size ?? ""}</td>
+                              <td className="px-2 py-1">{formatMoney(r.price)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ))}
                 </div>
               ))}
             </div>
