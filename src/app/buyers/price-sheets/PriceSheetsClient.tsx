@@ -207,13 +207,7 @@ function CommoditySummary({ items, vendors }: { items: PriceSheetItem[]; vendors
     [categoryCounts],
   );
 
-  const [lookupInput, setLookupInput] = useState("");
   const [lookupCategory, setLookupCategory] = useState<string | null>(null);
-
-  function handleLookup() {
-    const trimmed = lookupInput.trim();
-    if (trimmed) setLookupCategory(trimmed);
-  }
 
   // Hidden only when there's truly nothing priced anywhere yet - once any
   // vendor has a sheet on file, the panel (and its look-back selector) stays
@@ -224,30 +218,18 @@ function CommoditySummary({ items, vendors }: { items: PriceSheetItem[]; vendors
     <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
       <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Look up a commodity</h2>
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          list="price-sheet-summary-categories"
-          value={lookupInput}
-          onChange={(e) => setLookupInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              handleLookup();
-            }
-          }}
-          placeholder="Type a category..."
+        <select
+          value={lookupCategory ?? ""}
+          onChange={(e) => setLookupCategory(e.target.value || null)}
           className="w-56 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
-        />
-        <datalist id="price-sheet-summary-categories">
-          {categoryNames.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        <button
-          onClick={handleLookup}
-          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
         >
-          Show
-        </button>
+          <option value="">Select a category...</option>
+          {categoryNames.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
         <label className="flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
           <span className="font-medium">Look back:</span>
           <select

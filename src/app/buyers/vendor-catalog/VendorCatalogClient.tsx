@@ -111,7 +111,12 @@ export default function VendorCatalogClient({
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((vendor) => {
         const isCurrent = vendor.sheet_date === today;
-        const rows = isCurrent ? itemsByVendorAndCategory.get(`${vendor.id}:${selectedCategory}`) ?? [] : [];
+        // Not just for a current sheet - price_sheet_items is a full-replace
+        // snapshot of the vendor's last paste either way (see the comment on
+        // allVendors above), so even when it's not from today this is still
+        // their last known price, worth showing next to the "Last sheet
+        // {date}" note rather than leaving the row blank.
+        const rows = itemsByVendorAndCategory.get(`${vendor.id}:${selectedCategory}`) ?? [];
         return { vendor, isCurrent, rows };
       });
   }, [selectedCategory, vendorIdsByCategory, vendorById, itemsByVendorAndCategory, today]);
@@ -183,7 +188,7 @@ export default function VendorCatalogClient({
                       {isCurrent
                         ? `Priced today, ${formatDate(vendor.sheet_date)}`
                         : vendor.sheet_date
-                          ? `Last sheet ${formatDate(vendor.sheet_date)} (not today - no current price)`
+                          ? `Last sheet ${formatDate(vendor.sheet_date)} (not today - showing last price)`
                           : "No sheet pasted yet"}
                     </span>
                   </div>
