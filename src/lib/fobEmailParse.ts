@@ -54,10 +54,12 @@ function resolveTargets(category: string, label: string): Target[] {
   const lbl = label.toLowerCase().replace(/\s+/g, " ").trim();
 
   if (cat === "green pepper") {
-    if (lbl === "jbo/xl") return [{ group: "Bell Pepper 25lb", variety: "Green - JBO" }, { group: "Bell Pepper 25lb", variety: "Green - XLG" }];
-    if (lbl === "large") return [{ group: "Bell Pepper 25lb", variety: "Green - LGE" }];
-    if (lbl === "medium") return [{ group: "Bell Pepper 25lb", variety: "Green - MED" }];
-    if (lbl === "choice") return [{ group: "Bell Pepper 25lb", variety: "Green - CH" }];
+    if (lbl === "jbo/xl" || lbl === "xl") {
+      return [{ group: "Bell Pepper 25lb", variety: "Green - JBO" }, { group: "Bell Pepper 25lb", variety: "Green - XLG" }];
+    }
+    if (lbl === "large" || lbl === "lg") return [{ group: "Bell Pepper 25lb", variety: "Green - LGE" }];
+    if (lbl === "medium" || lbl === "md") return [{ group: "Bell Pepper 25lb", variety: "Green - MED" }];
+    if (lbl === "choice" || lbl === "ch") return [{ group: "Bell Pepper 25lb", variety: "Green - CH" }];
   }
   if (cat === "red pepper 11#" && lbl === "jbo/xl") return [{ group: "Bell Pepper 11lb", variety: "Red - XLG/JBO" }];
   if (cat === "yellow pepper 11#" && lbl === "jbo/xl") return [{ group: "Bell Pepper 11lb", variety: "Yellow - XLG/JBO" }];
