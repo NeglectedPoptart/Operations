@@ -582,7 +582,7 @@ export default function QcAgendaClient({
             disabled={pulling}
             className="rounded-md border border-green-600 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-60 print:hidden dark:text-green-400 dark:hover:bg-green-900/20"
           >
-            {pulling ? "Pulling..." : "Pull Info from Old Age"}
+            {pulling ? "Pulling..." : "Pull QC-Needed from Old Age"}
           </button>
         </div>
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10 print:border-black">

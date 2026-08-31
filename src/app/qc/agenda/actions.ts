@@ -67,14 +67,15 @@ export async function deleteInboundRow(id: string) {
 
 const NEXT_STEP_LABELS = Object.fromEntries(OLD_AGE_NEXT_STEPS.map((s) => [s.value, s.label]));
 
-// Copies whatever is currently in Old Age into today's Floor Aging Check
-// list, skipping items already pulled in for this date so re-clicking is
-// safe. The user prunes down what's not relevant with the row delete button.
+// Copies whatever is currently flagged "QC Needed" in Old Age into today's
+// Floor Aging Check list, skipping items already pulled in for this date so
+// re-clicking is safe. The user prunes down what's not relevant with the
+// row delete button.
 export async function pullOldAgeIntoFloorAging(entryDate: string) {
   const supabase = await createClient();
 
   const [{ data: oldAgeItems, error: oldAgeError }, { data: existingRows, error: existingError }] = await Promise.all([
-    supabase.from("old_age_items").select("*").order("position", { ascending: true }),
+    supabase.from("old_age_items").select("*").eq("qc_needed", true).order("position", { ascending: true }),
     supabase.from("qc_agenda_floor_aging").select("old_age_item_id").eq("entry_date", entryDate),
   ]);
   if (oldAgeError) throw new Error(oldAgeError.message);

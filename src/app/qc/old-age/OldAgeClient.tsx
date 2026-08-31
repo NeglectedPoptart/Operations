@@ -536,6 +536,11 @@ export default function OldAgeClient({
     await updateOldAgeItem(id, { cash_list: cashList }).catch(() => {});
   }
 
+  async function handleQcNeededToggle(id: string, qcNeeded: boolean) {
+    updateLocal(id, { qc_needed: qcNeeded });
+    await updateOldAgeItem(id, { qc_needed: qcNeeded }).catch(() => {});
+  }
+
   async function handleCashPriceSave(id: string, price: number | null) {
     updateLocal(id, { cash_price: price });
     await updateOldAgeItem(id, { cash_price: price }).catch(() => {});
@@ -765,6 +770,7 @@ export default function OldAgeClient({
               <th className="px-2 py-2">Next Step</th>
               <th className="px-2 py-2">Notes</th>
               <th className="px-2 py-2">Cash List</th>
+              <th className="px-2 py-2">QC Needed</th>
               <th className="w-16 px-2 py-2" />
             </tr>
           </thead>
@@ -827,6 +833,14 @@ export default function OldAgeClient({
                         className="h-4 w-4"
                       />
                     </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <input
+                        type="checkbox"
+                        checked={item.qc_needed}
+                        onChange={(e) => handleQcNeededToggle(item.id, e.target.checked)}
+                        className="h-4 w-4"
+                      />
+                    </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       {isPartialMoved && (
                         <button
@@ -846,7 +860,7 @@ export default function OldAgeClient({
                   </tr>
                   {isPartialMoved && expanded && (
                     <tr>
-                      <td colSpan={11} className="p-0">
+                      <td colSpan={12} className="p-0">
                         <MovesHistory
                           item={item}
                           moves={moves.filter((m) => m.item_id === item.id)}
@@ -863,7 +877,7 @@ export default function OldAgeClient({
             })}
             {items.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={12} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   No items yet - paste in the Old Age report from Excel above.
                 </td>
               </tr>

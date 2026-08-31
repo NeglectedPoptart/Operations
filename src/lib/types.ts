@@ -244,6 +244,7 @@ export interface OldAgeItem {
   notes: string | null;
   cash_list: boolean;
   cash_price: number | null;
+  qc_needed: boolean;
   // Running total moved out so far - kept in sync from old_age_moves by a
   // trigger, same as Repack Inventory's current_stock.
   qty_moved: number;
