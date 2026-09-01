@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import HorizontalBarChart, { type BarDatum } from "@/components/HorizontalBarChart";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
+import { parseSalesOrderText, type SalesOrderRow } from "@/lib/salesOrderParse";
 import { QC_RESULT_SCORE, QC_RESULTS, type QcInspection } from "@/lib/types";
+import { extractPdfText } from "./actions";
 
 // QC's "product" field is closer to a SKU than a plain commodity name (pack
 // codes, grades, sizes tacked on: "BROCCOLI FCR/FCG", "CELERY NKD 30 & 24"),
@@ -69,7 +72,7 @@ function isUrgentOrFail(result: string | null): boolean {
   return result === "Urgent" || result === "Fail";
 }
 
-function OperationsCoordinatorsSection({ items }: { items: QcInspection[] }) {
+function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
   const stats = useMemo(() => {
     const totalLoads = items.length;
 
@@ -103,7 +106,7 @@ function OperationsCoordinatorsSection({ items }: { items: QcInspection[] }) {
 
   return (
     <div className="space-y-4 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-      <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Operations Coordinators</h2>
+      <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Lead Quality Control</h2>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-md bg-black/5 p-3 dark:bg-white/5">
@@ -163,6 +166,201 @@ function OperationsCoordinatorsSection({ items }: { items: QcInspection[] }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+interface SalesRepStats {
+  salesperson: string;
+  orderCount: number;
+  casesSold: number;
+  delivered: number;
+  fob: number;
+}
+
+function summarizeSalesOrders(rows: SalesOrderRow[]): SalesRepStats[] {
+  const byRep = new Map<string, SalesRepStats>();
+  for (const r of rows) {
+    const entry = byRep.get(r.salesperson) ?? {
+      salesperson: r.salesperson,
+      orderCount: 0,
+      casesSold: 0,
+      delivered: 0,
+      fob: 0,
+    };
+    entry.orderCount += 1;
+    entry.casesSold += r.shipped;
+    if (r.terms === "Delivered") entry.delivered += 1;
+    else entry.fob += 1;
+    byRep.set(r.salesperson, entry);
+  }
+  return Array.from(byRep.values());
+}
+
+// Not persisted anywhere - this is a per-meeting, paste-in-fresh-each-week
+// tool (the user re-uploads the prior Tuesday-to-Tuesday report each time),
+// so there's nothing to sync against and no history to keep.
+function SalesOrdersSection() {
+  const [pasteText, setPasteText] = useState("");
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rows, setRows] = useState<SalesOrderRow[] | null>(null);
+
+  function handleAnalyze(text: string) {
+    const result = parseSalesOrderText(text);
+    if (result.error) {
+      setError(result.error);
+      setRows(null);
+      return;
+    }
+    setError(null);
+    setRows(result.rows);
+  }
+
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPdf(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setError(`Couldn't read that PDF (${result.error}) - try pasting the text instead.`);
+        return;
+      }
+      setPasteText(result.text);
+      handleAnalyze(result.text);
+    } finally {
+      setUploadingPdf(false);
+    }
+  }
+
+  const repStats = useMemo(() => (rows ? summarizeSalesOrders(rows) : []), [rows]);
+
+  const orderCountChart: BarDatum[] = [...repStats]
+    .sort((a, b) => b.orderCount - a.orderCount)
+    .map((r) => ({ label: r.salesperson, value: r.orderCount }));
+  const casesSoldChart: BarDatum[] = [...repStats]
+    .sort((a, b) => b.casesSold - a.casesSold)
+    .map((r) => ({ label: r.salesperson, value: r.casesSold }));
+
+  const deliveredByRep = [...repStats].filter((r) => r.delivered > 0).sort((a, b) => b.delivered - a.delivered);
+  const fobByRep = [...repStats].filter((r) => r.fob > 0).sort((a, b) => b.fob - a.fob);
+  const totalDelivered = repStats.reduce((sum, r) => sum + r.delivered, 0);
+  const totalFob = repStats.reduce((sum, r) => sum + r.fob, 0);
+
+  return (
+    <div className="space-y-4 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+      <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Operations Coordinator</h2>
+      <p className="text-sm text-black/60 dark:text-white/60">
+        Upload (or paste) the ERP&apos;s &quot;Orders Summary&quot; report for the prior Tuesday-to-Tuesday to see
+        orders, cases sold, and terms broken down by salesperson.
+      </p>
+
+      <div className="space-y-2">
+        <textarea
+          value={pasteText}
+          onChange={(e) => setPasteText(e.target.value)}
+          rows={4}
+          placeholder="Paste the Orders Summary report text here..."
+          className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
+        />
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => handleAnalyze(pasteText)}
+            disabled={pasteText.trim() === ""}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            Analyze
+          </button>
+          <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+            {uploadingPdf ? "Reading PDF..." : "Or upload a PDF"}
+            <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+          </label>
+        </div>
+      </div>
+
+      {rows && (
+        <div className="space-y-4">
+          <p className="text-sm text-black/60 dark:text-white/60">
+            {rows.length} order{rows.length === 1 ? "" : "s"} across {repStats.length} salesperson
+            {repStats.length === 1 ? "" : "s"}.
+          </p>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="space-y-2 rounded-md bg-black/5 p-3 dark:bg-white/5">
+              <p className="text-sm font-medium">Total Orders by Salesperson</p>
+              <HorizontalBarChart data={orderCountChart} />
+            </div>
+            <div className="space-y-2 rounded-md bg-black/5 p-3 dark:bg-white/5">
+              <p className="text-sm font-medium">Cases Sold by Salesperson</p>
+              <HorizontalBarChart data={casesSoldChart} formatValue={(v) => v.toLocaleString()} />
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium text-black/60 dark:text-white/60">
+              Orders by Terms - {totalDelivered} Delivered, {totalFob} FOB
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="overflow-x-auto rounded-md border border-black/10 dark:border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-3 py-1.5">Delivered</th>
+                      <th className="px-3 py-1.5 text-right">Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deliveredByRep.map((r) => (
+                      <tr key={r.salesperson} className="border-t border-black/10 dark:border-white/10">
+                        <td className="px-3 py-1.5">{r.salesperson}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.delivered}</td>
+                      </tr>
+                    ))}
+                    {deliveredByRep.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="px-3 py-3 text-center text-black/40 dark:text-white/40">
+                          No Delivered orders.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="overflow-x-auto rounded-md border border-black/10 dark:border-white/10">
+                <table className="w-full text-sm">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-3 py-1.5">FOB</th>
+                      <th className="px-3 py-1.5 text-right">Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fobByRep.map((r) => (
+                      <tr key={r.salesperson} className="border-t border-black/10 dark:border-white/10">
+                        <td className="px-3 py-1.5">{r.salesperson}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.fob}</td>
+                      </tr>
+                    ))}
+                    {fobByRep.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="px-3 py-3 text-center text-black/40 dark:text-white/40">
+                          No FOB orders.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -303,7 +501,9 @@ export default function WeeklyCompanyCallClient({
         </p>
       </div>
 
-      <OperationsCoordinatorsSection items={itemsInRange} />
+      <LeadQualityControlSection items={itemsInRange} />
+
+      <SalesOrdersSection />
 
       <DirectorOperationsSection rows={laneRates} />
     </div>
