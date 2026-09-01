@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import HorizontalBarChart, { type BarDatum } from "@/components/HorizontalBarChart";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
 import { OVERDUE_DAYS } from "@/lib/invoicingParse";
@@ -72,8 +73,9 @@ export default function AccountingSummaryClient({
   // i.e. exactly "posted in our system but not paid". A fully-paid Posted
   // invoice gets removed outright rather than left in this table, so
   // done+flagged is the complete set of what this report is for.
+  const postedNotPaid = useMemo(() => statements.filter((s) => s.status === "done" && s.flagged), [statements]);
+
   const { overItems, underItems } = useMemo(() => {
-    const postedNotPaid = statements.filter((s) => s.status === "done" && s.flagged);
     const overItems: InvoiceStatement[] = [];
     const underItems: InvoiceStatement[] = [];
     for (const item of postedNotPaid) {
@@ -81,7 +83,26 @@ export default function AccountingSummaryClient({
       (age !== null && age >= OVERDUE_DAYS ? overItems : underItems).push(item);
     }
     return { overItems, underItems };
-  }, [statements]);
+  }, [postedNotPaid]);
+
+  // AP-style summary tiles + per-carrier breakdown, same shape as the
+  // Accounts Payable page's own Summary card - across the full
+  // posted-not-paid set, not just one age bucket.
+  const summary = useMemo(() => {
+    const carrierIds = new Set<string>();
+    const totalsByCarrier = new Map<string, number>();
+    let totalOutstanding = 0;
+    for (const item of postedNotPaid) {
+      carrierIds.add(item.broker_id);
+      totalOutstanding += item.amount ?? 0;
+      const name = brokerNameById.get(item.broker_id) ?? "Unknown Carrier";
+      totalsByCarrier.set(name, (totalsByCarrier.get(name) ?? 0) + (item.amount ?? 0));
+    }
+    const carrierChartData: BarDatum[] = Array.from(totalsByCarrier.entries())
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+    return { totalOutstanding, carrierCount: carrierIds.size, carrierChartData };
+  }, [postedNotPaid, brokerNameById]);
 
   async function handleCopyImage() {
     try {
@@ -103,26 +124,48 @@ export default function AccountingSummaryClient({
   }
 
   return (
-    <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-      <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Accounting Summary</h2>
-      <p className="text-sm text-black/60 dark:text-white/60">
-        Every posted, not-yet-paid invoice across all carriers, split into {OVERDUE_DAYS}+ days and under{" "}
-        {OVERDUE_DAYS} days - copy as an image to paste straight into an email to accounting.
-      </p>
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <span>
-          <strong className="text-red-600 dark:text-red-400">{overItems.length}</strong> over {OVERDUE_DAYS} days
-        </span>
-        <span>
-          <strong>{underItems.length}</strong> under {OVERDUE_DAYS} days
-        </span>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Accounting Summary</h2>
+        <button
+          onClick={handleCopyImage}
+          className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+        >
+          {imageStatus ?? "Copy as Image"}
+        </button>
       </div>
-      <button
-        onClick={handleCopyImage}
-        className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
-      >
-        {imageStatus ?? "Copy as Image"}
-      </button>
+      <p className="text-sm text-black/60 dark:text-white/60">
+        Every posted, not-yet-paid invoice across all carriers - copy as an image, split into {OVERDUE_DAYS}+ days
+        and under {OVERDUE_DAYS} days, to paste straight into an email to accounting.
+      </p>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+          <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Summary</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <p className="text-black/60 dark:text-white/60">Total Outstanding</p>
+              <p className="text-xl font-bold">{formatMoney(summary.totalOutstanding)}</p>
+            </div>
+            <div>
+              <p className="text-black/60 dark:text-white/60">Carriers</p>
+              <p className="text-xl font-bold">{summary.carrierCount}</p>
+            </div>
+            <div>
+              <p className="text-black/60 dark:text-white/60">Invoices</p>
+              <p className="text-xl font-bold">{overItems.length + underItems.length}</p>
+            </div>
+            <div>
+              <p className="text-black/60 dark:text-white/60">{OVERDUE_DAYS}+ Days</p>
+              <p className="text-xl font-bold text-red-600 dark:text-red-400">{overItems.length}</p>
+            </div>
+          </div>
+        </div>
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+          <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Outstanding by Carrier</h3>
+          <HorizontalBarChart data={summary.carrierChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
+        </div>
+      </div>
     </div>
   );
 }
