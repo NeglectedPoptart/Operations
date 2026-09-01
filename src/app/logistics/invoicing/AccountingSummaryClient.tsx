@@ -12,14 +12,10 @@ function formatMoney(n: number | null) {
 
 const ACCOUNTING_HEADERS = ["Invoice #", "Date", "Customer PO", "Amount", "Age"];
 
-// Every row here is posted-but-not-paid by construction (the caller only
-// passes done+flagged rows), so the flag isn't distinguishing rows from
-// each other - it's telling accounting, at a glance, what this whole list
-// means.
 function accountingRowValues(item: InvoiceStatement): string[] {
   const age = daysSince(item.invoice_date);
   return [
-    `${item.invoice_no} \u{1F6A9}`,
+    item.invoice_no,
     formatDateSlash(item.invoice_date) || "-",
     item.customer_po || "-",
     formatMoney(item.amount),
@@ -47,6 +43,8 @@ function buildAccountingBlock(
       .get(name)!
       .sort((a, b) => (a.invoice_date ?? "").localeCompare(b.invoice_date ?? ""));
     for (const item of sorted) rows.push({ cells: accountingRowValues(item) });
+    const carrierTotal = sorted.reduce((sum, item) => sum + (item.amount ?? 0), 0);
+    rows.push({ cells: ["TOTAL", "", "", formatMoney(carrierTotal), ""] });
   }
 
   return {
@@ -93,7 +91,7 @@ export default function AccountingSummaryClient({
       ];
       const blob = await renderPriceSheetPng({
         title: "Freight Invoicing - Outstanding by Carrier",
-        message: "\u{1F6A9} = posted, not yet paid",
+        message: "",
         blocks,
       });
       const result = await copyOrDownloadPng(blob, "invoicing-accounting-summary.png");
