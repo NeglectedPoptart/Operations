@@ -19,18 +19,8 @@ function revalidateAll() {
 // or closed) is deleted. A new one is inserted.
 export async function importArReport(
   rows: ParsedArInvoice[],
-): Promise<{ customers: ArCustomer[]; invoices: ArInvoice[]; previousSnapshot: ArSummarySnapshot | null }> {
+): Promise<{ customers: ArCustomer[]; invoices: ArInvoice[] }> {
   const supabase = await createClient();
-
-  // The Summary card's totals as of the last sync - whatever's here right
-  // now is what "Show Changes" will compare this sync's result against.
-  // Read before anything below mutates ar_invoices.
-  const { data: previousSnapshot, error: snapshotFetchError } = await supabase
-    .from("ar_summary_snapshot")
-    .select("*")
-    .limit(1)
-    .maybeSingle();
-  if (snapshotFetchError) throw new Error(snapshotFetchError.message);
 
   const customerByCode = new Map<
     string,
@@ -113,28 +103,43 @@ export async function importArReport(
   const { data: finalCustomers, error: finalCustomersError } = await supabase.from("ar_customers").select("*");
   if (finalCustomersError) throw new Error(finalCustomersError.message);
 
-  // Replace the single snapshot row with this sync's totals, so the next
-  // sync's "Show Changes" has this one to compare against.
-  const after = computeArSummaryTotals((finalInvoices ?? []) as ArInvoice[]);
-  const { error: snapshotDeleteError } = await supabase.from("ar_summary_snapshot").delete().not("id", "is", null);
-  if (snapshotDeleteError) throw new Error(snapshotDeleteError.message);
-  const { error: snapshotInsertError } = await supabase.from("ar_summary_snapshot").insert({
-    total: after.total,
-    customers: after.customers,
-    escalated: after.escalated,
-    needs_contact: after.needsContact,
-    trouble_claims: after.troubleClaims,
-    short_total: after.shortTotal,
-    over_total: after.overTotal,
-  });
-  if (snapshotInsertError) throw new Error(snapshotInsertError.message);
+  revalidateAll();
+  return { customers: (finalCustomers ?? []) as ArCustomer[], invoices: (finalInvoices ?? []) as ArInvoice[] };
+}
+
+// Manually-set comparison checkpoint for "Show Changes" - deliberately not
+// touched by importArReport above. A snapshot taken automatically on every
+// sync only ever showed the diff for one moment (right after that sync,
+// before it got overwritten by the same sync) and disappeared for good on
+// the next page load or sync, which wasn't legible as a persistent feature.
+// This only moves when someone explicitly resets it, so the comparison
+// stays available and meaningful until they choose to start over.
+export async function saveArBaseline(): Promise<ArSummarySnapshot> {
+  const supabase = await createClient();
+
+  const { data: invoices, error: invoicesError } = await supabase.from("ar_invoices").select("*");
+  if (invoicesError) throw new Error(invoicesError.message);
+  const totals = computeArSummaryTotals((invoices ?? []) as ArInvoice[]);
+
+  const { error: deleteError } = await supabase.from("ar_summary_snapshot").delete().not("id", "is", null);
+  if (deleteError) throw new Error(deleteError.message);
+  const { data: row, error: insertError } = await supabase
+    .from("ar_summary_snapshot")
+    .insert({
+      total: totals.total,
+      customers: totals.customers,
+      escalated: totals.escalated,
+      needs_contact: totals.needsContact,
+      trouble_claims: totals.troubleClaims,
+      short_total: totals.shortTotal,
+      over_total: totals.overTotal,
+    })
+    .select()
+    .single();
+  if (insertError) throw new Error(insertError.message);
 
   revalidateAll();
-  return {
-    customers: (finalCustomers ?? []) as ArCustomer[],
-    invoices: (finalInvoices ?? []) as ArInvoice[],
-    previousSnapshot: (previousSnapshot ?? null) as ArSummarySnapshot | null,
-  };
+  return row as ArSummarySnapshot;
 }
 
 export async function updateArInvoiceRow(

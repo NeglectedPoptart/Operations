@@ -22,7 +22,7 @@ import { parseArReportPaste, type ParsedArInvoice } from "@/lib/arReportParse";
 import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
-import { deleteArInvoiceRow, importArReport, updateArInvoiceRow } from "./actions";
+import { deleteArInvoiceRow, importArReport, saveArBaseline, updateArInvoiceRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -87,55 +87,56 @@ function formatDelta(diff: number, kind: "money" | "count"): string {
   return `${sign}${formatMetricValue(Math.abs(diff), kind)}`;
 }
 
-interface SyncResult {
-  before: ArSummarySnapshot | null;
-  after: ArSummaryTotals;
-  afterCapturedAt: string;
-}
-
-function ChangesPanel({ result, onClose }: { result: SyncResult; onClose: () => void }) {
-  const { before, after, afterCapturedAt } = result;
+// Compares a manually-set checkpoint (baseline, persisted in
+// ar_summary_snapshot - see saveArBaseline) against the current live
+// totals, computed fresh every render. Deliberately NOT tied to "the last
+// sync" - a sync alone used to silently replace the comparison point,
+// which meant the diff you'd just looked at was gone the moment you
+// reloaded the page. Now the baseline only moves when someone explicitly
+// resets it, so this panel stays meaningful (and available) across visits.
+function ChangesPanel({
+  baseline,
+  current,
+  onClose,
+}: {
+  baseline: ArSummarySnapshot;
+  current: ArSummaryTotals;
+  onClose: () => void;
+}) {
+  const now = new Date().toISOString();
   return (
     <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Changes Since Last Update</h2>
+        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Changes Since Baseline</h2>
         <button onClick={onClose} className="text-xs font-medium text-black/50 hover:underline dark:text-white/50">
           Hide
         </button>
       </div>
-      {!before ? (
-        <p className="text-sm text-black/60 dark:text-white/60">
-          No prior sync to compare against - this sync&apos;s totals are now saved as the baseline for next time.
-        </p>
-      ) : (
-        <>
-          <p className="text-xs text-black/50 dark:text-white/50">
-            Compared to the sync {formatTimestamp(before.captured_at)} ({formatElapsed(before.captured_at, afterCapturedAt)} ago)
-          </p>
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            {CHANGE_METRICS.map((m) => {
-              const beforeVal = before[SNAPSHOT_KEY[m.key]] as number;
-              const afterVal = after[m.key];
-              const diff = afterVal - beforeVal;
-              const colorClass =
-                diff === 0
-                  ? "text-black/50 dark:text-white/50"
-                  : m.good === null
-                    ? "text-blue-600 dark:text-blue-400"
-                    : (diff > 0) === (m.good === "up")
-                      ? "text-green-600 dark:text-green-400"
-                      : "text-red-600 dark:text-red-400";
-              return (
-                <div key={m.key}>
-                  <p className="text-black/60 dark:text-white/60">{m.label}</p>
-                  <p className="text-lg font-bold">{formatMetricValue(afterVal, m.kind)}</p>
-                  <p className={`text-xs font-semibold ${colorClass}`}>{formatDelta(diff, m.kind)}</p>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
+      <p className="text-xs text-black/50 dark:text-white/50">
+        Baseline set {formatTimestamp(baseline.captured_at)} ({formatElapsed(baseline.captured_at, now)} ago)
+      </p>
+      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        {CHANGE_METRICS.map((m) => {
+          const beforeVal = baseline[SNAPSHOT_KEY[m.key]] as number;
+          const afterVal = current[m.key];
+          const diff = afterVal - beforeVal;
+          const colorClass =
+            diff === 0
+              ? "text-black/50 dark:text-white/50"
+              : m.good === null
+                ? "text-blue-600 dark:text-blue-400"
+                : (diff > 0) === (m.good === "up")
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-red-600 dark:text-red-400";
+          return (
+            <div key={m.key}>
+              <p className="text-black/60 dark:text-white/60">{m.label}</p>
+              <p className="text-lg font-bold">{formatMetricValue(afterVal, m.kind)}</p>
+              <p className={`text-xs font-semibold ${colorClass}`}>{formatDelta(diff, m.kind)}</p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -157,9 +158,11 @@ const SNAPSHOT_KEY: Record<keyof ArSummaryTotals, keyof ArSummarySnapshot> = {
 export default function ArClient({
   initialCustomers,
   initialInvoices,
+  initialBaseline,
 }: {
   initialCustomers: ArCustomer[];
   initialInvoices: ArInvoice[];
+  initialBaseline: ArSummarySnapshot | null;
 }) {
   const confirm = useConfirm();
   const [customers, setCustomers] = useState(initialCustomers);
@@ -176,8 +179,9 @@ export default function ArClient({
   const [filterOver, setFilterOver] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [baseline, setBaseline] = useState(initialBaseline);
   const [showChanges, setShowChanges] = useState(false);
+  const [savingBaseline, setSavingBaseline] = useState(false);
 
   // AR Troubles (a separate page) owns anything with trouble_status !==
   // "none" - this page is the complementary slice of the same
@@ -206,6 +210,10 @@ export default function ArClient({
     }
     return { total, byBucket, escalated, needsContact, shortTotal, overTotal };
   }, [nonTroubleInvoices]);
+
+  // Same math as `totals` above but in the shared ArSummaryTotals shape,
+  // for comparing against the persisted baseline in ChangesPanel.
+  const currentSummaryTotals = useMemo(() => computeArSummaryTotals(invoices), [invoices]);
 
   const highlightFilterActive = filterRed || filterYellow;
   const discrepancyFilterActive = filterShort || filterOver;
@@ -260,15 +268,9 @@ export default function ArClient({
     if (!previewInvoices) return;
     setImporting(true);
     try {
-      const { customers: newCustomers, invoices: newInvoices, previousSnapshot } = await importArReport(previewInvoices);
+      const { customers: newCustomers, invoices: newInvoices } = await importArReport(previewInvoices);
       setCustomers(newCustomers);
       setInvoices(newInvoices);
-      setSyncResult({
-        before: previousSnapshot,
-        after: computeArSummaryTotals(newInvoices),
-        afterCapturedAt: new Date().toISOString(),
-      });
-      setShowChanges(true);
       setPreviewInvoices(null);
       setPasteText("");
       setShowPaste(false);
@@ -276,6 +278,25 @@ export default function ArClient({
       alert(err instanceof Error ? `Couldn't sync: ${err.message}` : "Couldn't sync - try again.");
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function handleSaveBaseline() {
+    if (
+      baseline &&
+      !(await confirm(
+        `Reset the comparison baseline to today's numbers? You won't be able to see changes vs the ${formatTimestamp(baseline.captured_at)} baseline anymore.`,
+      ))
+    ) {
+      return;
+    }
+    setSavingBaseline(true);
+    try {
+      const row = await saveArBaseline();
+      setBaseline(row);
+      setShowChanges(true);
+    } finally {
+      setSavingBaseline(false);
     }
   }
 
@@ -358,11 +379,19 @@ export default function ArClient({
             </button>
             <button
               onClick={() => setShowChanges((s) => !s)}
-              disabled={!syncResult}
-              title={syncResult ? undefined : "Sync an updated report first"}
+              disabled={!baseline}
+              title={baseline ? undefined : "Save a baseline first"}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-white/20 dark:hover:bg-white/10"
             >
               {showChanges ? "Hide Changes" : "Show Changes"}
+            </button>
+            <button
+              onClick={handleSaveBaseline}
+              disabled={savingBaseline}
+              title={baseline ? "Reset the comparison point to today's numbers" : "Start tracking changes from today's numbers"}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-60 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {savingBaseline ? "Saving..." : baseline ? "Reset Baseline" : "Set Baseline"}
             </button>
             <button
               onClick={() => setShowPaste((s) => !s)}
@@ -373,7 +402,9 @@ export default function ArClient({
           </div>
         </div>
 
-        {showChanges && syncResult && <ChangesPanel result={syncResult} onClose={() => setShowChanges(false)} />}
+        {showChanges && baseline && (
+          <ChangesPanel baseline={baseline} current={currentSummaryTotals} onClose={() => setShowChanges(false)} />
+        )}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
