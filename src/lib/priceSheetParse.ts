@@ -140,6 +140,21 @@ export function classifyBroccoliGrade(text: string): "#1" | "#2" {
   return "#1";
 }
 
+// Vendors write celery's pack count/style a dozen different ways ("24's
+// Nkd", "24Ct", "24 ct naked", "24s") that are all the exact same item -
+// collapses any of them down to one canonical "Celery {count}ct
+// {Naked|Sleeved}" label so the commodity lookup groups them together
+// instead of listing near-duplicates. Sleeved is the less common of the
+// two styles, so it only wins when the text actually says so; everything
+// else defaults to Naked. Returns null (leave the label as-is) when there's
+// no count to anchor on at all - this should never invent a count.
+export function normalizeCelerySizeLabel(combinedLabel: string): string | null {
+  const countMatch = combinedLabel.match(/\d{2,3}/);
+  if (!countMatch) return null;
+  const style = /sleeve/i.test(combinedLabel) ? "Sleeved" : "Naked";
+  return `Celery ${countMatch[0]}ct ${style}`;
+}
+
 // Same 2-or-4-digit-year date parser used across the other paste parsers in
 // this app (invoicingParse.ts, oldAgeParse.ts) - duplicated rather than
 // shared, matching that existing convention.

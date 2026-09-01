@@ -4,7 +4,13 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { addDays, formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { normalizeCategory, parsePriceSheetPaste, PRODUCE_CATEGORIES, type ParsedPriceSheetItem } from "@/lib/priceSheetParse";
+import {
+  normalizeCategory,
+  normalizeCelerySizeLabel,
+  parsePriceSheetPaste,
+  PRODUCE_CATEGORIES,
+  type ParsedPriceSheetItem,
+} from "@/lib/priceSheetParse";
 import type { PriceSheetItem, Vendor } from "@/lib/types";
 import {
   createPriceSheetItem,
@@ -66,7 +72,10 @@ function computeCategoryItemStats(items: PriceSheetItem[], category: string): It
   for (const item of items) {
     if (item.price === null) continue;
     if (normalizeCategory(item.category).toLowerCase() !== target) continue;
-    const display = combinedItemLabel(item).trim();
+    const raw = combinedItemLabel(item).trim();
+    // Only collapses the display label used for this lookup/grouping - the
+    // vendor's actual submitted text stays untouched in the editable table.
+    const display = target === "celery" ? (normalizeCelerySizeLabel(raw) ?? raw) : raw;
     if (!display) continue;
     const key = display.toLowerCase();
     if (!byKey.has(key)) byKey.set(key, { display, quotes: [] });
