@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { daysSince } from "@/lib/dates";
 import { OVERDUE_DAYS } from "@/lib/invoicingParse";
-import type { Broker } from "@/lib/types";
+import type { Broker, InvoiceStatement } from "@/lib/types";
 import StatementCheckerClient from "./StatementCheckerClient";
 import BrokerListClient from "./BrokerListClient";
+import AccountingSummaryClient from "./AccountingSummaryClient";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function InvoicingHomePage() {
 
   const [{ data: brokers, error: brokersError }, { data: statements, error: statementsError }] = await Promise.all([
     supabase.from("brokers").select("*").order("position", { ascending: true }).order("name", { ascending: true }),
-    supabase.from("invoice_statements").select("broker_id, status, invoice_date"),
+    supabase.from("invoice_statements").select("*"),
   ]);
 
   if (brokersError) {
@@ -22,7 +23,7 @@ export default async function InvoicingHomePage() {
     return <p className="text-red-600">Failed to load invoices: {statementsError.message}</p>;
   }
 
-  const rows = (statements ?? []) as { broker_id: string; status: string | null; invoice_date: string | null }[];
+  const rows = (statements ?? []) as InvoiceStatement[];
   const pendingCounts: Record<string, number> = {};
   const doneCounts: Record<string, number> = {};
   const overdueBrokerIds: Record<string, boolean> = {};
@@ -42,6 +43,8 @@ export default async function InvoicingHomePage() {
       <p className="text-sm text-black/60 dark:text-white/60">
         Pick a broker to see its invoice aging list.
       </p>
+
+      <AccountingSummaryClient brokers={(brokers ?? []) as Broker[]} statements={rows} />
 
       <StatementCheckerClient brokers={(brokers ?? []) as Broker[]} />
 
