@@ -25,11 +25,13 @@ export default function BrokerListClient({
   brokers,
   pendingCounts,
   doneCounts,
+  flaggedCounts,
   overdueBrokerIds,
 }: {
   brokers: Broker[];
   pendingCounts: Record<string, number>;
   doneCounts: Record<string, number>;
+  flaggedCounts: Record<string, number>;
   overdueBrokerIds: Record<string, boolean>;
 }) {
   const [order, setOrder] = useState<Broker[]>(brokers);
@@ -119,6 +121,8 @@ export default function BrokerListClient({
         {order.map((b, index) => {
           const pending = pendingCounts[b.id] ?? 0;
           const done = doneCounts[b.id] ?? 0;
+          const flagged = flaggedCounts[b.id] ?? 0;
+          const total = pending + done;
           const active = requested[b.id] ?? false;
           // All caught up (nothing pending, so nothing can be sitting overdue
           // either) -> green; anything still pending, aging or not -> yellow.
@@ -134,8 +138,13 @@ export default function BrokerListClient({
             <>
               <p className="font-medium">{b.name}</p>
               <p className="text-sm text-black/60 dark:text-white/60">
-                {pending} pending · {done} done
+                {pending} pending · {done} done · {total} total
               </p>
+              {flagged > 0 && (
+                <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+                  🚩 {flagged} flagged
+                </p>
+              )}
               <p className="text-xs text-black/40 dark:text-white/40">
                 Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
               </p>
