@@ -172,3 +172,24 @@ export function formatTimestampSlash(ts: string | null): string {
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("month")}/${get("day")}/${get("year")}`;
 }
+
+// "6 days, 4 hours" / "3 hours" / "12 minutes" / "just now" - how long ago
+// a timestamp was, for things like "time since the last AR report upload"
+// rather than a fixed calendar date.
+export function formatElapsed(fromISO: string, toISO: string): string {
+  const minutes = Math.max(0, Math.round((new Date(toISO).getTime() - new Date(fromISO).getTime()) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const remMinutes = minutes % 60;
+    return remMinutes > 0
+      ? `${hours} hour${hours === 1 ? "" : "s"}, ${remMinutes} minute${remMinutes === 1 ? "" : "s"}`
+      : `${hours} hour${hours === 1 ? "" : "s"}`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0
+    ? `${days} day${days === 1 ? "" : "s"}, ${remHours} hour${remHours === 1 ? "" : "s"}`
+    : `${days} day${days === 1 ? "" : "s"}`;
+}

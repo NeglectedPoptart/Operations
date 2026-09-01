@@ -13,13 +13,15 @@ import {
   buildGroups,
   buildPlainTextTable,
   buildTableHtml,
+  computeArSummaryTotals,
   formatMoney,
   payDiscrepancy,
+  type ArSummaryTotals,
 } from "@/lib/arShared";
 import { parseArReportPaste, type ParsedArInvoice } from "@/lib/arReportParse";
-import { formatDate } from "@/lib/dates";
+import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice } from "@/lib/types";
+import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
 import { deleteArInvoiceRow, importArReport, updateArInvoiceRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -56,6 +58,102 @@ function arRowValues(invoice: ArInvoice, customerName: string): string[] {
   ];
 }
 
+interface ChangeMetric {
+  key: keyof ArSummaryTotals;
+  label: string;
+  kind: "money" | "count";
+  // Which direction of change is an improvement - null when a change is
+  // neither good nor bad (e.g. more customers isn't inherently either).
+  good: "up" | "down" | null;
+}
+
+const CHANGE_METRICS: ChangeMetric[] = [
+  { key: "total", label: "Total Outstanding", kind: "money", good: "down" },
+  { key: "customers", label: "Customers", kind: "count", good: null },
+  { key: "escalated", label: "Escalated", kind: "count", good: "down" },
+  { key: "needsContact", label: "Needs Contact", kind: "count", good: "down" },
+  { key: "troubleClaims", label: "Trouble Claims", kind: "count", good: "down" },
+  { key: "shortTotal", label: "Short Pay Total", kind: "money", good: "down" },
+  { key: "overTotal", label: "Over Pay Total", kind: "money", good: null },
+];
+
+function formatMetricValue(n: number, kind: "money" | "count"): string {
+  return kind === "money" ? `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : n.toLocaleString();
+}
+
+function formatDelta(diff: number, kind: "money" | "count"): string {
+  if (diff === 0) return "no change";
+  const sign = diff > 0 ? "+" : "-";
+  return `${sign}${formatMetricValue(Math.abs(diff), kind)}`;
+}
+
+interface SyncResult {
+  before: ArSummarySnapshot | null;
+  after: ArSummaryTotals;
+  afterCapturedAt: string;
+}
+
+function ChangesPanel({ result, onClose }: { result: SyncResult; onClose: () => void }) {
+  const { before, after, afterCapturedAt } = result;
+  return (
+    <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Changes Since Last Update</h2>
+        <button onClick={onClose} className="text-xs font-medium text-black/50 hover:underline dark:text-white/50">
+          Hide
+        </button>
+      </div>
+      {!before ? (
+        <p className="text-sm text-black/60 dark:text-white/60">
+          No prior sync to compare against - this sync&apos;s totals are now saved as the baseline for next time.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Compared to the sync {formatTimestamp(before.captured_at)} ({formatElapsed(before.captured_at, afterCapturedAt)} ago)
+          </p>
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            {CHANGE_METRICS.map((m) => {
+              const beforeVal = before[SNAPSHOT_KEY[m.key]] as number;
+              const afterVal = after[m.key];
+              const diff = afterVal - beforeVal;
+              const colorClass =
+                diff === 0
+                  ? "text-black/50 dark:text-white/50"
+                  : m.good === null
+                    ? "text-blue-600 dark:text-blue-400"
+                    : (diff > 0) === (m.good === "up")
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400";
+              return (
+                <div key={m.key}>
+                  <p className="text-black/60 dark:text-white/60">{m.label}</p>
+                  <p className="text-lg font-bold">{formatMetricValue(afterVal, m.kind)}</p>
+                  <p className={`text-xs font-semibold ${colorClass}`}>{formatDelta(diff, m.kind)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ArSummaryTotals (camelCase, computed client/shared) vs ArSummarySnapshot
+// (snake_case, the stored row) name a couple of fields differently -
+// mapped here rather than renaming one side to match the other's
+// convention (each already matches its own domain: JS object vs DB row).
+const SNAPSHOT_KEY: Record<keyof ArSummaryTotals, keyof ArSummarySnapshot> = {
+  total: "total",
+  customers: "customers",
+  escalated: "escalated",
+  needsContact: "needs_contact",
+  troubleClaims: "trouble_claims",
+  shortTotal: "short_total",
+  overTotal: "over_total",
+};
+
 export default function ArClient({
   initialCustomers,
   initialInvoices,
@@ -78,6 +176,8 @@ export default function ArClient({
   const [filterOver, setFilterOver] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [showChanges, setShowChanges] = useState(false);
 
   // AR Troubles (a separate page) owns anything with trouble_status !==
   // "none" - this page is the complementary slice of the same
@@ -160,9 +260,15 @@ export default function ArClient({
     if (!previewInvoices) return;
     setImporting(true);
     try {
-      const { customers: newCustomers, invoices: newInvoices } = await importArReport(previewInvoices);
+      const { customers: newCustomers, invoices: newInvoices, previousSnapshot } = await importArReport(previewInvoices);
       setCustomers(newCustomers);
       setInvoices(newInvoices);
+      setSyncResult({
+        before: previousSnapshot,
+        after: computeArSummaryTotals(newInvoices),
+        afterCapturedAt: new Date().toISOString(),
+      });
+      setShowChanges(true);
       setPreviewInvoices(null);
       setPasteText("");
       setShowPaste(false);
@@ -251,6 +357,14 @@ export default function ArClient({
               {imageStatus ?? "Copy as Image"}
             </button>
             <button
+              onClick={() => setShowChanges((s) => !s)}
+              disabled={!syncResult}
+              title={syncResult ? undefined : "Sync an updated report first"}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {showChanges ? "Hide Changes" : "Show Changes"}
+            </button>
+            <button
               onClick={() => setShowPaste((s) => !s)}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
             >
@@ -258,6 +372,8 @@ export default function ArClient({
             </button>
           </div>
         </div>
+
+        {showChanges && syncResult && <ChangesPanel result={syncResult} onClose={() => setShowChanges(false)} />}
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">

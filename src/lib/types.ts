@@ -713,6 +713,21 @@ export interface ArInvoice {
   updated_at: string;
 }
 
+// Snapshot of the Summary card's own totals as of the last AR Aging sync -
+// see computeArSummaryTotals in arShared.tsx, which produces the same
+// shape (camelCase) that this row (snake_case) is saved from.
+export interface ArSummarySnapshot {
+  id: string;
+  total: number;
+  customers: number;
+  escalated: number;
+  needs_contact: number;
+  trouble_claims: number;
+  short_total: number;
+  over_total: number;
+  captured_at: string;
+}
+
 // Accounting: Accounts Payable -------------------------------------------------
 
 export type ApHighlight = "none" | "yellow" | "red";

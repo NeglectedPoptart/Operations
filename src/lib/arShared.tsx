@@ -59,6 +59,49 @@ export const HIGHLIGHT_ROW_CLASS: Record<ArHighlight, string> = {
   red: "bg-red-50 dark:bg-red-950/20",
 };
 
+export interface ArSummaryTotals {
+  total: number;
+  customers: number;
+  escalated: number;
+  needsContact: number;
+  troubleClaims: number;
+  shortTotal: number;
+  overTotal: number;
+}
+
+// Same math as the Summary card's totals useMemo in ArClient.tsx - kept
+// here, not there, so the sync action (server-side, no React) can compute
+// this exact shape too when it saves the "as of this sync" snapshot that
+// Show Changes compares the next sync against.
+export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
+  const nonTrouble = invoices.filter((i) => i.trouble_status === "none");
+  const customerIds = new Set(nonTrouble.map((i) => i.customer_id));
+  let total = 0;
+  let escalated = 0;
+  let needsContact = 0;
+  let shortTotal = 0;
+  let overTotal = 0;
+  for (const inv of nonTrouble) {
+    total += inv.balance;
+    if (inv.highlight === "red") escalated++;
+    if (inv.highlight === "yellow") needsContact++;
+    const d = payDiscrepancy(inv);
+    if (d) {
+      if (d.kind === "short") shortTotal += d.amount;
+      else overTotal += d.amount;
+    }
+  }
+  return {
+    total,
+    customers: customerIds.size,
+    escalated,
+    needsContact,
+    troubleClaims: invoices.length - nonTrouble.length,
+    shortTotal,
+    overTotal,
+  };
+}
+
 export interface CustomerGroup {
   customer: ArCustomer;
   invoices: ArInvoice[];

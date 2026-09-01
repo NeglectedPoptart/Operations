@@ -1,9 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { computeArSummaryTotals } from "@/lib/arShared";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedArInvoice } from "@/lib/arReportParse";
-import type { ArCustomer, ArInvoice } from "@/lib/types";
+import type { ArCustomer, ArInvoice, ArSummarySnapshot } from "@/lib/types";
 
 function revalidateAll() {
   revalidatePath("/accounting/ar");
@@ -16,8 +17,20 @@ function revalidateAll() {
 // refreshed, but keeps whatever collections follow-up (last_contact/notes/
 // highlight) was already on it. One missing from the new import (paid off
 // or closed) is deleted. A new one is inserted.
-export async function importArReport(rows: ParsedArInvoice[]): Promise<{ customers: ArCustomer[]; invoices: ArInvoice[] }> {
+export async function importArReport(
+  rows: ParsedArInvoice[],
+): Promise<{ customers: ArCustomer[]; invoices: ArInvoice[]; previousSnapshot: ArSummarySnapshot | null }> {
   const supabase = await createClient();
+
+  // The Summary card's totals as of the last sync - whatever's here right
+  // now is what "Show Changes" will compare this sync's result against.
+  // Read before anything below mutates ar_invoices.
+  const { data: previousSnapshot, error: snapshotFetchError } = await supabase
+    .from("ar_summary_snapshot")
+    .select("*")
+    .limit(1)
+    .maybeSingle();
+  if (snapshotFetchError) throw new Error(snapshotFetchError.message);
 
   const customerByCode = new Map<
     string,
@@ -100,8 +113,28 @@ export async function importArReport(rows: ParsedArInvoice[]): Promise<{ custome
   const { data: finalCustomers, error: finalCustomersError } = await supabase.from("ar_customers").select("*");
   if (finalCustomersError) throw new Error(finalCustomersError.message);
 
+  // Replace the single snapshot row with this sync's totals, so the next
+  // sync's "Show Changes" has this one to compare against.
+  const after = computeArSummaryTotals((finalInvoices ?? []) as ArInvoice[]);
+  const { error: snapshotDeleteError } = await supabase.from("ar_summary_snapshot").delete().not("id", "is", null);
+  if (snapshotDeleteError) throw new Error(snapshotDeleteError.message);
+  const { error: snapshotInsertError } = await supabase.from("ar_summary_snapshot").insert({
+    total: after.total,
+    customers: after.customers,
+    escalated: after.escalated,
+    needs_contact: after.needsContact,
+    trouble_claims: after.troubleClaims,
+    short_total: after.shortTotal,
+    over_total: after.overTotal,
+  });
+  if (snapshotInsertError) throw new Error(snapshotInsertError.message);
+
   revalidateAll();
-  return { customers: (finalCustomers ?? []) as ArCustomer[], invoices: (finalInvoices ?? []) as ArInvoice[] };
+  return {
+    customers: (finalCustomers ?? []) as ArCustomer[],
+    invoices: (finalInvoices ?? []) as ArInvoice[],
+    previousSnapshot: (previousSnapshot ?? null) as ArSummarySnapshot | null,
+  };
 }
 
 export async function updateArInvoiceRow(
