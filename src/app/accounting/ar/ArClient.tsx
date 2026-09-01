@@ -188,7 +188,10 @@ export default function ArClient({
   // ar_invoices/ar_customers data, so trouble-flagged rows are excluded
   // here entirely rather than just visually de-emphasized.
   const nonTroubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status === "none"), [invoices]);
-  const troubleCount = useMemo(() => invoices.filter((i) => i.trouble_status !== "none").length, [invoices]);
+  // Matches AR Troubles' own count exactly - "posted" is settled and
+  // excluded there, so this tile (which links straight to that page)
+  // would be misleading if it counted posted+pending together.
+  const troubleCount = useMemo(() => invoices.filter((i) => i.trouble_status === "pending").length, [invoices]);
 
   const totals = useMemo(() => {
     const byBucket = new Map<ArAgingBucket, number>(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
