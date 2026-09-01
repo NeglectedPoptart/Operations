@@ -79,39 +79,29 @@ export default function ArTroublesClient({
   const [customers] = useState(initialCustomers);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [search, setSearch] = useState("");
-  const [filterPending, setFilterPending] = useState(false);
-  const [filterPosted, setFilterPosted] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
-  // The complementary slice of the main AR page's data - anything with a
-  // trouble flag lives here instead, regardless of short/over-pay status.
-  const troubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status !== "none"), [invoices]);
+  // The complementary slice of the main AR page's data - anything flagged
+  // Pending lives here. Posted is excluded entirely (not just visually) -
+  // once accounting has posted a trouble claim it's settled, so it
+  // shouldn't count toward this page's totals or show up in its list.
+  const troubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status === "pending"), [invoices]);
 
   const totals = useMemo(() => {
     let total = 0;
-    let pending = 0;
-    let posted = 0;
     for (const inv of troubleInvoices) {
       total += inv.balance;
-      if (inv.trouble_status === "pending") pending++;
-      if (inv.trouble_status === "posted") posted++;
     }
-    return { total, pending, posted };
+    return { total, pending: troubleInvoices.length };
   }, [troubleInvoices]);
 
-  const statusFilterActive = filterPending || filterPosted;
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
     const all = buildGroups(customers, troubleInvoices);
     return all
       .map((g) => {
         let invs = g.invoices;
-        if (statusFilterActive) {
-          invs = invs.filter(
-            (i) => (filterPending && i.trouble_status === "pending") || (filterPosted && i.trouble_status === "posted"),
-          );
-        }
         if (q) {
           const nameMatches = g.customer.customer_name.toLowerCase().includes(q) || g.customer.customer_code.toLowerCase().includes(q);
           if (!nameMatches) {
@@ -121,7 +111,7 @@ export default function ArTroublesClient({
         return { ...g, invoices: invs };
       })
       .filter((g) => g.invoices.length > 0);
-  }, [customers, troubleInvoices, search, statusFilterActive, filterPending, filterPosted]);
+  }, [customers, troubleInvoices, search]);
 
   function updateLocal(id: string, patch: Partial<ArInvoice>) {
     setInvoices((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -176,7 +166,7 @@ export default function ArTroublesClient({
       ];
       const blob = await renderPriceSheetPng({
         title: "AR Troubles",
-        message: `Total Outstanding: $${totals.total.toFixed(2)}   Pending: ${totals.pending}   Posted: ${totals.posted}`,
+        message: `Total Outstanding: $${totals.total.toFixed(2)}   Pending: ${totals.pending}`,
         blocks,
       });
       const result = await copyOrDownloadPng(blob, "ar-troubles.png");
@@ -209,7 +199,7 @@ export default function ArTroublesClient({
 
         <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
           <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Summary</h2>
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
               <p className="text-black/60 dark:text-white/60">Total Outstanding</p>
               <p className="text-xl font-bold">${totals.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
@@ -222,11 +212,11 @@ export default function ArTroublesClient({
               <p className="text-black/60 dark:text-white/60">Pending</p>
               <p className={`inline-block rounded px-1.5 text-xl font-bold ${TROUBLE_STATUS_BADGE.pending}`}>{totals.pending}</p>
             </div>
-            <div>
-              <p className="text-black/60 dark:text-white/60">Posted</p>
-              <p className={`inline-block rounded px-1.5 text-xl font-bold ${TROUBLE_STATUS_BADGE.posted}`}>{totals.posted}</p>
-            </div>
           </div>
+          <p className="text-xs text-black/40 dark:text-white/40">
+            Posted claims are excluded here - once accounting posts a trouble claim it&apos;s settled, so it no longer
+            counts toward this page.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4 rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
@@ -236,15 +226,6 @@ export default function ArTroublesClient({
             placeholder="Search customer, invoice #, or PO..."
             className="w-64 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-black"
           />
-          <span className="font-medium text-black/60 dark:text-white/60">Filter:</span>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={filterPending} onChange={(e) => setFilterPending(e.target.checked)} />
-            Pending
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={filterPosted} onChange={(e) => setFilterPosted(e.target.checked)} />
-            Posted
-          </label>
         </div>
 
         <div className="space-y-4">
