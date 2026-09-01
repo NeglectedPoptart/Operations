@@ -172,10 +172,31 @@ export interface LaneRateRow {
   fromHub: string;
   destination: string;
   toTruck: number | null;
+  lastWeekToTruck: number | null;
 }
 
 function money(n: number | null): string {
   return n === null ? "—" : `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+// This week's lowest broker rate vs last week's - never the sales price,
+// which is always exactly +$200 and so never has a different % change of
+// its own to show. Up = the truck rate got more expensive (red); down =
+// cheaper (green) - a rate move reads the opposite of a stock chart.
+function LaneChangeCell({ current, previous }: { current: number | null; previous: number | null }) {
+  if (current === null || previous === null || previous === 0) {
+    return <span className="text-black/30 dark:text-white/30">—</span>;
+  }
+  const pct = ((current - previous) / previous) * 100;
+  if (Math.abs(pct) < 0.05) {
+    return <span className="text-black/40 dark:text-white/40">No change</span>;
+  }
+  const up = pct > 0;
+  return (
+    <span className={`font-semibold ${up ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
+      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
 }
 
 // Split into two side-by-side tables rather than one long list - same
@@ -206,6 +227,7 @@ function DirectorOperationsSection({ rows }: { rows: LaneRateRow[] }) {
                     <th className="px-3 py-1.5">Destination</th>
                     <th className="px-3 py-1.5 text-right">To Truck</th>
                     <th className="px-3 py-1.5 text-right">To Sales</th>
+                    <th className="px-3 py-1.5 text-right">vs Last Wk</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -218,6 +240,9 @@ function DirectorOperationsSection({ rows }: { rows: LaneRateRow[] }) {
                       </td>
                       <td className="bg-amber-100 px-3 py-1.5 text-right font-bold tabular-nums text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">
                         {row.toTruck === null ? "—" : money(row.toTruck + 200)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap">
+                        <LaneChangeCell current={row.toTruck} previous={row.lastWeekToTruck} />
                       </td>
                     </tr>
                   ))}
