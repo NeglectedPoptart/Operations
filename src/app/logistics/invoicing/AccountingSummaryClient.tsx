@@ -12,9 +12,10 @@ function formatMoney(n: number | null) {
 
 const ACCOUNTING_HEADERS = ["Invoice #", "Date", "Customer PO", "Amount", "Age"];
 
-// Every row here is posted-but-not-paid by construction (the caller already
-// filtered out "done"), so the flag isn't distinguishing rows from each
-// other - it's telling accounting, at a glance, what this whole list means.
+// Every row here is posted-but-not-paid by construction (the caller only
+// passes done+flagged rows), so the flag isn't distinguishing rows from
+// each other - it's telling accounting, at a glance, what this whole list
+// means.
 function accountingRowValues(item: InvoiceStatement): string[] {
   const age = daysSince(item.invoice_date);
   return [
@@ -66,14 +67,18 @@ export default function AccountingSummaryClient({
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const brokerNameById = useMemo(() => new Map(brokers.map((b) => [b.id, b.name])), [brokers]);
 
-  // "Posted" = it's on this list at all (entered from a carrier's
-  // statement); "done" means accounting already paid it, so that's the one
-  // status excluded here - everything left is posted and outstanding.
+  // "Posted" specifically means Statement Checker matched this invoice to a
+  // Posted row on the carrier's own statement (see applyStatementCheck) -
+  // that's what sets status to "done" here. flagged is only ever set true
+  // in that same path, for a Posted invoice that still showed a balance -
+  // i.e. exactly "posted in our system but not paid". A fully-paid Posted
+  // invoice gets removed outright rather than left in this table, so
+  // done+flagged is the complete set of what this report is for.
   const { overItems, underItems } = useMemo(() => {
-    const outstanding = statements.filter((s) => s.status !== "done");
+    const postedNotPaid = statements.filter((s) => s.status === "done" && s.flagged);
     const overItems: InvoiceStatement[] = [];
     const underItems: InvoiceStatement[] = [];
-    for (const item of outstanding) {
+    for (const item of postedNotPaid) {
       const age = daysSince(item.invoice_date);
       (age !== null && age >= OVERDUE_DAYS ? overItems : underItems).push(item);
     }
