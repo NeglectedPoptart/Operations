@@ -126,3 +126,93 @@ export function parsePastedOldAge(text: string): ParseResult {
 
   return { rows: aggregateRows(rows) };
 }
+
+function daysBetween(fromIso: string, toIso: string): number {
+  const ms = new Date(`${toIso}T00:00:00Z`).getTime() - new Date(`${fromIso}T00:00:00Z`).getTime();
+  return Math.round(ms / 86400000);
+}
+
+// The PDF's "Parameters:" line carries the report's own run date, e.g.
+// "...As Of: 9/2/2026Parameters:". We use this (not wall-clock "today") to
+// compute Age, since a PDF uploaded a day after it was generated should
+// still show the age as of when the report was actually run.
+function parseAsOfDate(text: string): string | null {
+  const m = text.match(/As Of:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return null;
+  const [, mm, dd, yyyy] = m;
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+}
+
+// unpdf extracts this report's table with columns glued back together in a
+// fixed but visually-scrambled order (not left-to-right reading order), with
+// no delimiter between adjacent values - the same quirk as the "Orders
+// Summary" sales-order PDF (see salesOrderParse.ts). Reverse-engineered per
+// row, left to right as it actually extracts:
+//   PStyle  SizeLabelVarComm(glued)  Description(1+ words)  RecQty  QtyBal
+//   AgeAndTagNo(glued - and only glued with a partial-ship Qty+LastShip when
+//     one exists)  GrowerName(1+ words, last word glued to Grower/Truck/Driver)
+//     ReceivedDate  Season  Document(all glued together, in that order)
+// We only pull what Old Age actually needs: Document, Received, Description,
+// PStyle, a best-effort Size, and Qty Bal (the balance still on hand - this
+// is "Qty" for our purposes, same convention as the paste parser above).
+// Age is deliberately NOT parsed out of the AgeAndTagNo blob: it's two
+// variable-length numbers glued with no separator ("1963" could be age
+// 1/qty 963 or age 19/qty 63), so we compute it instead from Received vs.
+// the report's own "As Of" date.
+function parsePdfRow(line: string): ParsedOldAgeRow | null {
+  const tokens = line.trim().split(/\s+/);
+  if (tokens.length < 6) return null;
+
+  let pairIndex = -1;
+  for (let i = 2; i < tokens.length - 1; i++) {
+    if (/^\d+$/.test(tokens[i]) && /^\d+$/.test(tokens[i + 1])) {
+      pairIndex = i;
+      break;
+    }
+  }
+  if (pairIndex === -1) return null;
+
+  // Everything after Qty Bal - GrowerName, Grower, Truck, Driver, Received,
+  // Season, Document - is glued into one or more tokens with no reliable
+  // word boundaries, so we join it back into a single blob and pull the
+  // LAST date out of it (the Last Ship date, when present, sits earlier in
+  // this blob than Received does).
+  const tailBlob = tokens.slice(pairIndex + 2).join("");
+  const dateMatches = [...tailBlob.matchAll(/\d{1,2}\/\d{1,2}\/\d{4}/g)];
+  if (dateMatches.length === 0) return null;
+  const lastMatch = dateMatches[dateMatches.length - 1];
+  const receivedRaw = lastMatch[0];
+  const afterDate = tailBlob.slice(lastMatch.index + receivedRaw.length);
+  const document = afterDate.replace(/^(None|\d{4})/, "").trim();
+  if (!document) return null;
+
+  return {
+    document,
+    received_date: parseUsDate(receivedRaw),
+    description: tokens.slice(2, pairIndex).join(" ").trim(),
+    pack_style: tokens[0],
+    size: tokens[1].replace(/\d+$/, ""),
+    qty: parseNumber(tokens[pairIndex + 1]),
+    age: null,
+  };
+}
+
+export function parsePdfOldAge(text: string): ParseResult {
+  const asOf = parseAsOfDate(text);
+  const rows = text
+    .split(/\r?\n/)
+    .map(parsePdfRow)
+    .filter((r): r is ParsedOldAgeRow => r !== null);
+
+  if (rows.length === 0) {
+    return { rows: [], error: "Couldn't find any data rows in this PDF." };
+  }
+
+  if (asOf) {
+    for (const row of rows) {
+      row.age = row.received_date ? daysBetween(row.received_date, asOf) : null;
+    }
+  }
+
+  return { rows: aggregateRows(rows) };
+}

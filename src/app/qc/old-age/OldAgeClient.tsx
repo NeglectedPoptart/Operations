@@ -1,13 +1,21 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { parsePastedOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
+import { parsePastedOldAge, parsePdfOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
 import { formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
 import { summarizeByCommodity, summarizeByNextStep, type BarDatum } from "@/lib/oldAgeSummary";
 import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeMove, type OldAgeNextStep } from "@/lib/types";
-import { addOldAgeMove, addOldAgeRow, deleteOldAgeItem, deleteOldAgeMove, importOldAgeItems, updateOldAgeItem } from "./actions";
+import {
+  addOldAgeMove,
+  addOldAgeRow,
+  deleteOldAgeItem,
+  deleteOldAgeMove,
+  extractPdfText,
+  importOldAgeItems,
+  updateOldAgeItem,
+} from "./actions";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -445,6 +453,7 @@ export default function OldAgeClient({
   const [previewRows, setPreviewRows] = useState<ParsedOldAgeRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [adding, setAdding] = useState(false);
   const [copiedAll, setCopiedAll] = useState(false);
   const [imageStatusAll, setImageStatusAll] = useState<string | null>(null);
@@ -458,6 +467,39 @@ export default function OldAgeClient({
     }
     setParseError(null);
     setPreviewRows(result.rows);
+  }
+
+  // The PDF's extracted text isn't tab-separated like a real Excel paste - it
+  // comes out of unpdf with columns glued back together in a scrambled order
+  // (see parsePdfOldAge's comments) - so this runs its own parser directly
+  // rather than routing through the paste textarea/parsePastedOldAge.
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPdf(true);
+    setParseError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setParseError(`Couldn't read that PDF (${result.error}). It may be password protected or corrupted - try pasting the text instead.`);
+        return;
+      }
+      const parsed = parsePdfOldAge(result.text);
+      if (parsed.error) {
+        setParseError(parsed.error);
+        setPreviewRows(null);
+        return;
+      }
+      setPreviewRows(parsed.rows);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try pasting the text instead.`);
+    } finally {
+      setUploadingPdf(false);
+    }
   }
 
   async function handleConfirmImport() {
@@ -691,6 +733,16 @@ export default function OldAgeClient({
             placeholder="Paste tab-separated rows from Excel here..."
             className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
           />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="cursor-pointer rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+              {uploadingPdf ? "Reading PDF..." : "Or upload a PDF"}
+              <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+            </label>
+            <span className="text-xs text-black/40 dark:text-white/40">
+              For the &quot;Tag Status by Receiving Doc&quot; report - check the preview carefully, since Size may
+              come through combined with the label.
+            </span>
+          </div>
           {parseError && <p className="text-sm text-red-600">{parseError}</p>}
 
           {!previewRows && (
