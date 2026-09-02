@@ -1,5 +1,13 @@
+"use client";
+
+import { useState } from "react";
 import { formatDate } from "@/lib/dates";
 import type { Load, LoadStop } from "@/lib/types";
+
+// Past this many drops, listing every stop makes the tile towering compared
+// to every other load's card - collapse the breakdown behind a toggle
+// instead (the header above already shows every order number at a glance).
+const DROP_LIST_COLLAPSE_THRESHOLD = 3;
 
 function DeliveryLine({ stop }: { stop: LoadStop }) {
   return (
@@ -21,10 +29,12 @@ function DeliveryLine({ stop }: { stop: LoadStop }) {
 // the detail line below - used by the Logistics Summary page's Pending to
 // Load section, which is already grouped into per-date subsections.
 export default function LoadSummary({ load, dateFirst = false }: { load: Load; dateFirst?: boolean }) {
+  const [dropsExpanded, setDropsExpanded] = useState(false);
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const pickups = [...load.load_pickups].sort((a, b) => a.position - b.position);
   const firstStop = stops[0];
   const multiDrop = stops.length > 1;
+  const manyDrops = stops.length > DROP_LIST_COLLAPSE_THRESHOLD;
   const totalPicks = 1 + pickups.length;
 
   return (
@@ -89,7 +99,8 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
 
       <div className="mt-2 space-y-1.5 text-xs text-black/60 dark:text-white/60">
         {multiDrop
-          ? stops.map((stop, i) => (
+          ? (!manyDrops || dropsExpanded) &&
+            stops.map((stop, i) => (
               <div key={stop.id}>
                 <p>
                   <span className="font-medium">Drop {i + 1}: </span>
@@ -118,6 +129,14 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
                 )}
               </p>
             )}
+        {manyDrops && (
+          <button
+            onClick={() => setDropsExpanded((e) => !e)}
+            className="font-medium text-green-700 hover:underline dark:text-green-400"
+          >
+            {dropsExpanded ? "▲ Hide drops" : `▼ Show all ${stops.length} drops`}
+          </button>
+        )}
       </div>
 
       {load.notes && <p className="mt-1 text-xs italic text-black/50 dark:text-white/50">{load.notes}</p>}
