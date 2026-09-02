@@ -182,6 +182,20 @@ export default function ArClient({
   const [baseline, setBaseline] = useState(initialBaseline);
   const [showChanges, setShowChanges] = useState(false);
   const [savingBaseline, setSavingBaseline] = useState(false);
+  // Collapsed by default - a customer's invoice table only renders once
+  // its name is clicked, so scrolling the full customer list (or jumping
+  // straight to the one you searched for) doesn't mean paging past every
+  // other customer's open table first.
+  const [expandedCustomerIds, setExpandedCustomerIds] = useState<Set<string>>(new Set());
+
+  function toggleCustomer(id: string) {
+    setExpandedCustomerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // AR Troubles (a separate page) owns anything with trouble_status !==
   // "none" - this page is the complementary slice of the same
@@ -536,15 +550,32 @@ export default function ArClient({
               {invoices.length === 0 ? "No open invoices yet - paste in the AR Aging report above." : "Nothing matches the current search/filter."}
             </p>
           )}
-          {groups.map((g) => (
+          {groups.map((g) => {
+            const expanded = expandedCustomerIds.has(g.customer.id);
+            return (
             <div key={g.customer.id} className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-lg font-bold text-green-700 dark:text-green-400">{g.customer.customer_name}</h2>
-                  <p className="text-xs text-black/40 dark:text-white/40">
-                    {g.customer.customer_code}
-                    {g.customer.credit_limit !== null && ` · Credit Limit ${formatMoney(g.customer.credit_limit)}`}
-                  </p>
+              <button
+                onClick={() => toggleCustomer(g.customer.id)}
+                className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    className={`h-4 w-4 shrink-0 text-black/40 transition-transform dark:text-white/40 ${expanded ? "rotate-90" : ""}`}
+                  >
+                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <div>
+                    <h2 className="text-lg font-bold text-green-700 dark:text-green-400">{g.customer.customer_name}</h2>
+                    <p className="text-xs text-black/40 dark:text-white/40">
+                      {g.customer.customer_code}
+                      {g.customer.credit_limit !== null && ` · Credit Limit ${formatMoney(g.customer.credit_limit)}`}
+                      {` · ${g.invoices.length} invoice${g.invoices.length === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <p className="text-lg font-bold">{formatMoney(g.totalBalance)}</p>
@@ -561,7 +592,8 @@ export default function ArClient({
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
+              {expanded && (
               <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
                 <table className="w-full text-sm">
                   <thead className="bg-black/5 text-left dark:bg-white/5">
@@ -640,8 +672,10 @@ export default function ArClient({
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

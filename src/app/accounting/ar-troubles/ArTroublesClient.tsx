@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { AR_AGING_BUCKETS, arAgingBucket } from "@/lib/arAging";
+import { TROUBLE_AGING_BUCKETS, troubleAgingBucket, type TroubleAgingBucket } from "@/lib/arAging";
 import {
-  BUCKET_BADGE,
   DiscrepancyBadge,
   DISCREPANCY_BADGE,
   HIGHLIGHT_ROW_CLASS,
@@ -15,7 +14,7 @@ import {
   formatMoney,
   payDiscrepancy,
 } from "@/lib/arShared";
-import { formatDate } from "@/lib/dates";
+import { daysSince, formatDate } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArTroubleStatus } from "@/lib/types";
 import { deleteArInvoiceRow, updateArInvoiceRow } from "../ar/actions";
@@ -34,6 +33,12 @@ const TROUBLE_STATUS_BADGE: Record<ArTroubleStatus, string> = {
   posted: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
 };
 
+const TROUBLE_BUCKET_BADGE: Record<TroubleAgingBucket, string> = {
+  "0-30": "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  "31-45": "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+  "45+": "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+};
+
 const AR_TROUBLES_HEADERS = [
   "Customer",
   "Invoice #",
@@ -44,13 +49,19 @@ const AR_TROUBLES_HEADERS = [
   "Balance",
   "Short/Over Pay",
   "Trouble Status",
+  "Age (Days)",
   "Aging",
   "Last Contact",
   "Notes",
 ];
 
+function ageDaysDisplay(dueDate: string | null): string {
+  const days = daysSince(dueDate);
+  return days === null ? "" : String(Math.max(days, 0));
+}
+
 function arTroublesRowValues(invoice: ArInvoice, customerName: string): string[] {
-  const bucket = arAgingBucket(invoice.due_date);
+  const bucket = troubleAgingBucket(invoice.due_date);
   const discrepancy = payDiscrepancy(invoice);
   return [
     customerName,
@@ -62,7 +73,8 @@ function arTroublesRowValues(invoice: ArInvoice, customerName: string): string[]
     formatMoney(invoice.balance),
     discrepancy ? `${discrepancy.kind === "short" ? "Short" : "Over"} $${discrepancy.amount.toFixed(2)}` : "",
     TROUBLE_STATUS_LABEL[invoice.trouble_status],
-    AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label ?? "",
+    ageDaysDisplay(invoice.due_date),
+    TROUBLE_AGING_BUCKETS.find((b) => b.key === bucket)?.label ?? "",
     invoice.last_contact ? formatDate(invoice.last_contact) : "",
     invoice.notes ?? "",
   ];
@@ -81,6 +93,20 @@ export default function ArTroublesClient({
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  // Collapsed by default - a customer's full invoice table only renders
+  // once its name is clicked, so scanning the whole list (or searching
+  // down to the one customer you care about) doesn't mean scrolling past
+  // every other customer's open table first.
+  const [expandedCustomerIds, setExpandedCustomerIds] = useState<Set<string>>(new Set());
+
+  function toggleCustomer(id: string) {
+    setExpandedCustomerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // The complementary slice of the main AR page's data - anything flagged
   // Pending lives here. Posted is excluded entirely (not just visually) -
@@ -90,10 +116,12 @@ export default function ArTroublesClient({
 
   const totals = useMemo(() => {
     let total = 0;
+    let over30 = 0;
     for (const inv of troubleInvoices) {
       total += inv.balance;
+      if (troubleAgingBucket(inv.due_date) !== "0-30") over30++;
     }
-    return { total, pending: troubleInvoices.length };
+    return { total, pending: troubleInvoices.length, over30 };
   }, [troubleInvoices]);
 
   const groups = useMemo(() => {
@@ -199,7 +227,7 @@ export default function ArTroublesClient({
 
         <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
           <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Summary</h2>
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <div>
               <p className="text-black/60 dark:text-white/60">Total Outstanding</p>
               <p className="text-xl font-bold">${totals.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
@@ -211,6 +239,10 @@ export default function ArTroublesClient({
             <div>
               <p className="text-black/60 dark:text-white/60">Pending</p>
               <p className={`inline-block rounded px-1.5 text-xl font-bold ${TROUBLE_STATUS_BADGE.pending}`}>{totals.pending}</p>
+            </div>
+            <div>
+              <p className="text-black/60 dark:text-white/60">Over 30 Days</p>
+              <p className={`inline-block rounded px-1.5 text-xl font-bold ${TROUBLE_BUCKET_BADGE["31-45"]}`}>{totals.over30}</p>
             </div>
           </div>
           <p className="text-xs text-black/40 dark:text-white/40">
@@ -234,15 +266,32 @@ export default function ArTroublesClient({
               {troubleInvoices.length === 0 ? "No trouble claims right now." : "Nothing matches the current search/filter."}
             </p>
           )}
-          {groups.map((g) => (
+          {groups.map((g) => {
+            const expanded = expandedCustomerIds.has(g.customer.id);
+            return (
             <div key={g.customer.id} className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-lg font-bold text-green-700 dark:text-green-400">{g.customer.customer_name}</h2>
-                  <p className="text-xs text-black/40 dark:text-white/40">
-                    {g.customer.customer_code}
-                    {g.customer.credit_limit !== null && ` · Credit Limit ${formatMoney(g.customer.credit_limit)}`}
-                  </p>
+              <button
+                onClick={() => toggleCustomer(g.customer.id)}
+                className="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    className={`h-4 w-4 shrink-0 text-black/40 transition-transform dark:text-white/40 ${expanded ? "rotate-90" : ""}`}
+                  >
+                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <div>
+                    <h2 className="text-lg font-bold text-green-700 dark:text-green-400">{g.customer.customer_name}</h2>
+                    <p className="text-xs text-black/40 dark:text-white/40">
+                      {g.customer.customer_code}
+                      {g.customer.credit_limit !== null && ` · Credit Limit ${formatMoney(g.customer.credit_limit)}`}
+                      {` · ${g.invoices.length} claim${g.invoices.length === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <p className="text-lg font-bold">{formatMoney(g.totalBalance)}</p>
@@ -259,7 +308,8 @@ export default function ArTroublesClient({
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
+              {expanded && (
               <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
                 <table className="w-full text-sm">
                   <thead className="bg-black/5 text-left dark:bg-white/5">
@@ -271,6 +321,7 @@ export default function ArTroublesClient({
                       <th className="px-2 py-2 text-right">Doc Amount</th>
                       <th className="px-2 py-2 text-right">Balance</th>
                       <th className="px-2 py-2">Trouble Status</th>
+                      <th className="px-2 py-2 text-right">Age</th>
                       <th className="px-2 py-2">Aging</th>
                       <th className="px-2 py-2">Last Contact</th>
                       <th className="px-2 py-2">Notes</th>
@@ -280,7 +331,7 @@ export default function ArTroublesClient({
                   </thead>
                   <tbody>
                     {g.invoices.map((inv) => {
-                      const bucket = arAgingBucket(inv.due_date);
+                      const bucket = troubleAgingBucket(inv.due_date);
                       const discrepancy = payDiscrepancy(inv);
                       return (
                         <tr key={inv.id} className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]}`}>
@@ -300,9 +351,10 @@ export default function ArTroublesClient({
                               {TROUBLE_STATUS_LABEL[inv.trouble_status]}
                             </span>
                           </td>
+                          <td className="px-2 py-1.5 text-right tabular-nums">{ageDaysDisplay(inv.due_date)}</td>
                           <td className="px-2 py-1.5">
-                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${BUCKET_BADGE[bucket]}`}>
-                              {AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label}
+                            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${TROUBLE_BUCKET_BADGE[bucket]}`}>
+                              {TROUBLE_AGING_BUCKETS.find((b) => b.key === bucket)?.label}
                             </span>
                           </td>
                           <td className="min-w-[7rem] px-1 py-1">
@@ -344,8 +396,10 @@ export default function ArTroublesClient({
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
