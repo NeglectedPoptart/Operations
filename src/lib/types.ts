@@ -379,6 +379,21 @@ export interface QcAgendaFloorAging {
   updated_at: string;
 }
 
+export interface QcAgendaHoldover {
+  id: string;
+  entry_date: string;
+  position: number;
+  inspection_date: string | null;
+  po: string | null;
+  lot: string | null;
+  product: string | null;
+  qc: string | null;
+  notes: string | null;
+  qc_inspection_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface QcAgendaRepack {
   id: string;
   entry_date: string;

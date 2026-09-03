@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { addDays } from "@/lib/dates";
 import { OLD_AGE_NEXT_STEPS } from "@/lib/types";
 import type { QcInboundStatus } from "@/lib/types";
 
@@ -145,6 +146,99 @@ export async function updateFloorAgingRow(
 export async function deleteFloorAgingRow(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("qc_agenda_floor_aging").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// Holdover Inspections (Not Checked) ---------------------------------------------
+
+// Pull Holdovers looks at the prior business day's QC Inspections - for a
+// Monday agenda that means both Saturday AND Sunday, since neither day has
+// an agenda of its own to catch what was left unresolved over the weekend.
+function holdoverLookbackDates(entryDate: string): string[] {
+  const dayOfWeek = new Date(`${entryDate}T00:00:00Z`).getUTCDay(); // 0 = Sun ... 6 = Sat
+  if (dayOfWeek === 1) return [addDays(entryDate, -2), addDays(entryDate, -1)];
+  return [addDays(entryDate, -1)];
+}
+
+// Copies whatever QC Inspections rows from the lookback day(s) were never
+// actually resolved - no result recorded, no Chat sent, no Report sent -
+// into today's Holdovers list, skipping rows already pulled in for this
+// date so re-clicking is safe. Same dedupe pattern as pullOldAgeIntoFloorAging.
+export async function pullHoldoversFromInspections(entryDate: string) {
+  const supabase = await createClient();
+  const lookbackDates = holdoverLookbackDates(entryDate);
+
+  const [{ data: inspections, error: inspectionsError }, { data: existingRows, error: existingError }] = await Promise.all([
+    supabase
+      .from("qc_inspections")
+      .select("*")
+      .in("entry_date", lookbackDates)
+      .eq("chat", false)
+      .eq("report", false)
+      .order("entry_date", { ascending: true }),
+    supabase.from("qc_agenda_holdovers").select("qc_inspection_id").eq("entry_date", entryDate),
+  ]);
+  if (inspectionsError) throw new Error(inspectionsError.message);
+  if (existingError) throw new Error(existingError.message);
+
+  const alreadyPulled = new Set((existingRows ?? []).map((r) => r.qc_inspection_id).filter(Boolean));
+  const toPull = (inspections ?? []).filter(
+    (item) => (!item.result || item.result.trim() === "") && !alreadyPulled.has(item.id),
+  );
+  if (toPull.length === 0) return [];
+
+  const { data: maxPositionRows } = await supabase
+    .from("qc_agenda_holdovers")
+    .select("position")
+    .eq("entry_date", entryDate)
+    .order("position", { ascending: false })
+    .limit(1);
+  let nextPosition = (maxPositionRows?.[0]?.position ?? 0) + 1;
+
+  const rows = toPull.map((item) => ({
+    entry_date: entryDate,
+    position: nextPosition++,
+    inspection_date: item.entry_date,
+    po: item.po,
+    lot: item.lot,
+    product: item.product,
+    qc: item.qc,
+    notes: item.notes,
+    qc_inspection_id: item.id,
+  }));
+
+  const { data, error } = await supabase.from("qc_agenda_holdovers").insert(rows).select();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return data;
+}
+
+export async function addHoldoverRow(entryDate: string, nextPosition: number) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("qc_agenda_holdovers")
+    .insert({ entry_date: entryDate, position: nextPosition })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return data;
+}
+
+export async function updateHoldoverRow(
+  id: string,
+  patch: { po?: string | null; lot?: string | null; product?: string | null; qc?: string | null; notes?: string | null },
+) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("qc_agenda_holdovers").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+export async function deleteHoldoverRow(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("qc_agenda_holdovers").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
 }

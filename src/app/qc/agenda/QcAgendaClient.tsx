@@ -16,6 +16,7 @@ import {
 import {
   QC_INBOUND_STATUSES,
   type QcAgendaFloorAging,
+  type QcAgendaHoldover,
   type QcAgendaInbound,
   type QcAgendaMeta,
   type QcAgendaRepack,
@@ -23,14 +24,18 @@ import {
 } from "@/lib/types";
 import {
   addFloorAgingRow,
+  addHoldoverRow,
   addInboundRow,
   addRepackRow,
   deleteFloorAgingRow,
+  deleteHoldoverRow,
   deleteInboundRow,
   deleteRepackRow,
+  pullHoldoversFromInspections,
   pullOldAgeIntoFloorAging,
   saveQcAgendaMeta,
   updateFloorAgingRow,
+  updateHoldoverRow,
   updateInboundRow,
   updateRepackRow,
 } from "./actions";
@@ -66,6 +71,18 @@ function floorAgingRowValues(r: QcAgendaFloorAging): string[] {
     r.received_date ? formatDate(r.received_date) : "",
     r.days_on_floor != null ? String(r.days_on_floor) : "",
     r.action_needed ?? "",
+  ];
+}
+
+const HOLDOVER_HEADERS = ["Inspection Date", "PO", "Lot", "Product", "QC", "Notes"];
+function holdoverRowValues(r: QcAgendaHoldover): string[] {
+  return [
+    r.inspection_date ? formatDate(r.inspection_date) : "",
+    r.po ?? "",
+    r.lot ?? "",
+    r.product ?? "",
+    r.qc ?? "",
+    r.notes ?? "",
   ];
 }
 
@@ -111,6 +128,7 @@ function buildFullEmailHtml(
   meta: QcAgendaMeta | null,
   inbounds: QcAgendaInbound[],
   floorAging: QcAgendaFloorAging[],
+  holdovers: QcAgendaHoldover[],
   repack: QcAgendaRepack[],
 ): string {
   return `<div style="font-family:Calibri,Arial,sans-serif;background:#ffffff;">
@@ -118,6 +136,7 @@ function buildFullEmailHtml(
     ${buildMetaHtml(date, meta)}
     ${buildSectionHtml("Inbounds", "#8DC63F", INBOUND_HEADERS, inbounds.map(inboundRowValues))}
     ${buildSectionHtml("Floor Aging Check (Product at Day Threshold)", "#FFA726", FLOOR_AGING_HEADERS, floorAging.map(floorAgingRowValues))}
+    ${buildSectionHtml("Holdover Inspections (Not Checked)", "#EF5350", HOLDOVER_HEADERS, holdovers.map(holdoverRowValues))}
     ${buildSectionHtml("Repack Management & Supply Needs", "#64B5F6", REPACK_HEADERS, repack.map(repackRowValues))}
   </div>`;
 }
@@ -127,6 +146,7 @@ function buildPlainText(
   meta: QcAgendaMeta | null,
   inbounds: QcAgendaInbound[],
   floorAging: QcAgendaFloorAging[],
+  holdovers: QcAgendaHoldover[],
   repack: QcAgendaRepack[],
 ): string {
   const lines = [
@@ -142,6 +162,7 @@ function buildPlainText(
   }
   section("Inbounds", INBOUND_HEADERS, inbounds.map(inboundRowValues));
   section("Floor Aging Check (Product at Day Threshold)", FLOOR_AGING_HEADERS, floorAging.map(floorAgingRowValues));
+  section("Holdover Inspections (Not Checked)", HOLDOVER_HEADERS, holdovers.map(holdoverRowValues));
   section("Repack Management & Supply Needs", REPACK_HEADERS, repack.map(repackRowValues));
   return lines.join("\n");
 }
@@ -156,6 +177,7 @@ function buildWhatsAppMessage(
   meta: QcAgendaMeta | null,
   inbounds: QcAgendaInbound[],
   floorAging: QcAgendaFloorAging[],
+  holdovers: QcAgendaHoldover[],
   repack: QcAgendaRepack[],
 ): string {
   const section = (title: string, headers: string[], rows: string[][]) =>
@@ -166,6 +188,7 @@ function buildWhatsAppMessage(
     "",
     section("Inbounds", INBOUND_HEADERS, inbounds.map(inboundRowValues)),
     section("Floor Aging Check", FLOOR_AGING_HEADERS, floorAging.map(floorAgingRowValues)),
+    section("Holdover Inspections (Not Checked)", HOLDOVER_HEADERS, holdovers.map(holdoverRowValues)),
     section("Repack Management & Supply Needs", REPACK_HEADERS, repack.map(repackRowValues)),
   ].join("\n\n");
 }
@@ -174,6 +197,7 @@ interface DayData {
   meta: QcAgendaMeta | null;
   inbounds: QcAgendaInbound[];
   floorAging: QcAgendaFloorAging[];
+  holdovers: QcAgendaHoldover[];
   repack: QcAgendaRepack[];
 }
 
@@ -182,12 +206,14 @@ export default function QcAgendaClient({
   initialMeta,
   initialInbounds,
   initialFloorAging,
+  initialHoldovers,
   initialRepack,
 }: {
   initialDate: string;
   initialMeta: QcAgendaMeta | null;
   initialInbounds: QcAgendaInbound[];
   initialFloorAging: QcAgendaFloorAging[];
+  initialHoldovers: QcAgendaHoldover[];
   initialRepack: QcAgendaRepack[];
 }) {
   const confirm = useConfirm();
@@ -197,15 +223,17 @@ export default function QcAgendaClient({
       meta: initialMeta,
       inbounds: initialInbounds,
       floorAging: initialFloorAging,
+      holdovers: initialHoldovers,
       repack: initialRepack,
     },
   }));
   const [pulling, setPulling] = useState(false);
+  const [pullingHoldovers, setPullingHoldovers] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
-  const day = cache[date] ?? { meta: null, inbounds: [], floorAging: [], repack: [] };
+  const day = cache[date] ?? { meta: null, inbounds: [], floorAging: [], holdovers: [], repack: [] };
   const loading = !(date in cache);
   const isToday = date === todayISO();
 
@@ -218,14 +246,16 @@ export default function QcAgendaClient({
       supabase.from("qc_agenda_meta").select("*").eq("entry_date", target).maybeSingle(),
       supabase.from("qc_agenda_inbounds").select("*").eq("entry_date", target).order("position", { ascending: true }),
       supabase.from("qc_agenda_floor_aging").select("*").eq("entry_date", target).order("position", { ascending: true }),
+      supabase.from("qc_agenda_holdovers").select("*").eq("entry_date", target).order("position", { ascending: true }),
       supabase.from("qc_agenda_repack").select("*").eq("entry_date", target).order("position", { ascending: true }),
-    ]).then(([metaRes, inboundsRes, floorAgingRes, repackRes]) => {
+    ]).then(([metaRes, inboundsRes, floorAgingRes, holdoversRes, repackRes]) => {
       setCache((prev) => ({
         ...prev,
         [target]: {
           meta: (metaRes.data ?? null) as QcAgendaMeta | null,
           inbounds: (inboundsRes.data ?? []) as QcAgendaInbound[],
           floorAging: (floorAgingRes.data ?? []) as QcAgendaFloorAging[],
+          holdovers: (holdoversRes.data ?? []) as QcAgendaHoldover[],
           repack: (repackRes.data ?? []) as QcAgendaRepack[],
         },
       }));
@@ -286,6 +316,34 @@ export default function QcAgendaClient({
     await deleteFloorAgingRow(id).catch(() => {});
   }
 
+  async function handlePullHoldovers() {
+    setPullingHoldovers(true);
+    try {
+      const newRows = await pullHoldoversFromInspections(date);
+      if (newRows.length > 0) {
+        patchDay({ holdovers: [...day.holdovers, ...(newRows as QcAgendaHoldover[])] });
+      }
+    } finally {
+      setPullingHoldovers(false);
+    }
+  }
+
+  async function handleAddHoldover() {
+    const nextPosition = day.holdovers.length > 0 ? Math.max(...day.holdovers.map((r) => r.position)) + 1 : 1;
+    const row = await addHoldoverRow(date, nextPosition);
+    patchDay({ holdovers: [...day.holdovers, row as QcAgendaHoldover] });
+  }
+
+  function handleHoldoverSave(id: string, patch: Partial<QcAgendaHoldover>) {
+    patchDay({ holdovers: day.holdovers.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
+    updateHoldoverRow(id, patch).catch(() => {});
+  }
+
+  async function handleHoldoverDelete(id: string) {
+    patchDay({ holdovers: day.holdovers.filter((r) => r.id !== id) });
+    await deleteHoldoverRow(id).catch(() => {});
+  }
+
   async function handleAddRepack() {
     const nextPosition = day.repack.length > 0 ? Math.max(...day.repack.map((r) => r.position)) + 1 : 1;
     const row = await addRepackRow(date, nextPosition);
@@ -304,8 +362,8 @@ export default function QcAgendaClient({
   }
 
   async function handleCopyEmail() {
-    const html = buildFullEmailHtml(date, day.meta, day.inbounds, day.floorAging, day.repack);
-    const text = buildPlainText(date, day.meta, day.inbounds, day.floorAging, day.repack);
+    const html = buildFullEmailHtml(date, day.meta, day.inbounds, day.floorAging, day.holdovers, day.repack);
+    const text = buildPlainText(date, day.meta, day.inbounds, day.floorAging, day.holdovers, day.repack);
     try {
       if (typeof ClipboardItem !== "undefined") {
         await navigator.clipboard.write([
@@ -325,7 +383,7 @@ export default function QcAgendaClient({
   }
 
   async function handleCopyWhatsApp() {
-    const text = buildWhatsAppMessage(date, day.meta, day.inbounds, day.floorAging, day.repack);
+    const text = buildWhatsAppMessage(date, day.meta, day.inbounds, day.floorAging, day.holdovers, day.repack);
     try {
       await navigator.clipboard.writeText(text);
       setCopiedWhatsApp(true);
@@ -349,6 +407,12 @@ export default function QcAgendaClient({
           headerColor: "#FFA726",
           columnHeaders: FLOOR_AGING_HEADERS,
           rows: toCanvasRows(day.floorAging.map(floorAgingRowValues), FLOOR_AGING_HEADERS.length),
+        },
+        {
+          title: "Holdover Inspections (Not Checked)",
+          headerColor: "#EF5350",
+          columnHeaders: HOLDOVER_HEADERS,
+          rows: toCanvasRows(day.holdovers.map(holdoverRowValues), HOLDOVER_HEADERS.length),
         },
         {
           title: "Repack Management & Supply Needs",
@@ -672,6 +736,101 @@ export default function QcAgendaClient({
         </div>
         <button
           onClick={handleAddFloorAging}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 print:hidden"
+        >
+          + Add Row
+        </button>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-red-500 pb-1">
+          <h2 className="text-lg font-bold text-red-600 dark:text-red-400">Holdover Inspections (Not Checked)</h2>
+          <button
+            onClick={handlePullHoldovers}
+            disabled={pullingHoldovers}
+            className="rounded-md border border-red-500 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 print:hidden dark:text-red-400 dark:hover:bg-red-900/20"
+          >
+            {pullingHoldovers ? "Pulling..." : "Pull Holdovers"}
+          </button>
+        </div>
+        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10 print:border-black">
+          <table className="w-full text-sm print:text-[9px]">
+            <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">
+              <tr>
+                <th className="px-2 py-2 print:p-0.5">Inspection Date</th>
+                <th className="px-2 py-2 print:p-0.5">PO</th>
+                <th className="px-2 py-2 print:p-0.5">Lot</th>
+                <th className="px-2 py-2 print:p-0.5">Product</th>
+                <th className="px-2 py-2 print:p-0.5">QC</th>
+                <th className="px-2 py-2 print:p-0.5">Notes</th>
+                <th className="w-16 px-2 py-2 print:hidden" />
+              </tr>
+            </thead>
+            <tbody>
+              {day.holdovers.map((row) => (
+                <tr key={row.id} className="border-t border-black/10 dark:border-white/10">
+                  <td className="px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      type="date"
+                      defaultValue={row.inspection_date ?? ""}
+                      onBlur={(e) => handleHoldoverSave(row.id, { inspection_date: e.target.value || null })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.po ?? ""}
+                      onBlur={(e) => handleHoldoverSave(row.id, { po: e.target.value })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.lot ?? ""}
+                      onBlur={(e) => handleHoldoverSave(row.id, { lot: e.target.value })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[8rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.product ?? ""}
+                      onBlur={(e) => handleHoldoverSave(row.id, { product: e.target.value })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.qc ?? ""}
+                      onBlur={(e) => handleHoldoverSave(row.id, { qc: e.target.value })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[10rem] px-1 py-1 print:min-w-0 print:p-0.5">
+                    <input
+                      defaultValue={row.notes ?? ""}
+                      onBlur={(e) => handleHoldoverSave(row.id, { notes: e.target.value })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="px-2 py-1.5 print:hidden">
+                    <button onClick={() => handleHoldoverDelete(row.id)} className="text-xs font-medium text-red-600 hover:underline">
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {day.holdovers.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                    Nothing pulled in yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <button
+          onClick={handleAddHoldover}
           className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 print:hidden"
         >
           + Add Row

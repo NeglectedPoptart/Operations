@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/dates";
-import type { QcAgendaFloorAging, QcAgendaInbound, QcAgendaMeta, QcAgendaRepack } from "@/lib/types";
+import type { QcAgendaFloorAging, QcAgendaHoldover, QcAgendaInbound, QcAgendaMeta, QcAgendaRepack } from "@/lib/types";
 import QcAgendaClient from "./QcAgendaClient";
 
 export const dynamic = "force-dynamic";
@@ -13,18 +13,21 @@ export default async function QcAgendaPage() {
     { data: meta, error: metaError },
     { data: inbounds, error: inboundsError },
     { data: floorAging, error: floorAgingError },
+    { data: holdovers, error: holdoversError },
     { data: repack, error: repackError },
   ] = await Promise.all([
     supabase.from("qc_agenda_meta").select("*").eq("entry_date", today).maybeSingle(),
     supabase.from("qc_agenda_inbounds").select("*").eq("entry_date", today).order("position", { ascending: true }),
     supabase.from("qc_agenda_floor_aging").select("*").eq("entry_date", today).order("position", { ascending: true }),
+    supabase.from("qc_agenda_holdovers").select("*").eq("entry_date", today).order("position", { ascending: true }),
     supabase.from("qc_agenda_repack").select("*").eq("entry_date", today).order("position", { ascending: true }),
   ]);
 
-  if (metaError || inboundsError || floorAgingError || repackError) {
+  if (metaError || inboundsError || floorAgingError || holdoversError || repackError) {
     return (
       <p className="text-red-600">
-        Failed to load QC Agenda: {metaError?.message ?? inboundsError?.message ?? floorAgingError?.message ?? repackError?.message}
+        Failed to load QC Agenda:{" "}
+        {metaError?.message ?? inboundsError?.message ?? floorAgingError?.message ?? holdoversError?.message ?? repackError?.message}
       </p>
     );
   }
@@ -35,6 +38,7 @@ export default async function QcAgendaPage() {
       initialMeta={meta as QcAgendaMeta | null}
       initialInbounds={(inbounds ?? []) as QcAgendaInbound[]}
       initialFloorAging={(floorAging ?? []) as QcAgendaFloorAging[]}
+      initialHoldovers={(holdovers ?? []) as QcAgendaHoldover[]}
       initialRepack={(repack ?? []) as QcAgendaRepack[]}
     />
   );
