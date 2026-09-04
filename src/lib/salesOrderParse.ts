@@ -1,6 +1,7 @@
 // Parses the ERP's "Orders Summary" report (pasted as text, or extracted
 // from an uploaded PDF via unpdf) for the Weekly Company Call's Operations
-// Coordinator breakdown (orders/cases/terms by salesperson).
+// Coordinator breakdown (orders/cases/terms by salesperson), and for
+// Management's Order Status Report (same report, filterable by status).
 //
 // The report's underlying PDF draws each row's cells in a fixed but
 // visually-scrambled order (confirmed against a real export): extracting
@@ -10,11 +11,15 @@
 // follows it (so "998DELFINO - Delfino..." is genuinely "998" glued to
 // "DELFINO..."). Freight/Truck are free text and never contain digits in
 // practice, so rather than try to delimit every column, this only pulls
-// out what the aggregates actually need: salesperson, terms, and the two
-// order-quantity numbers - found as the last one or two digit-runs on the
-// line, whatever text sits around them.
+// out what the aggregates actually need: status, salesperson, terms, and
+// the two order-quantity numbers - found as the last one or two digit-runs
+// on the line, whatever text sits around them. Status is a single token
+// (no internal whitespace) - if the ERP ever emits a multi-word status this
+// regex would need to change, but every real export seen so far is one word
+// (or a code) per status.
 export interface SalesOrderRow {
   orderNo: string;
+  status: string;
   salesperson: string;
   terms: "Delivered" | "FOB";
   ordered: number;
@@ -42,7 +47,7 @@ export function parseSalesOrderText(raw: string): ParseSalesOrderResult {
   for (const line of lines) {
     const match = line.match(ROW_RE);
     if (!match) continue;
-    const [, orderNo, , salespersonRaw, terms, remainder] = match;
+    const [, orderNo, status, salespersonRaw, terms, remainder] = match;
 
     const numberMatches = [...remainder.matchAll(/\d[\d,]*/g)];
     let shipped: number | null = null;
@@ -69,7 +74,14 @@ export function parseSalesOrderText(raw: string): ParseSalesOrderResult {
     }
 
     if (ordered === null || shipped === null) continue;
-    rows.push({ orderNo, salesperson: salespersonRaw.trim(), terms: terms as "Delivered" | "FOB", ordered, shipped });
+    rows.push({
+      orderNo,
+      status: status.trim(),
+      salesperson: salespersonRaw.trim(),
+      terms: terms as "Delivered" | "FOB",
+      ordered,
+      shipped,
+    });
   }
 
   if (rows.length === 0) {
