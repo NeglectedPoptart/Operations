@@ -55,6 +55,19 @@ export function nextWeekStart(weekStart: string): string {
   return addDays(weekStart, 7);
 }
 
+// Approximate "week N of the year" for display (e.g. the Arrivals report's
+// "WEEK 37" header) - not strict ISO-8601 week numbering (no edge-case
+// handling for years where Jan 1 falls mid-week), just a consistent count of
+// Mondays since the year's first Monday, which is all a weekly report needs.
+export function weekNumberOf(weekStartDate: string): number {
+  const year = Number(weekStartDate.slice(0, 4));
+  const firstMonday = mondayOf(`${year}-01-01`);
+  const diffDays = Math.round(
+    (new Date(`${weekStartDate}T00:00:00Z`).getTime() - new Date(`${firstMonday}T00:00:00Z`).getTime()) / 86400000,
+  );
+  return Math.floor(diffDays / 7) + 1;
+}
+
 export function formatWeekLabel(weekStart: string): string {
   const start = new Date(`${weekStart}T00:00:00Z`);
   const end = new Date(`${weekEnd(weekStart)}T00:00:00Z`);

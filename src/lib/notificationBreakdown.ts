@@ -112,6 +112,7 @@ export const PAGE_STATUS_LABELS: Record<string, { label: string; href: string }>
   "qc-agenda": { label: "QC Agenda", href: "/qc/agenda" },
   "pending-to-invoice": { label: "Pending to Invoice", href: "/sales/pending-to-invoice" },
   "fob-pharr": { label: "FOB - Pharr", href: "/sales/fob-pharr" },
+  "mx-arrivals": { label: "Mexico Arrivals", href: "/mexico/arrivals" },
 };
 
 async function maxUpdatedAt(supabase: SupabaseServerClient, table: string): Promise<string | null> {

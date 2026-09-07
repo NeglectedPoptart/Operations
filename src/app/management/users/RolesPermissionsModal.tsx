@@ -27,6 +27,7 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string }[] = [
   { tab: "compliance", label: "Compliance", pages: "PAS Files" },
   { tab: "accounting", label: "Accounting", pages: "Accounts Receivable" },
   { tab: "marketing", label: "Marketing", pages: "Brand Assets" },
+  { tab: "mexico", label: "Mexico", pages: "Arrivals, Growers" },
 ];
 
 // Home is open to everyone except broker_carrier, whose access is a single

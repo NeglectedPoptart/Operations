@@ -883,3 +883,93 @@ export interface ApPayListItem {
   created_at: string;
   updated_at: string;
 }
+
+// Mexico: Growers -------------------------------------------------------------
+
+export interface MxGrower {
+  id: string;
+  name: string;
+  origin: string | null;
+  best_contact: string | null;
+  accounting_contact: string | null;
+  logistics_contact: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MxGrowerLabel {
+  id: string;
+  name: string;
+}
+
+export interface MxCommodity {
+  id: string;
+  name: string;
+}
+
+// Mexico: Arrivals --------------------------------------------------------------
+
+// The report is sectioned exactly like the source spreadsheet's own groupings
+// - which section a row lives in is a manual choice (which section's "+ Add
+// Row" the user clicked), independent of which commodities end up selected
+// inside it.
+export type MxArrivalSection = "lettuce" | "broccoli" | "peppers_hothouse" | "celery_carrots_cauliflower";
+
+export const MX_ARRIVAL_SECTIONS: { value: MxArrivalSection; label: string }[] = [
+  { value: "lettuce", label: "Lettuce" },
+  { value: "broccoli", label: "Broccoli" },
+  { value: "peppers_hothouse", label: "Bell Peppers / Hot House" },
+  { value: "celery_carrots_cauliflower", label: "Celery / Carrots / Cauliflower" },
+];
+
+export type MxArrivalDay = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+// Each day gets a visually distinct color (not just light/dark shades of the
+// same hue) so the booking column reads at a glance.
+export const MX_ARRIVAL_DAYS: { value: MxArrivalDay; label: string; badgeClass: string }[] = [
+  { value: "monday", label: "Monday", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  { value: "tuesday", label: "Tuesday", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  { value: "wednesday", label: "Wednesday", badgeClass: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300" },
+  { value: "thursday", label: "Thursday", badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  { value: "friday", label: "Friday", badgeClass: "bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300" },
+  { value: "saturday", label: "Saturday", badgeClass: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300" },
+  { value: "sunday", label: "Sunday", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+];
+
+export type MxTruckPosition = "nose" | "middle" | "tail";
+
+export const MX_TRUCK_POSITIONS: { value: MxTruckPosition; label: string }[] = [
+  { value: "nose", label: "Nose" },
+  { value: "middle", label: "Middle" },
+  { value: "tail", label: "Tail" },
+];
+
+// One row = one truck/manifest. Up to 4 commodities can ride on one truck,
+// sharing one combined box count and price (matching how the source
+// spreadsheet already treats a multi-commodity load as one line - e.g.
+// "Broccoli #1 / #2" with one combined box count - just with each commodity
+// now a real selection instead of typed into one text cell). truck_group/
+// truck_position link separate manifests (possibly in different sections)
+// that physically rode on the same truck.
+export interface MxArrival {
+  id: string;
+  week_start_date: string;
+  section: MxArrivalSection;
+  position: number;
+  grower_id: string | null;
+  label_id: string | null;
+  commodity_1_id: string | null;
+  commodity_2_id: string | null;
+  commodity_3_id: string | null;
+  commodity_4_id: string | null;
+  boxes_approx: string | null;
+  price_to_grower: string | null;
+  manifesto: string | null;
+  arrival_day: MxArrivalDay | null;
+  notes: string | null;
+  truck_group: string | null;
+  truck_position: MxTruckPosition | null;
+  created_at: string;
+  updated_at: string;
+}
