@@ -327,6 +327,67 @@ export interface PtoRequest {
   updated_at: string;
 }
 
+// The same free-text-employee-name convention as callout_entries/pto_requests
+// above - "employees" has no columns beyond name, just enough to back a
+// dropdown/combobox, not a real HR roster.
+export interface Employee {
+  id: string;
+  name: string;
+  title: string | null;
+}
+
+// Management: Performance Reviews ---------------------------------------------
+
+// Everything here is scoped by (employee_name, year, quarter) rather than a
+// bare date, since a review is organized around "the notes for this
+// employee's Q3 2026 review" - occurred_date/follow_up_date are separate,
+// optional fields for the actual incident/follow-up date, not the scoping key.
+export interface PerformanceReviewQuickNote {
+  id: string;
+  employee_name: string;
+  year: number;
+  quarter: number;
+  note: string;
+  occurred_date: string | null;
+  follow_up_notes: string | null;
+  follow_up_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PerformanceReviewImprovement {
+  id: string;
+  employee_name: string;
+  year: number;
+  quarter: number;
+  note: string;
+  occurred_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type MajorIssueType = "formal_warning" | "informal_warning" | "major_issue_resolved";
+
+export const MAJOR_ISSUE_TYPES: { value: MajorIssueType; label: string }[] = [
+  { value: "formal_warning", label: "Formal Warning" },
+  { value: "informal_warning", label: "Informal Warning" },
+  { value: "major_issue_resolved", label: "Major Issue (Resolved)" },
+];
+
+export interface PerformanceReviewMajorIssue {
+  id: string;
+  employee_name: string;
+  year: number;
+  quarter: number;
+  occurred_date: string | null;
+  issue_type: MajorIssueType | null;
+  description: string | null;
+  action_plan: string | null;
+  review_date: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Management: QC Agenda -------------------------------------------------------
 
 export interface QcAgendaMeta {

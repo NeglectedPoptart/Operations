@@ -106,6 +106,29 @@ export function formatMonthLabel(monthStartStr: string): string {
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
+// First day of a given calendar quarter (1-4), e.g. quarterStart(2026, 3) -> "2026-07-01".
+export function quarterStart(year: number, quarter: number): string {
+  const month = (quarter - 1) * 3 + 1;
+  return `${year}-${String(month).padStart(2, "0")}-01`;
+}
+
+// Last day of a given calendar quarter - reuses the month helpers rather than
+// hardcoding day counts, so leap years and 30/31-day months stay correct.
+export function quarterEnd(year: number, quarter: number): string {
+  return monthEnd(addMonths(quarterStart(year, quarter), 2));
+}
+
+export function currentQuarter(): { year: number; quarter: number } {
+  const today = todayISO();
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  return { year, quarter: Math.floor((month - 1) / 3) + 1 };
+}
+
+export function formatQuarterLabel(year: number, quarter: number): string {
+  return `Q${quarter} ${year}`;
+}
+
 // Whole days between dateStr and today - used for "aging" displays computed
 // at render time rather than stored (so it stays accurate for rows that are
 // never re-touched, e.g. PAS Files' merge-only import).

@@ -84,6 +84,7 @@ const NAV: NavCategory[] = [
       { href: "/management/users", label: "User Roles" },
       { href: "/management/notifications", label: "Notifications" },
       { href: "/management/order-status-report", label: "Order Status Report" },
+      { href: "/management/performance-reviews", label: "Performance Reviews" },
       { href: "/management/reset", label: "Reset Tools" },
     ],
   },
