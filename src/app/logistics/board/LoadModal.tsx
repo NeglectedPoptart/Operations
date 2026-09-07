@@ -140,11 +140,14 @@ export default function LoadModal({
             <label className={label}>Broker</label>
             <select name="broker_id" defaultValue={load?.broker_id ?? ""} className={selectField}>
               <option value="">--</option>
-              {brokers.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
+              {brokers
+                .filter((b) => b.active || b.id === load?.broker_id)
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {!b.active ? " (inactive)" : ""}
+                  </option>
+                ))}
             </select>
           </div>
 

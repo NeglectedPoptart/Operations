@@ -5,7 +5,7 @@ import Link from "next/link";
 import { formatTimestampSlash } from "@/lib/dates";
 import type { Broker } from "@/lib/types";
 import FighterJetToggle from "@/components/FighterJetToggle";
-import { toggleRequestStatement, reorderBrokers } from "./actions";
+import { toggleRequestStatement, reorderBrokers, setBrokerActive } from "./actions";
 
 // A tile's own status coloring (green/yellow) always yields to the
 // statement-request toggle, which the office actively clicked to flag this
@@ -34,7 +34,13 @@ export default function BrokerListClient({
   flaggedCounts: Record<string, number>;
   overdueBrokerIds: Record<string, boolean>;
 }) {
-  const [order, setOrder] = useState<Broker[]>(brokers);
+  // Active brokers stay in their own drag-orderable list (unchanged from
+  // before); inactive ones move to a separate, non-reorderable list sorted
+  // by name - toggling active/inactive moves a broker between the two.
+  const [order, setOrder] = useState<Broker[]>(brokers.filter((b) => b.active));
+  const [inactiveBrokers, setInactiveBrokers] = useState<Broker[]>(
+    brokers.filter((b) => !b.active).sort((a, b) => a.name.localeCompare(b.name)),
+  );
   const [editMode, setEditMode] = useState(false);
   const [requested, setRequested] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(brokers.map((b) => [b.id, b.request_statement])),
@@ -51,6 +57,30 @@ export default function BrokerListClient({
         await toggleRequestStatement(id, next);
       } catch {
         setRequested((prev) => ({ ...prev, [id]: !next }));
+      }
+    });
+  }
+
+  function handleActiveToggle(broker: Broker, nextActive: boolean) {
+    if (nextActive) {
+      setInactiveBrokers((prev) => prev.filter((b) => b.id !== broker.id));
+      setOrder((prev) => [...prev, { ...broker, active: true }]);
+    } else {
+      setOrder((prev) => prev.filter((b) => b.id !== broker.id));
+      setInactiveBrokers((prev) => [...prev, { ...broker, active: false }].sort((a, b) => a.name.localeCompare(b.name)));
+    }
+    startTransition(async () => {
+      try {
+        await setBrokerActive(broker.id, nextActive);
+      } catch {
+        // Revert the optimistic move on failure.
+        if (nextActive) {
+          setOrder((prev) => prev.filter((b) => b.id !== broker.id));
+          setInactiveBrokers((prev) => [...prev, { ...broker, active: false }].sort((a, b) => a.name.localeCompare(b.name)));
+        } else {
+          setInactiveBrokers((prev) => prev.filter((b) => b.id !== broker.id));
+          setOrder((prev) => [...prev, { ...broker, active: true }]);
+        }
       }
     });
   }
@@ -93,7 +123,7 @@ export default function BrokerListClient({
     dragStartOrder.current = null;
   }
 
-  if (order.length === 0) {
+  if (order.length === 0 && inactiveBrokers.length === 0) {
     return (
       <p className="text-sm text-black/40 dark:text-white/40">
         No brokers yet - add one from a Load form on the Board first.
@@ -123,11 +153,11 @@ export default function BrokerListClient({
           const done = doneCounts[b.id] ?? 0;
           const flagged = flaggedCounts[b.id] ?? 0;
           const total = pending + done;
-          const active = requested[b.id] ?? false;
+          const statementRequested = requested[b.id] ?? false;
           // All caught up (nothing pending, so nothing can be sitting overdue
           // either) -> green; anything still pending, aging or not -> yellow.
           // A clicked statement request always wins over either.
-          const tone: "requested" | "green" | "yellow" = active
+          const tone: "requested" | "green" | "yellow" = statementRequested
             ? "requested"
             : pending === 0 && !overdueBrokerIds[b.id]
               ? "green"
@@ -148,7 +178,7 @@ export default function BrokerListClient({
               <p className="text-xs text-black/40 dark:text-white/40">
                 Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
               </p>
-              {active && (
+              {statementRequested && (
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
                   Statement requested
                 </p>
@@ -185,11 +215,58 @@ export default function BrokerListClient({
               <Link href={`/logistics/invoicing/${b.id}`} className="min-w-0 flex-1">
                 {body}
               </Link>
-              <FighterJetToggle active={active} onToggle={() => handleToggle(b.id)} />
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                <FighterJetToggle active={statementRequested} onToggle={() => handleToggle(b.id)} />
+                <button
+                  type="button"
+                  onClick={() => handleActiveToggle(b, false)}
+                  className="text-xs font-medium text-black/40 hover:text-black/70 hover:underline dark:text-white/40 dark:hover:text-white/70"
+                >
+                  Mark Inactive
+                </button>
+              </div>
             </div>
           );
         })}
       </div>
+
+      {inactiveBrokers.length > 0 && (
+        <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
+          <h2 className="text-sm font-semibold text-black/50 dark:text-white/50">
+            Not Actively Using ({inactiveBrokers.length})
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {inactiveBrokers.map((b) => {
+              const pending = pendingCounts[b.id] ?? 0;
+              const done = doneCounts[b.id] ?? 0;
+              const total = pending + done;
+              return (
+                <div
+                  key={b.id}
+                  className="relative flex items-center gap-3 rounded-lg border border-black/10 bg-black/[0.03] p-4 opacity-60 grayscale transition hover:opacity-80 dark:border-white/10 dark:bg-white/[0.03]"
+                >
+                  <Link href={`/logistics/invoicing/${b.id}`} className="min-w-0 flex-1">
+                    <p className="font-medium">{b.name}</p>
+                    <p className="text-sm text-black/60 dark:text-white/60">
+                      {pending} pending · {done} done · {total} total
+                    </p>
+                    <p className="text-xs text-black/40 dark:text-white/40">
+                      Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
+                    </p>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleActiveToggle(b, true)}
+                    className="shrink-0 rounded-md border border-green-600 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+                  >
+                    Reactivate
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

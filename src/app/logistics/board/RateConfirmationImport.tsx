@@ -86,6 +86,10 @@ export default function RateConfirmationImport({
   const [hubOptions, setHubOptions] = useState(initialHubOptions);
   const [cityOptions, setCityOptions] = useState(initialCityOptions);
   const [savingAll, setSavingAll] = useState(false);
+  // A new load is being created here - no existing assignment to preserve,
+  // so a broker marked "not actively using" simply isn't offered, same as
+  // the guess-matching against a parsed rate confirmation.
+  const activeBrokers = brokers.filter((b) => b.active);
 
   function reset() {
     setDrafts([]);
@@ -129,7 +133,7 @@ export default function RateConfirmationImport({
     if (!destination) stopWarnings.push("Couldn't determine the destination city - pick it below.");
     if (!parsed.deliveryDate) stopWarnings.push("Couldn't find a delivery date.");
 
-    const guessedBrokerId = guessBrokerId(parsed.brokerName, brokers);
+    const guessedBrokerId = guessBrokerId(parsed.brokerName, activeBrokers);
 
     return {
       id: crypto.randomUUID(),
@@ -416,7 +420,7 @@ export default function RateConfirmationImport({
                     className={`${field} bg-white text-black`}
                   >
                     <option value="__new__">+ Create new broker</option>
-                    {brokers.map((b) => (
+                    {activeBrokers.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name}
                       </option>

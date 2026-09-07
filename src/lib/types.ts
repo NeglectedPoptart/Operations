@@ -27,6 +27,11 @@ export interface Broker {
   // belongs in long-haul lane pricing, but changes nothing else (Invoicing,
   // Board's carrier picker, etc. still show them same as any OTR broker).
   category: BrokerCategory;
+  // "Not actively using this company" - kept (never deleted) so its history
+  // stays intact and it's a click away from coming back, but greyed out and
+  // moved to its own section on the Invoicing tile list, and left out of the
+  // broker picker when creating a new load.
+  active: boolean;
 }
 
 // Logistics: Invoicing ---------------------------------------------------

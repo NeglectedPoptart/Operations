@@ -23,6 +23,17 @@ export async function toggleRequestStatement(brokerId: string, value: boolean) {
   revalidatePath("/logistics/invoicing");
 }
 
+// Marks a broker as not-actively-used (or reactivates it) - never deletes
+// it, just drops it out of the Board's broker picker and moves its tile
+// into the greyed-out "Not Actively Using" section here.
+export async function setBrokerActive(brokerId: string, active: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("brokers").update({ active }).eq("id", brokerId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/logistics/invoicing");
+  revalidatePath("/logistics/board");
+}
+
 // Persists the broker tile order from the Invoicing home page's "Edit
 // Layout" mode. orderedIds is the full broker list in its new top-to-bottom
 // order; each broker's position is set to its index in that list.
