@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
-import { formatQuarterLabel, quarterEnd, quarterStart } from "@/lib/dates";
+import { formatDate, formatQuarterLabel, quarterEnd, quarterStart } from "@/lib/dates";
 import {
   MAJOR_ISSUE_TYPES,
   type Employee,
@@ -131,8 +131,27 @@ export default function PerformanceReviewsClient({
   const [quarter, setQuarter] = useState(initialQuarter);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cache, setCache] = useState<Record<string, EmployeeQuarterData>>({});
+  // A note/entry stays in an editable form only while its id is in here - a
+  // brand new row starts here so it opens ready to fill in, and "Submit"
+  // removes it so it renders as a plain read-back entry instead (an "Edit"
+  // link puts it back). Loaded-from-cache rows are never in here by default,
+  // so past entries always come back read-only rather than sitting open in
+  // editable boxes.
+  const [draftIds, setDraftIds] = useState<Set<string>>(new Set());
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => initialYear - 3 + i);
+
+  function startEditing(id: string) {
+    setDraftIds((prev) => new Set(prev).add(id));
+  }
+
+  function submitDraft(id: string) {
+    setDraftIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
 
   function ensureLoaded(emp: Employee, targetYear: number, targetQuarter: number) {
     const key = cacheKey(emp.id, targetYear, targetQuarter);
@@ -188,6 +207,7 @@ export default function PerformanceReviewsClient({
     const row = (await addQuickNote(emp.name, year, quarter)) as PerformanceReviewQuickNote;
     const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
     patchEmployeeData(emp, { quickNotes: [...current.quickNotes, row] });
+    startEditing(row.id);
   }
 
   function handleQuickNoteSave(emp: Employee, id: string, patch: Partial<PerformanceReviewQuickNote>) {
@@ -209,6 +229,7 @@ export default function PerformanceReviewsClient({
     const row = (await addImprovement(emp.name, year, quarter)) as PerformanceReviewImprovement;
     const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
     patchEmployeeData(emp, { improvements: [...current.improvements, row] });
+    startEditing(row.id);
   }
 
   function handleImprovementSave(emp: Employee, id: string, patch: Partial<PerformanceReviewImprovement>) {
@@ -230,6 +251,7 @@ export default function PerformanceReviewsClient({
     const row = (await addMajorIssue(emp.name, year, quarter)) as PerformanceReviewMajorIssue;
     const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
     patchEmployeeData(emp, { majorIssues: [...current.majorIssues, row] });
+    startEditing(row.id);
   }
 
   function handleMajorIssueSave(emp: Employee, id: string, patch: Partial<PerformanceReviewMajorIssue>) {
@@ -375,54 +397,93 @@ export default function PerformanceReviewsClient({
                           broken - with an optional date and a spot to follow up later.
                         </p>
                         <div className="space-y-2">
-                          {data.quickNotes.map((n) => (
-                            <div key={n.id} className="grid grid-cols-1 gap-2 rounded-md bg-black/5 p-3 dark:bg-white/5 sm:grid-cols-2">
-                              <label className="text-xs font-medium sm:col-span-2">
-                                Note
-                                <textarea
-                                  defaultValue={n.note}
-                                  onBlur={(e) => handleQuickNoteSave(emp, n.id, { note: e.target.value })}
-                                  rows={2}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium">
-                                Date of Occurrence
-                                <input
-                                  type="date"
-                                  defaultValue={n.occurred_date ?? ""}
-                                  onBlur={(e) => handleQuickNoteSave(emp, n.id, { occurred_date: e.target.value || null })}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium">
-                                Follow-Up Date
-                                <input
-                                  type="date"
-                                  defaultValue={n.follow_up_date ?? ""}
-                                  onBlur={(e) => handleQuickNoteSave(emp, n.id, { follow_up_date: e.target.value || null })}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium sm:col-span-2">
-                                Follow-Up Notes
-                                <textarea
-                                  defaultValue={n.follow_up_notes ?? ""}
-                                  onBlur={(e) => handleQuickNoteSave(emp, n.id, { follow_up_notes: e.target.value })}
-                                  rows={2}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <div className="text-right sm:col-span-2">
-                                <button
-                                  onClick={() => handleQuickNoteDelete(emp, n.id)}
-                                  className="text-xs font-medium text-red-600 hover:underline"
-                                >
-                                  Delete
-                                </button>
+                          {data.quickNotes.map((n) =>
+                            draftIds.has(n.id) ? (
+                              <div key={n.id} className="grid grid-cols-1 gap-2 rounded-md bg-black/5 p-3 dark:bg-white/5 sm:grid-cols-2">
+                                <label className="text-xs font-medium sm:col-span-2">
+                                  Note
+                                  <textarea
+                                    defaultValue={n.note}
+                                    onBlur={(e) => handleQuickNoteSave(emp, n.id, { note: e.target.value })}
+                                    rows={2}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium">
+                                  Date of Occurrence
+                                  <input
+                                    type="date"
+                                    defaultValue={n.occurred_date ?? ""}
+                                    onBlur={(e) => handleQuickNoteSave(emp, n.id, { occurred_date: e.target.value || null })}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium">
+                                  Follow-Up Date
+                                  <input
+                                    type="date"
+                                    defaultValue={n.follow_up_date ?? ""}
+                                    onBlur={(e) => handleQuickNoteSave(emp, n.id, { follow_up_date: e.target.value || null })}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium sm:col-span-2">
+                                  Follow-Up Notes
+                                  <textarea
+                                    defaultValue={n.follow_up_notes ?? ""}
+                                    onBlur={(e) => handleQuickNoteSave(emp, n.id, { follow_up_notes: e.target.value })}
+                                    rows={2}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <div className="flex justify-end gap-3 sm:col-span-2">
+                                  <button
+                                    onClick={() => handleQuickNoteDelete(emp, n.id)}
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                  <button
+                                    onClick={() => submitDraft(n.id)}
+                                    className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                                  >
+                                    Submit
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ) : (
+                              <div key={n.id} className="rounded-md border border-black/10 p-3 dark:border-white/10">
+                                <p className="whitespace-pre-wrap text-sm">
+                                  {n.note || <span className="text-black/40 dark:text-white/40">(no note)</span>}
+                                </p>
+                                {(n.occurred_date || n.follow_up_date) && (
+                                  <div className="mt-1.5 flex flex-wrap gap-x-4 text-xs text-black/50 dark:text-white/50">
+                                    {n.occurred_date && <span>Occurred: {formatDate(n.occurred_date)}</span>}
+                                    {n.follow_up_date && <span>Follow-up: {formatDate(n.follow_up_date)}</span>}
+                                  </div>
+                                )}
+                                {n.follow_up_notes && (
+                                  <p className="mt-1.5 whitespace-pre-wrap text-xs italic text-black/60 dark:text-white/60">
+                                    Follow-up: {n.follow_up_notes}
+                                  </p>
+                                )}
+                                <div className="mt-2 flex justify-end gap-3">
+                                  <button
+                                    onClick={() => startEditing(n.id)}
+                                    className="text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickNoteDelete(emp, n.id)}
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ),
+                          )}
                           {data.quickNotes.length === 0 && (
                             <p className="text-sm text-black/40 dark:text-white/40">No quick notes logged.</p>
                           )}
@@ -441,36 +502,67 @@ export default function PerformanceReviewsClient({
                           </button>
                         </div>
                         <div className="space-y-2">
-                          {data.improvements.map((n) => (
-                            <div key={n.id} className="grid grid-cols-1 gap-2 rounded-md bg-black/5 p-3 dark:bg-white/5 sm:grid-cols-[1fr_auto]">
-                              <label className="text-xs font-medium">
-                                Note
-                                <textarea
-                                  defaultValue={n.note}
-                                  onBlur={(e) => handleImprovementSave(emp, n.id, { note: e.target.value })}
-                                  rows={2}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium">
-                                Date
-                                <input
-                                  type="date"
-                                  defaultValue={n.occurred_date ?? ""}
-                                  onBlur={(e) => handleImprovementSave(emp, n.id, { occurred_date: e.target.value || null })}
-                                  className={`${field} mt-1 sm:w-40`}
-                                />
-                              </label>
-                              <div className="text-right sm:col-span-2">
-                                <button
-                                  onClick={() => handleImprovementDelete(emp, n.id)}
-                                  className="text-xs font-medium text-red-600 hover:underline"
-                                >
-                                  Delete
-                                </button>
+                          {data.improvements.map((n) =>
+                            draftIds.has(n.id) ? (
+                              <div key={n.id} className="grid grid-cols-1 gap-2 rounded-md bg-black/5 p-3 dark:bg-white/5 sm:grid-cols-[1fr_auto]">
+                                <label className="text-xs font-medium">
+                                  Note
+                                  <textarea
+                                    defaultValue={n.note}
+                                    onBlur={(e) => handleImprovementSave(emp, n.id, { note: e.target.value })}
+                                    rows={2}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium">
+                                  Date
+                                  <input
+                                    type="date"
+                                    defaultValue={n.occurred_date ?? ""}
+                                    onBlur={(e) => handleImprovementSave(emp, n.id, { occurred_date: e.target.value || null })}
+                                    className={`${field} mt-1 sm:w-40`}
+                                  />
+                                </label>
+                                <div className="flex justify-end gap-3 sm:col-span-2">
+                                  <button
+                                    onClick={() => handleImprovementDelete(emp, n.id)}
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                  <button
+                                    onClick={() => submitDraft(n.id)}
+                                    className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                                  >
+                                    Submit
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ) : (
+                              <div key={n.id} className="rounded-md border border-black/10 p-3 dark:border-white/10">
+                                <p className="whitespace-pre-wrap text-sm">
+                                  {n.note || <span className="text-black/40 dark:text-white/40">(no note)</span>}
+                                </p>
+                                {n.occurred_date && (
+                                  <p className="mt-1.5 text-xs text-black/50 dark:text-white/50">{formatDate(n.occurred_date)}</p>
+                                )}
+                                <div className="mt-2 flex justify-end gap-3">
+                                  <button
+                                    onClick={() => startEditing(n.id)}
+                                    className="text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleImprovementDelete(emp, n.id)}
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ),
+                          )}
                           {data.improvements.length === 0 && (
                             <p className="text-sm text-black/40 dark:text-white/40">Nothing logged.</p>
                           )}
@@ -489,74 +581,121 @@ export default function PerformanceReviewsClient({
                           </button>
                         </div>
                         <div className="space-y-2">
-                          {data.majorIssues.map((n) => (
-                            <div
-                              key={n.id}
-                              className="grid grid-cols-1 gap-2 rounded-md border border-red-200 bg-red-50/50 p-3 dark:border-red-900/40 dark:bg-red-950/20 sm:grid-cols-2"
-                            >
-                              <label className="text-xs font-medium">
-                                Date of Occurrence
-                                <input
-                                  type="date"
-                                  defaultValue={n.occurred_date ?? ""}
-                                  onBlur={(e) => handleMajorIssueSave(emp, n.id, { occurred_date: e.target.value || null })}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium">
-                                Type
-                                <select
-                                  value={n.issue_type ?? ""}
-                                  onChange={(e) =>
-                                    handleMajorIssueSave(emp, n.id, { issue_type: (e.target.value || null) as MajorIssueType | null })
-                                  }
-                                  className={`${field} mt-1`}
-                                >
-                                  <option value="">--</option>
-                                  {MAJOR_ISSUE_TYPES.map((t) => (
-                                    <option key={t.value} value={t.value}>
-                                      {t.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="text-xs font-medium sm:col-span-2">
-                                Issue Detail
-                                <textarea
-                                  defaultValue={n.description ?? ""}
-                                  onBlur={(e) => handleMajorIssueSave(emp, n.id, { description: e.target.value })}
-                                  rows={2}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium sm:col-span-2">
-                                Actions Taken / Plan Moving Forward
-                                <textarea
-                                  defaultValue={n.action_plan ?? ""}
-                                  onBlur={(e) => handleMajorIssueSave(emp, n.id, { action_plan: e.target.value })}
-                                  rows={2}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <label className="text-xs font-medium">
-                                Review Date (is the plan working?)
-                                <input
-                                  type="date"
-                                  defaultValue={n.review_date ?? ""}
-                                  onBlur={(e) => handleMajorIssueSave(emp, n.id, { review_date: e.target.value || null })}
-                                  className={`${field} mt-1`}
-                                />
-                              </label>
-                              <div className="self-end text-right">
-                                <button
-                                  onClick={() => handleMajorIssueDelete(emp, n.id)}
-                                  className="text-xs font-medium text-red-600 hover:underline"
-                                >
-                                  Delete
-                                </button>
+                          {data.majorIssues.map((n) =>
+                            draftIds.has(n.id) ? (
+                              <div
+                                key={n.id}
+                                className="grid grid-cols-1 gap-2 rounded-md border border-red-200 bg-red-50/50 p-3 dark:border-red-900/40 dark:bg-red-950/20 sm:grid-cols-2"
+                              >
+                                <label className="text-xs font-medium">
+                                  Date of Occurrence
+                                  <input
+                                    type="date"
+                                    defaultValue={n.occurred_date ?? ""}
+                                    onBlur={(e) => handleMajorIssueSave(emp, n.id, { occurred_date: e.target.value || null })}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium">
+                                  Type
+                                  <select
+                                    value={n.issue_type ?? ""}
+                                    onChange={(e) =>
+                                      handleMajorIssueSave(emp, n.id, { issue_type: (e.target.value || null) as MajorIssueType | null })
+                                    }
+                                    className={`${field} mt-1`}
+                                  >
+                                    <option value="">--</option>
+                                    {MAJOR_ISSUE_TYPES.map((t) => (
+                                      <option key={t.value} value={t.value}>
+                                        {t.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="text-xs font-medium sm:col-span-2">
+                                  Issue Detail
+                                  <textarea
+                                    defaultValue={n.description ?? ""}
+                                    onBlur={(e) => handleMajorIssueSave(emp, n.id, { description: e.target.value })}
+                                    rows={2}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium sm:col-span-2">
+                                  Actions Taken / Plan Moving Forward
+                                  <textarea
+                                    defaultValue={n.action_plan ?? ""}
+                                    onBlur={(e) => handleMajorIssueSave(emp, n.id, { action_plan: e.target.value })}
+                                    rows={2}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-xs font-medium">
+                                  Review Date (is the plan working?)
+                                  <input
+                                    type="date"
+                                    defaultValue={n.review_date ?? ""}
+                                    onBlur={(e) => handleMajorIssueSave(emp, n.id, { review_date: e.target.value || null })}
+                                    className={`${field} mt-1`}
+                                  />
+                                </label>
+                                <div className="flex items-end justify-end gap-3">
+                                  <button
+                                    onClick={() => handleMajorIssueDelete(emp, n.id)}
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                  <button
+                                    onClick={() => submitDraft(n.id)}
+                                    className="rounded-md bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700"
+                                  >
+                                    Submit
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ) : (
+                              <div
+                                key={n.id}
+                                className="rounded-md border border-red-200 bg-red-50/50 p-3 dark:border-red-900/40 dark:bg-red-950/20"
+                              >
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                  {n.issue_type && (
+                                    <span className="rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                                      {MAJOR_ISSUE_TYPES.find((t) => t.value === n.issue_type)?.label}
+                                    </span>
+                                  )}
+                                  {n.occurred_date && <span className="text-black/50 dark:text-white/50">{formatDate(n.occurred_date)}</span>}
+                                </div>
+                                {n.description && <p className="mt-1.5 whitespace-pre-wrap text-sm">{n.description}</p>}
+                                {n.action_plan && (
+                                  <p className="mt-1.5 whitespace-pre-wrap text-xs text-black/70 dark:text-white/70">
+                                    <span className="font-medium">Action plan:</span> {n.action_plan}
+                                  </p>
+                                )}
+                                {n.review_date && (
+                                  <p className="mt-1.5 text-xs text-black/50 dark:text-white/50">
+                                    Review by {formatDate(n.review_date)}
+                                  </p>
+                                )}
+                                <div className="mt-2 flex justify-end gap-3">
+                                  <button
+                                    onClick={() => startEditing(n.id)}
+                                    className="text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleMajorIssueDelete(emp, n.id)}
+                                    className="text-xs font-medium text-red-600 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            ),
+                          )}
                           {data.majorIssues.length === 0 && (
                             <p className="text-sm text-black/40 dark:text-white/40">No major issues on record.</p>
                           )}
