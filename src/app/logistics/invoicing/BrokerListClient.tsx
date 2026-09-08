@@ -2,10 +2,19 @@
 
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { formatTimestampSlash } from "@/lib/dates";
+import { daysSince, formatTimestampSlash, isoDateOf } from "@/lib/dates";
 import type { Broker } from "@/lib/types";
 import FighterJetToggle from "@/components/FighterJetToggle";
 import { toggleRequestStatement, reorderBrokers, setBrokerActive } from "./actions";
+
+// Green when the Statement Checker was run on this carrier within the last
+// 2 days (of whatever "today" is when the page loads) - a quick "have I
+// fallen behind on this one" signal at a glance.
+function checkedRecently(lastCheckedAt: string | null): boolean {
+  if (!lastCheckedAt) return false;
+  const days = daysSince(isoDateOf(lastCheckedAt));
+  return days !== null && days <= 2;
+}
 
 // A tile's own status coloring (green/yellow) always yields to the
 // statement-request toggle, which the office actively clicked to flag this
@@ -178,6 +187,15 @@ export default function BrokerListClient({
               <p className="text-xs text-black/40 dark:text-white/40">
                 Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
               </p>
+              <p
+                className={`text-xs ${
+                  checkedRecently(b.last_statement_checked_at)
+                    ? "font-semibold text-green-600 dark:text-green-400"
+                    : "text-black/40 dark:text-white/40"
+                }`}
+              >
+                Last statement checked: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
+              </p>
               {statementRequested && (
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
                   Statement requested
@@ -252,6 +270,15 @@ export default function BrokerListClient({
                     </p>
                     <p className="text-xs text-black/40 dark:text-white/40">
                       Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
+                    </p>
+                    <p
+                      className={`text-xs ${
+                        checkedRecently(b.last_statement_checked_at)
+                          ? "font-semibold text-green-600 dark:text-green-400"
+                          : "text-black/40 dark:text-white/40"
+                      }`}
+                    >
+                      Last statement checked: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
                     </p>
                   </Link>
                   <button

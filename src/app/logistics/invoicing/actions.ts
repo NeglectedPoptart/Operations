@@ -101,5 +101,15 @@ export async function applyStatementCheck(
       .in("id", pendingIds);
     if (error) throw new Error(error.message);
   }
+
+  // Stamped every time this runs, regardless of what (if anything) actually
+  // changed - "last statement checked" means the last time someone used the
+  // tool on this carrier, not the last time it found something to update.
+  const { error: checkedError } = await supabase
+    .from("brokers")
+    .update({ last_statement_checked_at: new Date().toISOString() })
+    .eq("id", brokerId);
+  if (checkedError) throw new Error(checkedError.message);
+
   revalidateAll(brokerId);
 }

@@ -32,6 +32,10 @@ export interface Broker {
   // moved to its own section on the Invoicing tile list, and left out of the
   // broker picker when creating a new load.
   active: boolean;
+  // The last time the Statement Checker was actually run against this
+  // carrier - separate from last_activity_at, which only bumps on a
+  // Done/note event, not just running a check.
+  last_statement_checked_at: string | null;
 }
 
 // Logistics: Invoicing ---------------------------------------------------
@@ -975,6 +979,133 @@ export interface MxArrival {
   notes: string | null;
   truck_group: string | null;
   truck_position: MxTruckPosition | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Shipping/Receiving: prototype ERP ---------------------------------------------
+
+// Master data - deliberately its own standalone item/vendor/customer list
+// rather than reusing Mexico's Growers, Buyers' Vendor Catalog, or AR's
+// customers, since each of those is shaped for its own specific workflow.
+export interface SrItem {
+  id: string;
+  name: string;
+  pack_style: string | null;
+  size: string | null;
+  unit: string | null;
+  category: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SrVendor {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SrCustomer {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  terms: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// One row per received lot (pallet-tag style), not one row per item -
+// qty_on_hand starts equal to qty_received and depletes as Shipping ships
+// against it (oldest lot first), so aging/rotation is visible per lot.
+export type SrLotStatus = "available" | "committed" | "shipped" | "adjusted";
+
+export interface SrInventoryLot {
+  id: string;
+  item_id: string | null;
+  lot_number: string | null;
+  vendor_id: string | null;
+  po_id: string | null;
+  received_date: string | null;
+  qty_received: number | null;
+  qty_on_hand: number | null;
+  unit_cost: number | null;
+  warehouse: string | null;
+  status: SrLotStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SrPoStatus = "open" | "partial" | "received" | "closed";
+
+export const SR_PO_STATUSES: { value: SrPoStatus; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "partial", label: "Partially Received" },
+  { value: "received", label: "Received" },
+  { value: "closed", label: "Closed" },
+];
+
+export interface SrPurchaseOrder {
+  id: string;
+  po_number: string;
+  vendor_id: string | null;
+  order_date: string | null;
+  status: SrPoStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SrPoLine {
+  id: string;
+  po_id: string;
+  position: number;
+  item_id: string | null;
+  qty_ordered: number | null;
+  unit_cost: number | null;
+  qty_received: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SrSoStatus = "open" | "shipped" | "invoiced" | "cancelled";
+
+export const SR_SO_STATUSES: { value: SrSoStatus; label: string }[] = [
+  { value: "open", label: "Open" },
+  { value: "shipped", label: "Shipped" },
+  { value: "invoiced", label: "Invoiced" },
+  { value: "cancelled", label: "Cancelled" },
+];
+
+export interface SrSalesOrder {
+  id: string;
+  order_number: string;
+  customer_id: string | null;
+  order_date: string | null;
+  ship_date: string | null;
+  status: SrSoStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SrSoLine {
+  id: string;
+  so_id: string;
+  position: number;
+  item_id: string | null;
+  qty_ordered: number | null;
+  unit_price: number | null;
+  qty_shipped: number;
   created_at: string;
   updated_at: string;
 }
