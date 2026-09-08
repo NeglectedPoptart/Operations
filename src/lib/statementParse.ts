@@ -41,11 +41,18 @@ function findColumn(header: string[], keywords: string[], claimed: Set<number>):
 // unequal. A row originally imported with the full word "Invoice #2055"
 // needs the same reduction to "2055" as the statement's "INV-2055", or
 // they silently never match (see Ali-Mat #2055 bug report).
+// A PDF export additionally glues an optional 3-letter currency code (e.g.
+// "USD") directly in front of that same "INV-" prefix for foreign-currency
+// rows ("USDINV-61277") - stripped together as one ERP-added prefix, same
+// reasoning as "INV-" itself. The optional group only matches when a literal
+// "INV" genuinely follows it, so a real 3-letter-prefixed invoice number
+// that happens to start with "INV" (unseen so far, but just in case) still
+// reduces correctly via backtracking rather than eating its own prefix.
 export function normalizeInvoiceNo(raw: string): string {
   return raw
     .trim()
     .toUpperCase()
-    .replace(/^INV(?:OICE)?\s*#?\s*-?\s*/, "")
+    .replace(/^(?:[A-Z]{3})?INV(?:OICE)?\s*#?\s*-?\s*/, "")
     .replace(/[^A-Z0-9]/g, "");
 }
 
@@ -114,5 +121,49 @@ export function parsePastedStatement(text: string): ParseResult {
     return { rows: [], error: "No data rows found under the header." };
   }
 
+  return { rows };
+}
+
+// unpdf extracts this report's "Bills" table with columns glued back
+// together in a scrambled, non-visual order (the same quirk as every other
+// PDF report in this app) - reverse-engineered per row, left to right as it
+// actually extracts:
+//   Document  Status(single letter, unused)  Amount[Balance]DocDate DueDate  Journal(with Post/Open embedded)
+// Amount and, when present, Balance are both glued directly against the two
+// trailing dates with no separator at all ("250.00250.0008/13/202607/23/2026").
+// We only need Document, the Post/Open marker, and Balance - so rather than
+// delimit every column, this finds the two trailing MM/DD/YYYY dates, then
+// pulls whatever money-shaped values sit before them: one match means no
+// balance shown (fully paid, same as the paste flow's "remove" case), two
+// means the second is Balance (Amount always precedes Balance per the
+// report's own header order).
+function parsePdfBillsLine(rawLine: string): ParsedStatementLine | null {
+  const line = rawLine.trim();
+  const docMatch = line.match(/^(\S*INV\S*)\s+(.*)$/i);
+  if (!docMatch) return null;
+  const document = docMatch[1];
+  const remainder = docMatch[2];
+
+  const journalStatus = extractJournalStatus(remainder);
+
+  const dateMatches = [...remainder.matchAll(/\d{2}\/\d{2}\/\d{4}/g)];
+  if (dateMatches.length < 2) return null;
+  const preDateBlob = remainder.slice(0, dateMatches[dateMatches.length - 2].index);
+
+  const moneyMatches = [...preDateBlob.matchAll(/\d[\d,]*\.\d{2}/g)];
+  const balance = moneyMatches.length >= 2 ? parseBalance(moneyMatches[moneyMatches.length - 1][0]) : null;
+
+  return { document, journalStatus, balance };
+}
+
+export function parsePdfStatement(text: string): ParseResult {
+  const rows = text
+    .split(/\r?\n/)
+    .map(parsePdfBillsLine)
+    .filter((r): r is ParsedStatementLine => r !== null);
+
+  if (rows.length === 0) {
+    return { rows: [], error: "Couldn't find any bill rows in this PDF - try pasting the text instead." };
+  }
   return { rows };
 }

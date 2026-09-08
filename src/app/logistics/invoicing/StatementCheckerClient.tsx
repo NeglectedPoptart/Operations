@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { normalizeInvoiceNo, parsePastedStatement, type ParsedStatementLine } from "@/lib/statementParse";
+import { useState, type ChangeEvent } from "react";
+import { normalizeInvoiceNo, parsePastedStatement, parsePdfStatement, type ParsedStatementLine, type ParseResult } from "@/lib/statementParse";
 import type { Broker, InvoiceStatement } from "@/lib/types";
-import { applyStatementCheck, getInvoiceStatementsForBroker } from "./actions";
+import { applyStatementCheck, extractPdfText, getInvoiceStatementsForBroker } from "./actions";
 
 type PostAction = "remove" | "flag" | "review" | "not-found";
 
@@ -48,6 +48,7 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
   const [pendingRows, setPendingRows] = useState<PendingRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [applying, setApplying] = useState(false);
   const [doneMessage, setDoneMessage] = useState<string | null>(null);
 
@@ -58,6 +59,46 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
     setDoneMessage(null);
   }
 
+  // Shared by both the paste flow and the PDF-upload flow - everything past
+  // "here are the parsed rows" is identical regardless of where they came from.
+  async function runCheck(parsed: ParseResult) {
+    if (parsed.error) {
+      setError(parsed.error);
+      setPostResults(null);
+      setPendingRows(null);
+      return;
+    }
+    const items: InvoiceStatement[] = await getInvoiceStatementsForBroker(brokerId);
+    const ourMap = new Map(items.map((i) => [normalizeInvoiceNo(i.invoice_no), i]));
+
+    // Anything appearing anywhere in the statement (Post or Open) counts as
+    // "on the bills list" - only rows missing entirely get marked Pending below.
+    const foundKeys = new Set(parsed.rows.map((r) => normalizeInvoiceNo(r.document)));
+
+    const posts: PostResultRow[] = parsed.rows
+      .filter((r) => r.journalStatus === "post")
+      .map((r) => {
+        const match = ourMap.get(normalizeInvoiceNo(r.document));
+        if (!match) return { ...r, action: "not-found", matchId: null, note: null };
+        // A note left on a Pending invoice is a deliberate "don't touch
+        // this one" flag (e.g. a dispute in progress) - the statement
+        // showing it as Posted doesn't override that, it just means a
+        // person needs to look at it instead of it silently flipping.
+        if (match.status === "pending" && match.notes) {
+          return { ...r, action: "review", matchId: match.id, note: match.notes };
+        }
+        if (r.balance === null) return { ...r, action: "remove", matchId: match.id, note: match.notes };
+        return { ...r, action: "flag", matchId: match.id, note: match.notes };
+      });
+
+    const notFound: PendingRow[] = items
+      .filter((i) => !foundKeys.has(normalizeInvoiceNo(i.invoice_no)))
+      .map((i) => ({ id: i.id, invoice_no: i.invoice_no }));
+
+    setPostResults(posts);
+    setPendingRows(notFound);
+  }
+
   async function handleCheck() {
     setError(null);
     setDoneMessage(null);
@@ -65,47 +106,37 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
       setError("Pick a carrier first.");
       return;
     }
-    const parsed = parsePastedStatement(pasteText);
-    if (parsed.error) {
-      setError(parsed.error);
-      setPostResults(null);
-      setPendingRows(null);
-      return;
-    }
     setLoading(true);
     try {
-      const items: InvoiceStatement[] = await getInvoiceStatementsForBroker(brokerId);
-      const ourMap = new Map(items.map((i) => [normalizeInvoiceNo(i.invoice_no), i]));
-
-      // Anything appearing anywhere in the pasted statement (Post or Open)
-      // counts as "on the bills list" - only rows missing entirely get
-      // marked Pending below.
-      const foundKeys = new Set(parsed.rows.map((r) => normalizeInvoiceNo(r.document)));
-
-      const posts: PostResultRow[] = parsed.rows
-        .filter((r) => r.journalStatus === "post")
-        .map((r) => {
-          const match = ourMap.get(normalizeInvoiceNo(r.document));
-          if (!match) return { ...r, action: "not-found", matchId: null, note: null };
-          // A note left on a Pending invoice is a deliberate "don't touch
-          // this one" flag (e.g. a dispute in progress) - the statement
-          // showing it as Posted doesn't override that, it just means a
-          // person needs to look at it instead of it silently flipping.
-          if (match.status === "pending" && match.notes) {
-            return { ...r, action: "review", matchId: match.id, note: match.notes };
-          }
-          if (r.balance === null) return { ...r, action: "remove", matchId: match.id, note: match.notes };
-          return { ...r, action: "flag", matchId: match.id, note: match.notes };
-        });
-
-      const notFound: PendingRow[] = items
-        .filter((i) => !foundKeys.has(normalizeInvoiceNo(i.invoice_no)))
-        .map((i) => ({ id: i.id, invoice_no: i.invoice_no }));
-
-      setPostResults(posts);
-      setPendingRows(notFound);
+      await runCheck(parsePastedStatement(pasteText));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setDoneMessage(null);
+    if (!brokerId) {
+      setError("Pick a carrier first.");
+      return;
+    }
+    setUploadingPdf(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setError(`Couldn't read that PDF (${result.error}) - try pasting the text instead.`);
+        return;
+      }
+      setPasteText(result.text);
+      await runCheck(parsePdfStatement(result.text));
+    } finally {
+      setUploadingPdf(false);
     }
   }
 
@@ -141,8 +172,9 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
     <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
       <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Statement Checker</h2>
       <p className="text-sm text-black/60 dark:text-white/60">
-        Pick the carrier, then paste their statement (needs Document, Journal, and Balance columns) - rows Journal
-        marks &quot;Open&quot; are left alone. For &quot;Post&quot; rows matched to this list: no balance shown means
+        Pick the carrier, then paste their statement (needs Document, Journal, and Balance columns) or upload the
+        statement as a PDF - rows Journal marks &quot;Open&quot; are left alone. For &quot;Post&quot; rows matched to
+        this list: no balance shown means
         fully paid, so it&apos;s marked Done and removed; a balance still shown means it&apos;s marked Done but
         flagged instead. Anything on this list that doesn&apos;t show up anywhere in the statement gets marked
         Pending. A Pending invoice that already has a note on it is left alone either way and called out separately
@@ -176,13 +208,25 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {doneMessage && <p className="text-sm text-green-700 dark:text-green-400">{doneMessage}</p>}
 
-      <button
-        onClick={handleCheck}
-        disabled={loading}
-        className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-      >
-        {loading ? "Checking..." : "Check Statement"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={handleCheck}
+          disabled={loading || uploadingPdf}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+        >
+          {loading ? "Checking..." : "Check Statement"}
+        </button>
+        <label className="cursor-pointer rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+          {uploadingPdf ? "Reading PDF..." : "Or upload a PDF"}
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={handlePdfUpload}
+            disabled={uploadingPdf || loading}
+            className="hidden"
+          />
+        </label>
+      </div>
 
       {postResults && pendingRows && (
         <div className="space-y-4">

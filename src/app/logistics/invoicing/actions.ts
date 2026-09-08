@@ -1,12 +1,28 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { extractText, getDocumentProxy } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
 import type { InvoiceStatement } from "@/lib/types";
 
 function revalidateAll(brokerId: string) {
   revalidatePath(`/logistics/invoicing/${brokerId}`);
   revalidatePath("/logistics/invoicing");
+}
+
+// unpdf wraps pdf.js specifically for serverless/edge runtimes - duplicated
+// per-page rather than shared, matching every other page with a PDF upload.
+export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) return { error: "No file received." };
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await getDocumentProxy(data);
+    const { text } = await extractText(pdf, { mergePages: true });
+    return { text };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export async function getInvoiceStatementsForBroker(brokerId: string) {
