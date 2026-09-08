@@ -5,11 +5,12 @@ import { normalizeInvoiceNo, parsePastedStatement, type ParsedStatementLine } fr
 import type { Broker, InvoiceStatement } from "@/lib/types";
 import { applyStatementCheck, getInvoiceStatementsForBroker } from "./actions";
 
-type PostAction = "remove" | "flag" | "not-found";
+type PostAction = "remove" | "flag" | "review" | "not-found";
 
 interface PostResultRow extends ParsedStatementLine {
   action: PostAction;
   matchId: string | null;
+  note: string | null;
 }
 
 interface PendingRow {
@@ -29,6 +30,11 @@ function actionLabel(action: PostAction) {
       return {
         text: "Posted but has a balance - will mark Done & flag",
         cls: "font-medium text-red-700 dark:text-red-400",
+      };
+    case "review":
+      return {
+        text: "Pending with a note - needs manual review",
+        cls: "font-medium text-blue-700 dark:text-blue-400",
       };
     case "not-found":
       return { text: "Not on this list", cls: "text-black/40 dark:text-white/40" };
@@ -80,9 +86,16 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
         .filter((r) => r.journalStatus === "post")
         .map((r) => {
           const match = ourMap.get(normalizeInvoiceNo(r.document));
-          if (!match) return { ...r, action: "not-found", matchId: null };
-          if (r.balance === null) return { ...r, action: "remove", matchId: match.id };
-          return { ...r, action: "flag", matchId: match.id };
+          if (!match) return { ...r, action: "not-found", matchId: null, note: null };
+          // A note left on a Pending invoice is a deliberate "don't touch
+          // this one" flag (e.g. a dispute in progress) - the statement
+          // showing it as Posted doesn't override that, it just means a
+          // person needs to look at it instead of it silently flipping.
+          if (match.status === "pending" && match.notes) {
+            return { ...r, action: "review", matchId: match.id, note: match.notes };
+          }
+          if (r.balance === null) return { ...r, action: "remove", matchId: match.id, note: match.notes };
+          return { ...r, action: "flag", matchId: match.id, note: match.notes };
         });
 
       const notFound: PendingRow[] = items
@@ -120,6 +133,8 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
 
   const removeCount = postResults?.filter((r) => r.action === "remove").length ?? 0;
   const flagCount = postResults?.filter((r) => r.action === "flag").length ?? 0;
+  const reviewRows = postResults?.filter((r) => r.action === "review") ?? [];
+  const mainResults = postResults?.filter((r) => r.action !== "review") ?? [];
   const pendingCount = pendingRows?.length ?? 0;
 
   return (
@@ -130,7 +145,8 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
         marks &quot;Open&quot; are left alone. For &quot;Post&quot; rows matched to this list: no balance shown means
         fully paid, so it&apos;s marked Done and removed; a balance still shown means it&apos;s marked Done but
         flagged instead. Anything on this list that doesn&apos;t show up anywhere in the statement gets marked
-        Pending.
+        Pending. A Pending invoice that already has a note on it is left alone either way and called out separately
+        for manual review instead - a note is treated as a deliberate &quot;don&apos;t touch this one&quot; flag.
       </p>
 
       <div>
@@ -172,8 +188,9 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
         <div className="space-y-4">
           <p className="text-sm">
             {postResults.length} Posted row{postResults.length === 1 ? "" : "s"} found: {removeCount} will be
-            removed, {flagCount} will be flagged. {pendingCount} invoice{pendingCount === 1 ? "" : "s"} on this list
-            not in the statement will be marked Pending.
+            removed, {flagCount} will be flagged{reviewRows.length > 0 && `, ${reviewRows.length} held for review`}.{" "}
+            {pendingCount} invoice{pendingCount === 1 ? "" : "s"} on this list not in the statement will be marked
+            Pending.
           </p>
 
           <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
@@ -186,7 +203,7 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
                 </tr>
               </thead>
               <tbody>
-                {postResults.map((r, i) => {
+                {mainResults.map((r, i) => {
                   const label = actionLabel(r.action);
                   return (
                     <tr key={i} className="border-t border-black/10 dark:border-white/10">
@@ -196,7 +213,7 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
                     </tr>
                   );
                 })}
-                {postResults.length === 0 && (
+                {mainResults.length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-2 py-3 text-center text-black/40 dark:text-white/40">
                       No Posted rows in the pasted statement.
@@ -206,6 +223,34 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
               </tbody>
             </table>
           </div>
+
+          {reviewRows.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                Needs Manual Review - pending with a note, left alone:
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-blue-200 dark:border-blue-900/40">
+                <table className="w-full text-sm">
+                  <thead className="bg-blue-50 text-left dark:bg-blue-950/20">
+                    <tr>
+                      <th className="px-2 py-2">Document</th>
+                      <th className="px-2 py-2">Balance</th>
+                      <th className="px-2 py-2">Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviewRows.map((r, i) => (
+                      <tr key={i} className="border-t border-blue-100 dark:border-blue-900/30">
+                        <td className="px-2 py-1">{r.document}</td>
+                        <td className="px-2 py-1">{formatMoney(r.balance)}</td>
+                        <td className="px-2 py-1 italic text-black/70 dark:text-white/70">{r.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {pendingRows.length > 0 && (
             <div className="space-y-2">
