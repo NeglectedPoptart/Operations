@@ -53,18 +53,18 @@ function truckBadgeClass(truckGroup: string): string {
   return TRUCK_BADGE_CLASSES[hash];
 }
 
-// A faint tint of each day's own color (see MX_ARRIVAL_DAYS' badgeClass) on
-// the row itself - light enough not to fight with the white input fields
-// sitting on top of it, just enough to separate one row from the next at a
-// glance without reading every Arrival cell.
+// A tint of each day's own color (see MX_ARRIVAL_DAYS' badgeClass) on the
+// row itself, just enough to separate one row from the next at a glance
+// without reading every Arrival cell - still light enough that the white
+// input fields sitting on top of it stay easy to read.
 const ROW_DAY_BG: Record<MxArrivalDay, string> = {
-  monday: "bg-blue-50 dark:bg-blue-900/10",
-  tuesday: "bg-orange-50 dark:bg-orange-900/10",
-  wednesday: "bg-purple-50 dark:bg-purple-900/10",
-  thursday: "bg-amber-50 dark:bg-amber-900/10",
-  friday: "bg-pink-50 dark:bg-pink-900/10",
-  saturday: "bg-teal-50 dark:bg-teal-900/10",
-  sunday: "bg-red-50 dark:bg-red-900/10",
+  monday: "bg-blue-100 dark:bg-blue-900/30",
+  tuesday: "bg-orange-100 dark:bg-orange-900/30",
+  wednesday: "bg-purple-100 dark:bg-purple-900/30",
+  thursday: "bg-amber-100 dark:bg-amber-900/30",
+  friday: "bg-pink-100 dark:bg-pink-900/30",
+  saturday: "bg-teal-100 dark:bg-teal-900/30",
+  sunday: "bg-red-100 dark:bg-red-900/30",
 };
 
 function dayInfo(day: MxArrivalDay | null) {
