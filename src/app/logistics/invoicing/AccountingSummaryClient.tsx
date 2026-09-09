@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import HorizontalBarChart, { type BarDatum } from "@/components/HorizontalBarChart";
 import { daysSince, formatDateSlash } from "@/lib/dates";
-import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
+import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock, type CanvasSection, type MonoRow } from "@/lib/fobPricing";
 import { OVERDUE_DAYS } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement } from "@/lib/types";
 
@@ -101,19 +101,51 @@ export default function AccountingSummaryClient({
     const carrierChartData: BarDatum[] = Array.from(totalsByCarrier.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => b.value - a.value);
-    return { totalOutstanding, carrierCount: carrierIds.size, carrierChartData };
-  }, [postedNotPaid, brokerNameById]);
+    // Across every invoice on file, not just the posted-not-paid subset
+    // above - the broader "how much is still sitting unposted vs already
+    // posted" picture, regardless of whether a posted one is flagged.
+    let totalPending = 0;
+    let totalPosted = 0;
+    for (const s of statements) {
+      if (s.status === "pending") totalPending += 1;
+      else if (s.status === "done") totalPosted += 1;
+    }
+    return { totalOutstanding, carrierCount: carrierIds.size, carrierChartData, totalPending, totalPosted };
+  }, [postedNotPaid, brokerNameById, statements]);
 
   async function handleCopyImage() {
     try {
-      const blocks = [
-        buildAccountingBlock(`${OVERDUE_DAYS}+ Days`, "#EF5350", overItems, brokerNameById),
-        buildAccountingBlock(`Under ${OVERDUE_DAYS} Days`, "#64B5F6", underItems, brokerNameById),
-      ];
+      const statsBlock: CanvasSection = {
+        kind: "stats",
+        title: "Summary",
+        headerColor: "#8DC63F",
+        columns: 3,
+        stats: [
+          { label: "Total Outstanding", value: formatMoney(summary.totalOutstanding) },
+          { label: "Carriers", value: String(summary.carrierCount) },
+          { label: "Invoices", value: String(overItems.length + underItems.length) },
+          { label: `${OVERDUE_DAYS}+ Days`, value: String(overItems.length), valueColor: "#dc2626" },
+          { label: "Total Invoices Pending", value: String(summary.totalPending) },
+          { label: "Total Posted", value: String(summary.totalPosted) },
+        ],
+      };
+      const chartBlock: CanvasSection = {
+        kind: "chart",
+        title: "Outstanding by Carrier",
+        headerColor: "#8DC63F",
+        data: summary.carrierChartData,
+        formatValue: (v) => `$${Math.round(v).toLocaleString()}`,
+      };
       const blob = await renderPriceSheetPng({
         title: "Freight Invoicing - Outstanding by Carrier",
         message: "",
-        blocks,
+        rows: [
+          [statsBlock, chartBlock],
+          [
+            buildAccountingBlock(`${OVERDUE_DAYS}+ Days`, "#EF5350", overItems, brokerNameById),
+            buildAccountingBlock(`Under ${OVERDUE_DAYS} Days`, "#64B5F6", underItems, brokerNameById),
+          ],
+        ],
       });
       const result = await copyOrDownloadPng(blob, "invoicing-accounting-summary.png");
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
@@ -142,7 +174,7 @@ export default function AccountingSummaryClient({
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
           <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Summary</h3>
-          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
             <div>
               <p className="text-black/60 dark:text-white/60">Total Outstanding</p>
               <p className="text-xl font-bold">{formatMoney(summary.totalOutstanding)}</p>
@@ -158,6 +190,14 @@ export default function AccountingSummaryClient({
             <div>
               <p className="text-black/60 dark:text-white/60">{OVERDUE_DAYS}+ Days</p>
               <p className="text-xl font-bold text-red-600 dark:text-red-400">{overItems.length}</p>
+            </div>
+            <div>
+              <p className="text-black/60 dark:text-white/60">Total Invoices Pending</p>
+              <p className="text-xl font-bold">{summary.totalPending}</p>
+            </div>
+            <div>
+              <p className="text-black/60 dark:text-white/60">Total Posted</p>
+              <p className="text-xl font-bold">{summary.totalPosted}</p>
             </div>
           </div>
         </div>

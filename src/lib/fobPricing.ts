@@ -110,11 +110,40 @@ export function buildWhatsAppSection(
 // from a foreignObject-based SVG image regardless of its content, so
 // canvas.toBlob()/toDataURL() throws a SecurityError no matter what.
 export interface CanvasBlock {
+  // Optional and defaulted to "table" below rather than required, so every
+  // existing caller across the app that builds a plain {title, headerColor,
+  // columnHeaders, rows} object keeps compiling and rendering unchanged.
+  kind?: "table";
   title: string;
   headerColor: string;
   columnHeaders: string[];
   rows: MonoRow[];
 }
+
+// A real bar-graph, drawn as actual proportional bars (not just a number
+// table) - for pages that want their on-screen HorizontalBarChart to look
+// the same in a Copy-as-Image export, not reduced to plain figures.
+export interface CanvasChartBlock {
+  kind: "chart";
+  title: string;
+  headerColor: string;
+  data: { label: string; value: number }[];
+  formatValue?: (v: number) => string;
+}
+
+// A small stat-tile grid (label + big value per tile), matching the
+// "Summary" card style already used on-screen (AP, this Accounting Summary,
+// etc.) so a Copy-as-Image export can include the same tiles instead of
+// only the underlying tables.
+export interface CanvasStatsBlock {
+  kind: "stats";
+  title: string;
+  headerColor: string;
+  stats: { label: string; value: string; valueColor?: string }[];
+  columns?: number;
+}
+
+export type CanvasSection = CanvasBlock | CanvasChartBlock | CanvasStatsBlock;
 
 const CANVAS_FONT = "12px Arial, sans-serif";
 const CANVAS_FONT_BOLD = "bold 12px Arial, sans-serif";
@@ -215,36 +244,155 @@ function drawBlock(ctx: CanvasRenderingContext2D, block: CanvasBlock, x: number,
   }
 }
 
+const STAT_TILE_W = 140;
+const STAT_TILE_H = 52;
+const STAT_LABEL_FONT = "11px Arial, sans-serif";
+const STAT_VALUE_FONT = "bold 18px Arial, sans-serif";
+
+const CHART_ROW_H = 26;
+const CHART_LABEL_W = 130;
+const CHART_BAR_AREA_W = 220;
+const CHART_VALUE_W = 80;
+
+function drawTitleBar(ctx: CanvasRenderingContext2D, title: string, headerColor: string, x: number, y: number, width: number) {
+  ctx.fillStyle = headerColor;
+  ctx.fillRect(x, y, width, BLOCK_TITLE_H);
+  ctx.strokeStyle = "#000000";
+  ctx.strokeRect(x, y, width, BLOCK_TITLE_H);
+  ctx.fillStyle = "#000000";
+  ctx.font = CANVAS_FONT_HEADER;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(title, x + width / 2, y + BLOCK_TITLE_H / 2);
+}
+
+function measureStatsBlock(block: CanvasStatsBlock): { width: number; height: number; columns: number } {
+  const columns = block.columns ?? (Math.min(3, block.stats.length) || 1);
+  const rows = Math.ceil(block.stats.length / columns) || 1;
+  return { width: STAT_TILE_W * columns, height: BLOCK_TITLE_H + rows * STAT_TILE_H + 16, columns };
+}
+
+function drawStatsBlock(ctx: CanvasRenderingContext2D, block: CanvasStatsBlock, x: number, y: number, width: number, columns: number) {
+  drawTitleBar(ctx, block.title, block.headerColor, x, y, width);
+  const bodyY = y + BLOCK_TITLE_H;
+  const bodyHeight = (Math.ceil(block.stats.length / columns) || 1) * STAT_TILE_H + 16;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x, bodyY, width, bodyHeight);
+  ctx.strokeStyle = "#000000";
+  ctx.strokeRect(x, bodyY, width, bodyHeight);
+  const startY = bodyY + 12;
+  block.stats.forEach((stat, i) => {
+    const col = i % columns;
+    const row = Math.floor(i / columns);
+    const tileX = x + col * STAT_TILE_W + CELL_PAD_X;
+    const tileY = startY + row * STAT_TILE_H;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#555555";
+    ctx.font = STAT_LABEL_FONT;
+    ctx.fillText(stat.label, tileX, tileY);
+    ctx.fillStyle = stat.valueColor ?? "#000000";
+    ctx.font = STAT_VALUE_FONT;
+    ctx.fillText(stat.value, tileX, tileY + 16);
+  });
+}
+
+function measureChartBlock(block: CanvasChartBlock): { width: number; height: number } {
+  const rows = Math.max(block.data.length, 1);
+  return { width: CHART_LABEL_W + CHART_BAR_AREA_W + CHART_VALUE_W, height: BLOCK_TITLE_H + rows * CHART_ROW_H + 16 };
+}
+
+function drawChartBlock(ctx: CanvasRenderingContext2D, block: CanvasChartBlock, x: number, y: number, width: number) {
+  drawTitleBar(ctx, block.title, block.headerColor, x, y, width);
+  const bodyY = y + BLOCK_TITLE_H;
+  const bodyHeight = Math.max(block.data.length, 1) * CHART_ROW_H + 16;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x, bodyY, width, bodyHeight);
+  ctx.strokeStyle = "#000000";
+  ctx.strokeRect(x, bodyY, width, bodyHeight);
+
+  const formatValue = block.formatValue ?? ((v: number) => String(v));
+  if (block.data.length === 0) {
+    ctx.fillStyle = "#666666";
+    ctx.font = CANVAS_FONT;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No data yet.", x + width / 2, bodyY + bodyHeight / 2);
+    return;
+  }
+
+  const maxVal = Math.max(1, ...block.data.map((d) => d.value));
+  let rowY = bodyY + 8;
+  for (const d of block.data) {
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#000000";
+    ctx.font = CANVAS_FONT;
+    ctx.fillText(d.label, x + CELL_PAD_X, rowY + CHART_ROW_H / 2, CHART_LABEL_W - CELL_PAD_X * 2);
+
+    const barAreaX = x + CHART_LABEL_W;
+    const barAreaW = CHART_BAR_AREA_W - CELL_PAD_X;
+    const barW = Math.max(4, (d.value / maxVal) * barAreaW);
+    ctx.fillStyle = "#e5e5e5";
+    ctx.fillRect(barAreaX, rowY + 4, barAreaW, CHART_ROW_H - 8);
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(barAreaX, rowY + 4, barW, CHART_ROW_H - 8);
+
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#000000";
+    ctx.font = CANVAS_FONT_BOLD;
+    ctx.fillText(formatValue(d.value), x + width - CELL_PAD_X, rowY + CHART_ROW_H / 2);
+    rowY += CHART_ROW_H;
+  }
+}
+
 export async function renderPriceSheetPng(opts: {
   title: string;
   message: string;
-  blocks: CanvasBlock[];
+  // Either flat `blocks` (laid out per `direction`, as before) or `rows` - an
+  // array of horizontal rows (each row's blocks side by side, rows stacked
+  // vertically) for a mixed layout, e.g. a stats tile + a chart side by
+  // side, with tables stacked underneath. `rows` takes precedence when given.
+  blocks?: CanvasSection[];
+  rows?: CanvasSection[][];
   scale?: number;
   direction?: "row" | "column";
 }): Promise<Blob> {
-  const { title, message, blocks, scale = 2, direction = "row" } = opts;
+  const { title, message, scale = 2, direction = "row" } = opts;
+  const rows: CanvasSection[][] =
+    opts.rows ?? (direction === "row" ? [opts.blocks ?? []] : (opts.blocks ?? []).map((b) => [b]));
+
   const measureCanvas = document.createElement("canvas");
   const mctx = measureCanvas.getContext("2d");
   if (!mctx) throw new Error("Canvas is not supported in this browser");
 
-  const blockColWidths = blocks.map((b) => measureBlockColWidths(mctx, b));
-  const blockWidths = blockColWidths.map((widths) => widths.reduce((a, b) => a + b, 0));
-  const blockHeights = blocks.map((b) => BLOCK_TITLE_H + COL_HEADER_H + b.rows.length * ROW_H);
+  // Each block measures/draws itself according to its own kind - table is
+  // the default for any block with no kind (every pre-existing caller).
+  function measureOne(b: CanvasSection): { width: number; height: number; colWidths: number[] | null; columns: number | null } {
+    if (b.kind === "chart") {
+      const m = measureChartBlock(b);
+      return { width: m.width, height: m.height, colWidths: null, columns: null };
+    }
+    if (b.kind === "stats") {
+      const m = measureStatsBlock(b);
+      return { width: m.width, height: m.height, colWidths: null, columns: m.columns };
+    }
+    const colWidths = measureBlockColWidths(mctx!, b);
+    return { width: colWidths.reduce((a, c) => a + c, 0), height: BLOCK_TITLE_H + COL_HEADER_H + b.rows.length * ROW_H, colWidths, columns: null };
+  }
 
-  const canvasWidth =
-    direction === "row"
-      ? Math.max(blockWidths.reduce((a, b) => a + b, 0) + BLOCK_GAP * Math.max(0, blocks.length - 1), 400)
-      : Math.max(...blockWidths, 400);
+  const rowDims = rows.map((row) => row.map(measureOne));
+  const rowWidths = rowDims.map((dims) => dims.reduce((a, d) => a + d.width, 0) + BLOCK_GAP * Math.max(0, dims.length - 1));
+  const rowHeights = rowDims.map((dims) => Math.max(0, ...dims.map((d) => d.height)));
+
+  const canvasWidth = Math.max(...rowWidths, 400);
 
   mctx.font = CANVAS_FONT_MESSAGE;
   const messageLines = message ? wrapText(mctx, message, canvasWidth - CELL_PAD_X * 4) : [];
   const messageBoxHeight = messageLines.length > 0 ? messageLines.length * LINE_H + 16 : 0;
   const titleAreaHeight = 34 + (messageBoxHeight > 0 ? messageBoxHeight + 10 : 0);
 
-  const tableAreaHeight =
-    direction === "row"
-      ? Math.max(...blockHeights)
-      : blockHeights.reduce((a, b) => a + b, 0) + BLOCK_GAP * Math.max(0, blocks.length - 1);
+  const tableAreaHeight = rowHeights.reduce((a, b) => a + b, 0) + BLOCK_GAP * Math.max(0, rows.length - 1);
   const canvasHeight = titleAreaHeight + tableAreaHeight + 16;
 
   const canvas = document.createElement("canvas");
@@ -276,18 +424,17 @@ export async function renderPriceSheetPng(opts: {
     y += messageBoxHeight + 10;
   }
 
-  if (direction === "row") {
+  rows.forEach((row, rowIndex) => {
     let x = 0;
-    blocks.forEach((block, i) => {
-      drawBlock(ctx, block, x, y, blockColWidths[i]);
-      x += blockWidths[i] + BLOCK_GAP;
+    row.forEach((block, colIndex) => {
+      const dims = rowDims[rowIndex][colIndex];
+      if (block.kind === "chart") drawChartBlock(ctx, block, x, y, dims.width);
+      else if (block.kind === "stats") drawStatsBlock(ctx, block, x, y, dims.width, dims.columns!);
+      else drawBlock(ctx, block, x, y, dims.colWidths!);
+      x += dims.width + BLOCK_GAP;
     });
-  } else {
-    blocks.forEach((block, i) => {
-      drawBlock(ctx, block, 0, y, blockColWidths[i]);
-      y += blockHeights[i] + BLOCK_GAP;
-    });
-  }
+    y += rowHeights[rowIndex] + BLOCK_GAP;
+  });
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
