@@ -2,10 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { formatDate } from "@/lib/dates";
+import { formatDate, mondayOf } from "@/lib/dates";
 import { MX_ORDER_CUSTOMERS, parseMxOrderText, type MxOrderCustomer, type ParsedMxOrderRow } from "@/lib/mxOrdersParse";
-import { MX_ORDER_STATUSES, type MxOrder, type MxOrderStatus } from "@/lib/types";
-import { addOrderRow, deleteOrderRow, importMxOrders, updateOrderRow } from "./actions";
+import {
+  MX_ARRIVAL_DAYS,
+  MX_ARRIVAL_SECTIONS,
+  MX_ORDER_STATUSES,
+  type MxArrivalDay,
+  type MxArrivalSection,
+  type MxOrder,
+  type MxOrderStatus,
+} from "@/lib/types";
+import { addOrderRow, deleteOrderRow, importMxOrders, sendOrderToArrivals, updateOrderRow } from "./actions";
 
 const cellField = "w-full min-w-0 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black";
 
@@ -32,6 +40,55 @@ function orderSummaryLine(o: MxOrder): string {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+// A starting guess only, always shown as an editable field - matches by
+// keyword against the commodity name, same 4 groupings Arrivals itself
+// uses, falling back to the catch-all section for anything unrecognized.
+function guessSection(commodity: string): MxArrivalSection {
+  const c = commodity.toLowerCase();
+  if (c.includes("lettuce") || c.includes("iceberg") || c.includes("romaine")) return "lettuce";
+  if (c.includes("broccoli")) return "broccoli";
+  if (c.includes("pepper") || c.includes("tomatillo") || c.includes("cucumber")) return "peppers_hothouse";
+  return "celery_carrots_cauliflower";
+}
+
+const WEEKDAY_ARRIVAL_DAYS: MxArrivalDay[] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+function guessArrivalDay(dateIso: string | null): MxArrivalDay | "" {
+  if (!dateIso) return "";
+  return WEEKDAY_ARRIVAL_DAYS[new Date(`${dateIso}T00:00:00Z`).getUTCDay()];
+}
+
+// What ties the new Arrivals row back to the order that asked for it.
+function buildOrderTag(o: MxOrder): string {
+  return [`Order: ${o.customer}`, o.po_number ? `PO ${o.po_number}` : null, o.reference_number ? `Ref ${o.reference_number}` : null]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+interface FulfillDraft {
+  section: MxArrivalSection;
+  growerName: string;
+  labelName: string;
+  commodityName: string;
+  boxesApprox: string;
+  priceToGrower: string;
+  manifesto: string;
+  arrivalDay: MxArrivalDay | "";
+}
+
+function draftFor(o: MxOrder): FulfillDraft {
+  return {
+    section: guessSection(o.commodity),
+    growerName: "",
+    labelName: "",
+    commodityName: o.commodity,
+    boxesApprox: o.qty !== null ? `${o.qty}${o.qty_unit ? ` ${o.qty_unit}` : ""}` : "",
+    priceToGrower: "",
+    manifesto: "PENDING TO RECEIVE",
+    arrivalDay: guessArrivalDay(o.delivery_date ?? o.loading_date),
+  };
 }
 
 // Sub-groups one customer's orders into one bucket per delivery date, in
@@ -68,6 +125,10 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
   // The one row currently showing the full editable fields - every other
   // row stays in plain list view. Null means nothing is being edited.
   const [editingId, setEditingId] = useState<string | null>(null);
+  // The one fulfilled row currently showing the "Send to Arrivals" form.
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sendDraft, setSendDraft] = useState<FulfillDraft | null>(null);
+  const [sending, setSending] = useState(false);
 
   const visibleOrders = useMemo(
     () => (statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter)),
@@ -148,6 +209,40 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
     if (!(await confirm("Delete this order line?"))) return;
     setOrders((prev) => prev.filter((o) => o.id !== id));
     await deleteOrderRow(id).catch(() => {});
+  }
+
+  function handleOpenSend(o: MxOrder) {
+    setSendingId(o.id);
+    setSendDraft(draftFor(o));
+  }
+
+  function handleCancelSend() {
+    setSendingId(null);
+    setSendDraft(null);
+  }
+
+  async function handleConfirmSend(o: MxOrder) {
+    if (!sendDraft) return;
+    setSending(true);
+    try {
+      const arrival = await sendOrderToArrivals(o.id, {
+        weekStartDate: mondayOf(o.delivery_date ?? o.loading_date ?? todayIso()),
+        section: sendDraft.section,
+        growerName: sendDraft.growerName,
+        labelName: sendDraft.labelName,
+        commodityName: sendDraft.commodityName || o.commodity,
+        boxesApprox: sendDraft.boxesApprox,
+        priceToGrower: sendDraft.priceToGrower,
+        manifesto: sendDraft.manifesto,
+        arrivalDay: sendDraft.arrivalDay || null,
+        orderTag: buildOrderTag(o),
+      });
+      updateLocal(o.id, { status: "fulfilled", linked_arrival_id: arrival.id });
+      setSendingId(null);
+      setSendDraft(null);
+    } finally {
+      setSending(false);
+    }
   }
 
   const pendingCount = orders.filter((o) => o.status === "pending").length;
@@ -314,7 +409,106 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
                         <span className="font-normal text-black/40">({dateGroup.orders.length})</span>
                       </h3>
                       {dateGroup.orders.map((o) =>
-                        editingId === o.id ? (
+                        sendingId === o.id && sendDraft ? (
+                          <div key={o.id} className="space-y-2 border-l-2 border-teal-600 p-3">
+                            <p className="text-xs text-black/60 dark:text-white/60">
+                              Sending <span className="font-medium">{o.commodity}</span> to Arrivals - fill in the grower side,
+                              or leave a field blank to skip it.
+                            </p>
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                              <label className="text-xs font-medium">
+                                Section
+                                <select
+                                  value={sendDraft.section}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, section: e.target.value as MxArrivalSection })}
+                                  className={`${cellField} mt-1`}
+                                >
+                                  {MX_ARRIVAL_SECTIONS.map((s) => (
+                                    <option key={s.value} value={s.value}>
+                                      {s.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="text-xs font-medium">
+                                Grower
+                                <input
+                                  value={sendDraft.growerName}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, growerName: e.target.value })}
+                                  placeholder="e.g. Navarro"
+                                  className={`${cellField} mt-1`}
+                                />
+                              </label>
+                              <label className="text-xs font-medium">
+                                Label
+                                <input
+                                  value={sendDraft.labelName}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, labelName: e.target.value })}
+                                  className={`${cellField} mt-1`}
+                                />
+                              </label>
+                              <label className="text-xs font-medium">
+                                Commodity
+                                <input
+                                  value={sendDraft.commodityName}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, commodityName: e.target.value })}
+                                  className={`${cellField} mt-1`}
+                                />
+                              </label>
+                              <label className="text-xs font-medium">
+                                Bx&apos;s/Pallets Aprox
+                                <input
+                                  value={sendDraft.boxesApprox}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, boxesApprox: e.target.value })}
+                                  className={`${cellField} mt-1`}
+                                />
+                              </label>
+                              <label className="text-xs font-medium">
+                                Price to Grower
+                                <input
+                                  value={sendDraft.priceToGrower}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, priceToGrower: e.target.value })}
+                                  className={`${cellField} mt-1`}
+                                />
+                              </label>
+                              <label className="text-xs font-medium">
+                                Manifesto
+                                <input
+                                  value={sendDraft.manifesto}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, manifesto: e.target.value })}
+                                  className={`${cellField} mt-1`}
+                                />
+                              </label>
+                              <label className="text-xs font-medium">
+                                Arrival Day
+                                <select
+                                  value={sendDraft.arrivalDay}
+                                  onChange={(e) => setSendDraft({ ...sendDraft, arrivalDay: e.target.value as MxArrivalDay })}
+                                  className={`${cellField} mt-1`}
+                                >
+                                  <option value="">--</option>
+                                  {MX_ARRIVAL_DAYS.map((d) => (
+                                    <option key={d.value} value={d.value}>
+                                      {d.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => handleConfirmSend(o)}
+                                disabled={sending || !sendDraft.growerName.trim()}
+                                className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800 disabled:opacity-60"
+                              >
+                                {sending ? "Sending..." : "Send to Arrivals"}
+                              </button>
+                              <button onClick={handleCancelSend} className="text-sm font-medium text-black/60 hover:underline dark:text-white/60">
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : editingId === o.id ? (
                       <div key={o.id} className="space-y-2 p-3">
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <label className="text-xs font-medium">
@@ -470,6 +664,17 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
                           {MX_ORDER_STATUSES.find((s) => s.value === o.status)?.label}
                         </button>
                         <span className="flex-1">{orderSummaryLine(o)}</span>
+                        {o.status === "fulfilled" &&
+                          (o.linked_arrival_id ? (
+                            <span className="shrink-0 text-xs font-medium text-teal-700 dark:text-teal-400">✓ In Arrivals</span>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenSend(o)}
+                              className="shrink-0 text-xs font-medium text-teal-700 hover:underline dark:text-teal-400"
+                            >
+                              Send to Arrivals
+                            </button>
+                          ))}
                         <button
                           onClick={() => setEditingId(o.id)}
                           className="shrink-0 text-xs font-medium text-green-700 hover:underline dark:text-green-400"

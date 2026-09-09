@@ -1022,6 +1022,10 @@ export interface MxOrder {
   status: MxOrderStatus;
   notes: string | null;
   position: number;
+  // Set once this order has been sent to Arrivals (see the "Send to
+  // Arrivals" option on fulfilling it) - prevents sending the same order
+  // twice.
+  linked_arrival_id: string | null;
   created_at: string;
   updated_at: string;
 }
