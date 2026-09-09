@@ -116,6 +116,7 @@ const NAV: NavCategory[] = [
     tab: "mexico",
     items: [
       { href: "/mexico/arrivals", label: "Arrivals" },
+      { href: "/mexico/orders", label: "Orders" },
       { href: "/mexico/growers", label: "Growers" },
     ],
   },

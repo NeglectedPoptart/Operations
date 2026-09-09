@@ -993,6 +993,39 @@ export interface MxArrival {
   updated_at: string;
 }
 
+// Mexico: Orders ----------------------------------------------------------------
+
+export type MxOrderStatus = "pending" | "fulfilled";
+
+export const MX_ORDER_STATUSES: { value: MxOrderStatus; label: string }[] = [
+  { value: "pending", label: "Pending" },
+  { value: "fulfilled", label: "Fulfilled" },
+];
+
+// One line item a customer needs fulfilled - `customer` is free text (not a
+// fixed list) since new customers show up over time, each with their own
+// order format (see src/lib/mxOrdersParse.ts for the paste parsers).
+export interface MxOrder {
+  id: string;
+  customer: string;
+  commodity: string;
+  plu: string | null;
+  size: string | null;
+  coo: string | null;
+  grade: string | null;
+  qty: number | null;
+  qty_unit: string | null;
+  po_number: string | null;
+  reference_number: string | null;
+  loading_date: string | null;
+  delivery_date: string | null;
+  status: MxOrderStatus;
+  notes: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // Shipping/Receiving: prototype ERP ---------------------------------------------
 
 // Master data - deliberately its own standalone item/vendor/customer list
