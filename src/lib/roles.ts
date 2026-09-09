@@ -87,7 +87,10 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "meetings",
     "mexico",
   ],
-  warehouse_qc: ["warehouse", "qc", "buyers", "meetings"],
+  // "mexico" here is deliberately narrower than every other role that has
+  // it - middleware.ts additionally restricts Warehouse/QC to just
+  // Arrivals and Orders, not Growers (see warehouseQcMexicoAllowed below).
+  warehouse_qc: ["warehouse", "qc", "buyers", "meetings", "mexico"],
   sales: ["sales", "qc", "buyers", "marketing", "meetings"],
   accounting: ["sales", "compliance", "accounting", "meetings"],
   buyer: ["warehouse", "qc", "sales", "buyers", "meetings"],
@@ -127,4 +130,17 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/mexico")) return "mexico";
   if (pathname.startsWith("/shipping-receiving")) return "shipping_receiving";
   return null;
+}
+
+// Warehouse/QC has "mexico" in its ROLE_TABS, but only for Arrivals and
+// Orders - not Growers, which stays reserved for roles with full Mexico
+// access. A per-role path allowlist layered on top of the generic tab
+// check (see middleware.ts), the same "hardcoded exception alongside the
+// tab system" shape as BROKER_CARRIER_PATH/SUPREME_PATH_PREFIX, just
+// narrowing one role's access to part of a tab instead of granting/denying
+// the whole thing.
+const WAREHOUSE_QC_MEXICO_PATHS = ["/mexico/arrivals", "/mexico/orders"];
+
+export function warehouseQcMexicoAllowed(pathname: string): boolean {
+  return WAREHOUSE_QC_MEXICO_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }

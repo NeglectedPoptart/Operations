@@ -1,6 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { BROKER_CARRIER_PATH, SUPREME_PATH_PREFIX, canAccessTab, isSupremeUser, tabForPath, type Role } from "@/lib/roles";
+import {
+  BROKER_CARRIER_PATH,
+  SUPREME_PATH_PREFIX,
+  canAccessTab,
+  isSupremeUser,
+  tabForPath,
+  warehouseQcMexicoAllowed,
+  type Role,
+} from "@/lib/roles";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -78,6 +86,15 @@ export async function updateSession(request: NextRequest) {
 
   const tab = tabForPath(pathname);
   if (tab && !canAccessTab(role, tab)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
+  // Warehouse/QC's "mexico" tab grant is deliberately partial - Arrivals
+  // and Orders only, not Growers - so it needs this extra narrowing on top
+  // of the generic tab check above, which only knows about whole tabs.
+  if (tab === "mexico" && role === "warehouse_qc" && !warehouseQcMexicoAllowed(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

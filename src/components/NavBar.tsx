@@ -9,6 +9,12 @@ import { BROKER_CARRIER_PATH, canAccessTab, isSupremeUser, ROLES, type Role, typ
 interface NavItem {
   href: string;
   label: string;
+  // Hides this one item from an otherwise-tab-eligible role - for a role
+  // that gets only part of a tab's pages (e.g. Warehouse/QC's Mexico access
+  // is Arrivals/Orders only, not Growers - see roles.ts's matching
+  // middleware restriction, which is the real enforcement; this only
+  // controls what shows in the sidebar).
+  excludeRoles?: Role[];
 }
 
 interface NavCategory {
@@ -120,7 +126,7 @@ const NAV: NavCategory[] = [
     items: [
       { href: "/mexico/arrivals", label: "Arrivals" },
       { href: "/mexico/orders", label: "Orders" },
-      { href: "/mexico/growers", label: "Growers" },
+      { href: "/mexico/growers", label: "Growers", excludeRoles: ["warehouse_qc"] },
     ],
   },
   {
@@ -309,7 +315,10 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
         : NAV.filter((category) => {
             if (category.supremeOnly) return isSupremeUser(email);
             return !category.tab || canAccessTab(role, category.tab);
-          }),
+          }).map((category) => ({
+            ...category,
+            items: category.items?.filter((item) => !(role && item.excludeRoles?.includes(role))),
+          })),
     [isBrokerCarrier, role, email],
   );
 

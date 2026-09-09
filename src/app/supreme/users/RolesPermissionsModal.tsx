@@ -31,7 +31,7 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: b
   { tab: "compliance", label: "Compliance", pages: "PAS Files, Food Safety" },
   { tab: "accounting", label: "Accounting", pages: "Accounts Receivable" },
   { tab: "marketing", label: "Marketing", pages: "Brand Assets" },
-  { tab: "mexico", label: "Mexico", pages: "Arrivals, Growers" },
+  { tab: "mexico", label: "Mexico", pages: "Arrivals, Orders, Growers" },
   {
     tab: "shipping_receiving",
     label: "Shipping/Receiving",
@@ -140,7 +140,8 @@ export default function RolesPermissionsModal({
           </div>
           <p className="text-xs text-black/50 dark:text-white/50 print:text-black">
             Broker/Carrier is a special case: no Home, no sections above - just the Broker Rate Entry form and
-            nothing else.
+            nothing else. Warehouse/QC&apos;s Mexico access is narrower than the ✓ above suggests too - Arrivals and
+            Orders only, not Growers.
           </p>
         </section>
 
