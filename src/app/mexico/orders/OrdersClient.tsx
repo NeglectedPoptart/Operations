@@ -8,12 +8,30 @@ import { MX_ORDER_STATUSES, type MxOrder, type MxOrderStatus } from "@/lib/types
 import { addOrderRow, deleteOrderRow, importMxOrders, updateOrderRow } from "./actions";
 
 const cellField = "w-full min-w-0 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black";
-const cellFieldSm = `${cellField} w-16`;
 
 function todayIso(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit" }).format(
     new Date(),
   );
+}
+
+// One readable line per order for the list view - everything that's set,
+// nothing that isn't, so a simple HEB row and a fuller Houston Fruitland row
+// don't end up with the same amount of empty space.
+function orderSummaryLine(o: MxOrder): string {
+  return [
+    o.size ? `${o.commodity} (${o.size})` : o.commodity,
+    o.qty !== null ? `${o.qty}${o.qty_unit ? ` ${o.qty_unit}` : ""}` : null,
+    o.loading_date ? `Loading ${formatDate(o.loading_date)}` : null,
+    o.delivery_date ? `Delivery ${formatDate(o.delivery_date)}` : null,
+    o.po_number ? `PO ${o.po_number}` : null,
+    o.reference_number ? `Ref ${o.reference_number}` : null,
+    o.coo ? `COO ${o.coo}` : null,
+    o.grade,
+    o.notes,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder[] }) {
@@ -27,11 +45,32 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [adding, setAdding] = useState(false);
+  // The one row currently showing the full editable fields - every other
+  // row stays in plain list view. Null means nothing is being edited.
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const visibleOrders = useMemo(
     () => (statusFilter === "all" ? orders : orders.filter((o) => o.status === statusFilter)),
     [orders, statusFilter],
   );
+
+  // Grouped by customer so HEB's orders, Fiesta's orders, etc. each read as
+  // their own list instead of one long mixed table - sorted by customer
+  // name, then by delivery date (soonest first, undated last) within it.
+  const groupedOrders = useMemo(() => {
+    const groups = new Map<string, MxOrder[]>();
+    for (const o of visibleOrders) {
+      const key = o.customer.trim() || "(No customer set)";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(o);
+    }
+    return Array.from(groups.entries())
+      .map(([customer, list]) => ({
+        customer,
+        list: [...list].sort((a, b) => (a.delivery_date ?? "9999-99-99").localeCompare(b.delivery_date ?? "9999-99-99")),
+      }))
+      .sort((a, b) => a.customer.localeCompare(b.customer));
+  }, [visibleOrders]);
 
   function handlePreview() {
     const result = parseMxOrderText(pasteCustomer, pasteText, todayIso());
@@ -63,13 +102,16 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
     }
   }
 
+  // Starts blank (no customer guessed) and opens straight into edit mode -
+  // there's nothing useful to show in list view for a row with nothing in
+  // it yet.
   async function handleAddRow() {
     setAdding(true);
     try {
-      const customerLabel = MX_ORDER_CUSTOMERS.find((c) => c.value === pasteCustomer)?.label ?? "";
       const nextPosition = orders.length > 0 ? Math.max(...orders.map((o) => o.position)) + 1 : 1;
-      const row = await addOrderRow(customerLabel, nextPosition);
-      setOrders((prev) => [...prev, row as MxOrder]);
+      const row = (await addOrderRow("", nextPosition)) as MxOrder;
+      setOrders((prev) => [...prev, row]);
+      setEditingId(row.id);
     } finally {
       setAdding(false);
     }
@@ -236,151 +278,189 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
           </div>
         )}
 
-        {visibleOrders.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-            <table className="w-full text-xs">
-              <thead className="bg-black/5 text-left dark:bg-white/5">
-                <tr>
-                  <th className="px-1.5 py-1 font-medium">Customer</th>
-                  <th className="px-1.5 py-1 font-medium">Commodity</th>
-                  <th className="px-1.5 py-1 font-medium">PLU</th>
-                  <th className="px-1.5 py-1 font-medium">Size</th>
-                  <th className="px-1.5 py-1 font-medium">COO</th>
-                  <th className="px-1.5 py-1 font-medium">Grade</th>
-                  <th className="px-1.5 py-1 font-medium">Qty</th>
-                  <th className="px-1.5 py-1 font-medium">Unit</th>
-                  <th className="px-1.5 py-1 font-medium">PO #</th>
-                  <th className="px-1.5 py-1 font-medium">Ref #</th>
-                  <th className="px-1.5 py-1 font-medium">Loading</th>
-                  <th className="px-1.5 py-1 font-medium">Delivery</th>
-                  <th className="px-1.5 py-1 font-medium">Status</th>
-                  <th className="px-1.5 py-1 font-medium">Notes</th>
-                  <th className="px-1.5 py-1" />
-                </tr>
-              </thead>
-              <tbody>
-                {visibleOrders.map((o) => (
-                  <tr
-                    key={o.id}
-                    className={`border-t border-black/10 align-top dark:border-white/10 ${
-                      o.status === "fulfilled" ? "opacity-50" : ""
-                    }`}
-                  >
-                    <td className="min-w-[8rem] px-1.5 py-1">
-                      <input
-                        defaultValue={o.customer}
-                        onBlur={(e) => handleFieldSave(o.id, { customer: e.target.value })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="min-w-[9rem] px-1.5 py-1">
-                      <input
-                        defaultValue={o.commodity}
-                        onBlur={(e) => handleFieldSave(o.id, { commodity: e.target.value })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.plu ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { plu: e.target.value || null })}
-                        className={cellFieldSm}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.size ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { size: e.target.value || null })}
-                        className={cellFieldSm}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.coo ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { coo: e.target.value || null })}
-                        className={cellFieldSm}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.grade ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { grade: e.target.value || null })}
-                        className={cellFieldSm}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.qty ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { qty: e.target.value === "" ? null : Number(e.target.value) })}
-                        className={cellFieldSm}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.qty_unit ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { qty_unit: e.target.value || null })}
-                        className={cellFieldSm}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.po_number ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { po_number: e.target.value || null })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        defaultValue={o.reference_number ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { reference_number: e.target.value || null })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        type="date"
-                        defaultValue={o.loading_date ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { loading_date: e.target.value || null })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <input
-                        type="date"
-                        defaultValue={o.delivery_date ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { delivery_date: e.target.value || null })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <select
-                        value={o.status}
-                        onChange={(e) => handleFieldSave(o.id, { status: e.target.value as MxOrderStatus })}
-                        className={cellField}
+        {groupedOrders.length > 0 ? (
+          <div className="space-y-5">
+            {groupedOrders.map((group) => (
+              <section key={group.customer} className="space-y-2">
+                <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
+                  {group.customer} <span className="text-sm font-normal text-black/40">({group.list.length})</span>
+                </h2>
+                <div className="divide-y divide-black/10 rounded-lg border border-black/10 dark:divide-white/10 dark:border-white/10">
+                  {group.list.map((o) =>
+                    editingId === o.id ? (
+                      <div key={o.id} className="space-y-2 p-3">
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          <label className="text-xs font-medium">
+                            Customer
+                            <input
+                              defaultValue={o.customer}
+                              onBlur={(e) => handleFieldSave(o.id, { customer: e.target.value })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Commodity
+                            <input
+                              defaultValue={o.commodity}
+                              onBlur={(e) => handleFieldSave(o.id, { commodity: e.target.value })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            PLU
+                            <input
+                              defaultValue={o.plu ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { plu: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Size
+                            <input
+                              defaultValue={o.size ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { size: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            COO
+                            <input
+                              defaultValue={o.coo ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { coo: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Grade
+                            <input
+                              defaultValue={o.grade ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { grade: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Qty
+                            <input
+                              defaultValue={o.qty ?? ""}
+                              onBlur={(e) =>
+                                handleFieldSave(o.id, { qty: e.target.value === "" ? null : Number(e.target.value) })
+                              }
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Unit
+                            <input
+                              defaultValue={o.qty_unit ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { qty_unit: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            PO #
+                            <input
+                              defaultValue={o.po_number ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { po_number: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Ref #
+                            <input
+                              defaultValue={o.reference_number ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { reference_number: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Loading
+                            <input
+                              type="date"
+                              defaultValue={o.loading_date ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { loading_date: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Delivery
+                            <input
+                              type="date"
+                              defaultValue={o.delivery_date ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { delivery_date: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                          <label className="text-xs font-medium">
+                            Status
+                            <select
+                              value={o.status}
+                              onChange={(e) => handleFieldSave(o.id, { status: e.target.value as MxOrderStatus })}
+                              className={`${cellField} mt-1`}
+                            >
+                              {MX_ORDER_STATUSES.map((s) => (
+                                <option key={s.value} value={s.value}>
+                                  {s.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="text-xs font-medium sm:col-span-2">
+                            Notes
+                            <input
+                              defaultValue={o.notes ?? ""}
+                              onBlur={(e) => handleFieldSave(o.id, { notes: e.target.value || null })}
+                              className={`${cellField} mt-1`}
+                            />
+                          </label>
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+                          >
+                            Done
+                          </button>
+                          <button onClick={() => handleDelete(o.id)} className="text-sm font-medium text-red-600 hover:underline">
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        key={o.id}
+                        className={`flex flex-wrap items-center gap-2 px-3 py-2 text-sm ${
+                          o.status === "fulfilled" ? "opacity-50" : ""
+                        }`}
                       >
-                        {MX_ORDER_STATUSES.map((s) => (
-                          <option key={s.value} value={s.value}>
-                            {s.label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="min-w-[8rem] px-1.5 py-1">
-                      <input
-                        defaultValue={o.notes ?? ""}
-                        onBlur={(e) => handleFieldSave(o.id, { notes: e.target.value || null })}
-                        className={cellField}
-                      />
-                    </td>
-                    <td className="px-1.5 py-1">
-                      <button onClick={() => handleDelete(o.id)} className="text-[11px] font-medium text-red-600 hover:underline">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <button
+                          onClick={() => handleFieldSave(o.id, { status: o.status === "pending" ? "fulfilled" : "pending" })}
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                            o.status === "fulfilled"
+                              ? "bg-black/10 text-black/50 dark:bg-white/10 dark:text-white/50"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                          }`}
+                        >
+                          {MX_ORDER_STATUSES.find((s) => s.value === o.status)?.label}
+                        </button>
+                        <span className="flex-1">{orderSummaryLine(o)}</span>
+                        <button
+                          onClick={() => setEditingId(o.id)}
+                          className="shrink-0 text-xs font-medium text-green-700 hover:underline dark:text-green-400"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(o.id)}
+                          className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </section>
+            ))}
           </div>
         ) : (
           <p className="rounded-lg border border-dashed border-black/10 p-4 text-center text-sm text-black/40 dark:border-white/10 dark:text-white/40">
