@@ -45,9 +45,10 @@ async function resolveByName(
 // Imports a pasted week's Arrivals report: matches each row's grower, label,
 // and commodity name(s) against existing master data (creating whatever
 // doesn't exist yet - a brand new grower picks up its origin/best_contact
-// from the first row that mentions it), then inserts the arrival rows
-// themselves, continuing each section's position numbering from wherever it
-// already left off for that week rather than starting over at 1.
+// from the first row that mentions it), then wholesale-replaces that week's
+// arrivals with the freshly parsed set - the user re-pastes the full current
+// report each time, so we don't try to diff/merge against what's already
+// there (same convention as Old Age's PDF/paste import).
 export async function importMxArrivals(weekStartDate: string, rows: ParsedMxArrivalRow[]) {
   const supabase = await createClient();
 
@@ -71,20 +72,18 @@ export async function importMxArrivals(weekStartDate: string, rows: ParsedMxArri
     rows.flatMap((r) => r.commodityNames),
   );
 
-  const { data: existingArrivals, error: existingError } = await supabase
-    .from("mx_arrivals")
-    .select("section, position")
-    .eq("week_start_date", weekStartDate);
-  if (existingError) throw new Error(existingError.message);
+  const { error: deleteError } = await supabase.from("mx_arrivals").delete().eq("week_start_date", weekStartDate);
+  if (deleteError) throw new Error(deleteError.message);
 
-  const maxPositionBySection = new Map<string, number>();
-  for (const a of existingArrivals ?? []) {
-    maxPositionBySection.set(a.section, Math.max(maxPositionBySection.get(a.section) ?? 0, a.position));
+  if (rows.length === 0) {
+    revalidateAll();
+    return [];
   }
 
+  const positionBySection = new Map<string, number>();
   const toInsert = rows.map((r) => {
-    const position = (maxPositionBySection.get(r.section) ?? 0) + 1;
-    maxPositionBySection.set(r.section, position);
+    const position = (positionBySection.get(r.section) ?? 0) + 1;
+    positionBySection.set(r.section, position);
     const commodityIds = r.commodityNames.map((c) => commodityIdByName.get(c.trim().toLowerCase()) ?? null);
     return {
       week_start_date: weekStartDate,
@@ -109,6 +108,15 @@ export async function importMxArrivals(weekStartDate: string, rows: ParsedMxArri
 
   revalidateAll();
   return data;
+}
+
+// "Clear List" button - wipes every row for the given week without
+// replacing them with anything, for starting a week over from scratch.
+export async function clearMxArrivals(weekStartDate: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("mx_arrivals").delete().eq("week_start_date", weekStartDate);
+  if (error) throw new Error(error.message);
+  revalidateAll();
 }
 
 export async function addArrivalRow(weekStartDate: string, section: MxArrivalSection, nextPosition: number) {

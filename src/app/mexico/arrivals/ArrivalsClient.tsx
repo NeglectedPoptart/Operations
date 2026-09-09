@@ -20,9 +20,12 @@ import {
   type MxGrowerLabel,
   type MxTruckPosition,
 } from "@/lib/types";
-import { addArrivalRow, deleteArrivalRow, importMxArrivals, updateArrivalRow } from "./actions";
+import { addArrivalRow, clearMxArrivals, deleteArrivalRow, importMxArrivals, updateArrivalRow } from "./actions";
 
-const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+// Compact fields for the dense table view - small enough to sit shoulder to
+// shoulder like the source Excel sheet, instead of one field per line.
+const cellField = "w-full min-w-0 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black";
+const cellFieldSm = `${cellField} w-16`;
 
 // Matches the source sheet's alternating dark green / blue-grey section bands.
 const SECTION_COLORS: Record<MxArrivalSection, string> = {
@@ -125,6 +128,9 @@ export default function ArrivalsClient({
   const [previewRows, setPreviewRows] = useState<ParsedMxArrivalRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  // Which arrival days are checked in the summary strip - empty means no
+  // filter (show every day). Multiple days can be checked at once.
+  const [dayFilter, setDayFilter] = useState<Set<MxArrivalDay>>(new Set());
 
   const week = cache[weekStart] ?? { arrivals: [] };
   const loading = !(weekStart in cache);
@@ -196,6 +202,15 @@ export default function ArrivalsClient({
     setExtraSlots((prev) => ({ ...prev, [row.id]: Math.min(4, slotsShown(row) + 1) }));
   }
 
+  function toggleDayFilter(day: MxArrivalDay) {
+    setDayFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day);
+      else next.add(day);
+      return next;
+    });
+  }
+
   function handlePreview() {
     const result = parsePastedMxArrivals(pasteText);
     if (result.error) {
@@ -238,6 +253,13 @@ export default function ArrivalsClient({
     }
   }
 
+  async function handleClearList() {
+    if (week.arrivals.length === 0) return;
+    if (!(await confirm(`Clear all ${week.arrivals.length} rows for Week ${weekNumberOf(weekStart)}? This can't be undone.`))) return;
+    await clearMxArrivals(weekStart);
+    patchWeek({ arrivals: [] });
+  }
+
   async function handleCopyImage() {
     try {
       const blocks: CanvasBlock[] = MX_ARRIVAL_SECTIONS.map((s) => {
@@ -267,6 +289,9 @@ export default function ArrivalsClient({
   }
 
   return (
+    // Breaks out of the page's centered max-w container so the dense table
+    // below has room before it needs to scroll left/right.
+    <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Arrivals</h1>
@@ -283,6 +308,13 @@ export default function ArrivalsClient({
           >
             {showPaste ? "Hide paste box" : "Paste from Excel"}
           </button>
+          <button
+            onClick={handleClearList}
+            disabled={week.arrivals.length === 0}
+            className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-40 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+          >
+            Clear List
+          </button>
         </div>
       </div>
 
@@ -293,8 +325,8 @@ export default function ArrivalsClient({
           <p className="text-sm text-black/60 dark:text-white/60">
             Paste the full weekly Arrivals sheet here - all four sections (Lettuce, Broccoli, Bell Peppers/Hot
             House, Celery/Carrots/Other), each with its own LOADS header row. New growers, labels, and
-            commodities not already on file get created automatically. Rows are added to whichever week is
-            currently shown above (Week {weekNumberOf(weekStart)}).
+            commodities not already on file get created automatically. This replaces whatever&apos;s already
+            logged for the week currently shown above (Week {weekNumberOf(weekStart)}) - not added on top of it.
           </p>
           <textarea
             value={pasteText}
@@ -354,7 +386,11 @@ export default function ArrivalsClient({
                   disabled={importing}
                   className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
                 >
-                  {importing ? "Importing..." : `Add ${previewRows.length} Row${previewRows.length === 1 ? "" : "s"}`}
+                  {importing
+                    ? "Importing..."
+                    : week.arrivals.length > 0
+                      ? `Replace with ${previewRows.length} Row${previewRows.length === 1 ? "" : "s"}`
+                      : `Add ${previewRows.length} Row${previewRows.length === 1 ? "" : "s"}`}
                 </button>
                 <button
                   onClick={handleCancelPreview}
@@ -395,205 +431,220 @@ export default function ArrivalsClient({
 
       <div className="rounded-lg border border-black/10 p-4 dark:border-white/10">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">
+          <button
+            onClick={() => setDayFilter(new Set())}
+            className={`rounded-full bg-green-100 px-3 py-1 text-sm font-semibold text-green-700 transition dark:bg-green-900/40 dark:text-green-300 ${
+              dayFilter.size === 0 ? "ring-2 ring-green-500" : "opacity-70 hover:opacity-100"
+            }`}
+          >
             {summary.total} total load{summary.total === 1 ? "" : "s"}
-          </span>
+          </button>
           {summary.byDay.map((d) => (
-            <span key={d.value} className={`rounded-full px-3 py-1 text-sm font-medium ${d.badgeClass}`}>
+            <button
+              key={d.value}
+              onClick={() => toggleDayFilter(d.value)}
+              className={`rounded-full px-3 py-1 text-sm font-medium transition ${d.badgeClass} ${
+                dayFilter.has(d.value) ? "ring-2 ring-black/50 dark:ring-white/70" : "opacity-70 hover:opacity-100"
+              }`}
+            >
               {d.count} {d.label}
-            </span>
+            </button>
           ))}
+          {dayFilter.size > 0 && (
+            <button
+              onClick={() => setDayFilter(new Set())}
+              className="text-xs font-medium text-black/50 hover:underline dark:text-white/50"
+            >
+              Clear filter
+            </button>
+          )}
         </div>
       </div>
 
       {MX_ARRIVAL_SECTIONS.map((section) => {
-        const sectionRows = week.arrivals.filter((a) => a.section === section.value).sort((a, b) => a.position - b.position);
+        const sectionRows = week.arrivals
+          .filter((a) => a.section === section.value && (dayFilter.size === 0 || (a.arrival_day && dayFilter.has(a.arrival_day))))
+          .sort((a, b) => a.position - b.position);
+        const aproxLabel = section.value === "peppers_hothouse" ? "Pallets" : "Bx's Aprox";
         return (
           <section key={section.value} className="space-y-2">
             <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
               {section.label}
             </h2>
-            <div className="space-y-3">
-              {sectionRows.map((row) => {
-                const grower = growers.find((g) => g.id === row.grower_id);
-                const day = dayInfo(row.arrival_day);
-                const shownSlots = slotsShown(row);
-                const truckShared = row.truck_group ? (truckGroupCounts.get(row.truck_group) ?? 0) > 1 : false;
-                return (
-                  <div key={row.id} className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      {truckShared && row.truck_group ? (
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${truckBadgeClass(row.truck_group)}`}>
-                          🚚 {row.truck_group}
-                          {row.truck_position && ` - ${MX_TRUCK_POSITIONS.find((p) => p.value === row.truck_position)?.label}`}
-                        </span>
-                      ) : (
-                        <span />
-                      )}
-                      <button onClick={() => handleRowDelete(row.id)} className="text-xs font-medium text-red-600 hover:underline">
-                        Delete
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <label className="text-xs font-medium">
-                        Grower
-                        <select
-                          value={row.grower_id ?? ""}
-                          onChange={(e) => handleRowSave(row.id, { grower_id: e.target.value || null })}
-                          className={`${field} mt-1`}
-                        >
-                          <option value="">--</option>
-                          {growers.map((g) => (
-                            <option key={g.id} value={g.id}>
-                              {g.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-xs font-medium">
-                        Origin
-                        <input value={grower?.origin ?? ""} disabled className={`${field} mt-1 bg-black/5 dark:bg-white/10`} />
-                      </label>
-                      <label className="text-xs font-medium">
-                        Label
-                        <select
-                          value={row.label_id ?? ""}
-                          onChange={(e) => handleRowSave(row.id, { label_id: e.target.value || null })}
-                          className={`${field} mt-1`}
-                        >
-                          <option value="">--</option>
-                          {labels.map((l) => (
-                            <option key={l.id} value={l.id}>
-                              {l.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-xs font-medium">
-                        Arrival Booking
-                        <select
-                          value={row.arrival_day ?? ""}
-                          onChange={(e) => handleRowSave(row.id, { arrival_day: (e.target.value || null) as MxArrivalDay | null })}
-                          className={`${field} mt-1 font-medium ${day?.badgeClass ?? ""}`}
-                        >
-                          <option value="">--</option>
-                          {MX_ARRIVAL_DAYS.map((d) => (
-                            <option key={d.value} value={d.value}>
-                              {d.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {Array.from({ length: shownSlots }, (_, i) => i).map((i) => (
-                        <label key={i} className="text-xs font-medium">
-                          Commodity {i + 1}
-                          <select
-                            value={row[COMMODITY_SLOT_KEYS[i]] ?? ""}
-                            onChange={(e) => handleRowSave(row.id, { [COMMODITY_SLOT_KEYS[i]]: e.target.value || null })}
-                            className={`${field} mt-1`}
-                          >
-                            <option value="">--</option>
-                            {commodities.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
+            {sectionRows.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+                <table className="w-full text-xs">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-1.5 py-1 font-medium">Grower</th>
+                      <th className="px-1.5 py-1 font-medium">Origin</th>
+                      <th className="px-1.5 py-1 font-medium">Label</th>
+                      <th className="px-1.5 py-1 font-medium">Commodity</th>
+                      <th className="px-1.5 py-1 font-medium">{aproxLabel}</th>
+                      <th className="px-1.5 py-1 font-medium">Price to Grower</th>
+                      <th className="px-1.5 py-1 font-medium">Manifesto</th>
+                      <th className="px-1.5 py-1 font-medium">Arrival</th>
+                      <th className="px-1.5 py-1 font-medium">Notes</th>
+                      <th className="px-1.5 py-1 font-medium">Truck</th>
+                      <th className="px-1.5 py-1 font-medium">Pos</th>
+                      <th className="px-1.5 py-1" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sectionRows.map((row) => {
+                      const grower = growers.find((g) => g.id === row.grower_id);
+                      const day = dayInfo(row.arrival_day);
+                      const shownSlots = slotsShown(row);
+                      const truckShared = row.truck_group ? (truckGroupCounts.get(row.truck_group) ?? 0) > 1 : false;
+                      return (
+                        <tr key={row.id} className="border-t border-black/10 align-top dark:border-white/10">
+                          <td className="min-w-[8rem] px-1.5 py-1">
+                            <select
+                              value={row.grower_id ?? ""}
+                              onChange={(e) => handleRowSave(row.id, { grower_id: e.target.value || null })}
+                              className={cellField}
+                            >
+                              <option value="">--</option>
+                              {growers.map((g) => (
+                                <option key={g.id} value={g.id}>
+                                  {g.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input value={grower?.origin ?? ""} disabled className={`${cellFieldSm} bg-black/5 dark:bg-white/10`} />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <select
+                              value={row.label_id ?? ""}
+                              onChange={(e) => handleRowSave(row.id, { label_id: e.target.value || null })}
+                              className={cellField}
+                            >
+                              <option value="">--</option>
+                              {labels.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="min-w-[9rem] space-y-0.5 px-1.5 py-1">
+                            {Array.from({ length: shownSlots }, (_, i) => i).map((i) => (
+                              <select
+                                key={i}
+                                value={row[COMMODITY_SLOT_KEYS[i]] ?? ""}
+                                onChange={(e) => handleRowSave(row.id, { [COMMODITY_SLOT_KEYS[i]]: e.target.value || null })}
+                                className={cellField}
+                              >
+                                <option value="">--</option>
+                                {commodities.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name}
+                                  </option>
+                                ))}
+                              </select>
                             ))}
-                          </select>
-                        </label>
-                      ))}
-                      {shownSlots < 4 && (
-                        <div className="flex items-end pb-1">
-                          <button
-                            onClick={() => handleAddCommoditySlot(row)}
-                            className="text-xs font-medium text-green-700 hover:underline dark:text-green-400"
-                          >
-                            + Add another commodity
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <label className="text-xs font-medium">
-                        Bx&apos;s Aprox
-                        <input
-                          defaultValue={row.boxes_approx ?? ""}
-                          onBlur={(e) => handleRowSave(row.id, { boxes_approx: e.target.value })}
-                          className={`${field} mt-1`}
-                        />
-                      </label>
-                      <label className="text-xs font-medium">
-                        Price to Grower
-                        <input
-                          defaultValue={row.price_to_grower ?? ""}
-                          onBlur={(e) => handleRowSave(row.id, { price_to_grower: e.target.value })}
-                          className={`${field} mt-1`}
-                        />
-                      </label>
-                      <label className="text-xs font-medium">
-                        Manifesto
-                        <input
-                          defaultValue={row.manifesto ?? ""}
-                          onBlur={(e) => handleRowSave(row.id, { manifesto: e.target.value })}
-                          className={`${field} mt-1`}
-                        />
-                      </label>
-                      <label className="text-xs font-medium">
-                        Notes
-                        <input
-                          defaultValue={row.notes ?? ""}
-                          onBlur={(e) => handleRowSave(row.id, { notes: e.target.value })}
-                          className={`${field} mt-1`}
-                        />
-                      </label>
-                    </div>
-
-                    <details className="text-xs">
-                      <summary className="cursor-pointer font-medium text-black/50 hover:text-black/70 dark:text-white/50 dark:hover:text-white/70">
-                        Same truck as another manifest?
-                      </summary>
-                      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <label className="text-xs font-medium">
-                          Truck Group
-                          <input
-                            defaultValue={row.truck_group ?? ""}
-                            onBlur={(e) => handleRowSave(row.id, { truck_group: e.target.value || null })}
-                            placeholder="e.g. Truck 1"
-                            className={`${field} mt-1`}
-                          />
-                        </label>
-                        <label className="text-xs font-medium">
-                          Position in Truck
-                          <select
-                            value={row.truck_position ?? ""}
-                            onChange={(e) =>
-                              handleRowSave(row.id, { truck_position: (e.target.value || null) as MxTruckPosition | null })
-                            }
-                            className={`${field} mt-1`}
-                          >
-                            <option value="">--</option>
-                            {MX_TRUCK_POSITIONS.map((p) => (
-                              <option key={p.value} value={p.value}>
-                                {p.label}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                    </details>
-                  </div>
-                );
-              })}
-              {sectionRows.length === 0 && (
-                <p className="rounded-lg border border-dashed border-black/10 p-4 text-center text-sm text-black/40 dark:border-white/10 dark:text-white/40">
-                  Nothing logged yet.
-                </p>
-              )}
-            </div>
+                            {shownSlots < 4 && (
+                              <button
+                                onClick={() => handleAddCommoditySlot(row)}
+                                className="block text-[11px] font-medium text-green-700 hover:underline dark:text-green-400"
+                              >
+                                + another
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              defaultValue={row.boxes_approx ?? ""}
+                              onBlur={(e) => handleRowSave(row.id, { boxes_approx: e.target.value })}
+                              className={cellFieldSm}
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              defaultValue={row.price_to_grower ?? ""}
+                              onBlur={(e) => handleRowSave(row.id, { price_to_grower: e.target.value })}
+                              className={cellFieldSm}
+                            />
+                          </td>
+                          <td className="min-w-[7rem] px-1.5 py-1">
+                            <input
+                              defaultValue={row.manifesto ?? ""}
+                              onBlur={(e) => handleRowSave(row.id, { manifesto: e.target.value })}
+                              className={cellField}
+                            />
+                          </td>
+                          <td className="min-w-[6rem] px-1.5 py-1">
+                            <select
+                              value={row.arrival_day ?? ""}
+                              onChange={(e) => handleRowSave(row.id, { arrival_day: (e.target.value || null) as MxArrivalDay | null })}
+                              className={`${cellField} font-medium ${day?.badgeClass ?? ""}`}
+                            >
+                              <option value="">--</option>
+                              {MX_ARRIVAL_DAYS.map((d) => (
+                                <option key={d.value} value={d.value}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="min-w-[8rem] px-1.5 py-1">
+                            <input
+                              defaultValue={row.notes ?? ""}
+                              onBlur={(e) => handleRowSave(row.id, { notes: e.target.value })}
+                              className={cellField}
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <div className="flex items-center gap-1">
+                              {truckShared && row.truck_group && (
+                                <span className={`h-2 w-2 shrink-0 rounded-full ${truckBadgeClass(row.truck_group)}`} />
+                              )}
+                              <input
+                                defaultValue={row.truck_group ?? ""}
+                                onBlur={(e) => handleRowSave(row.id, { truck_group: e.target.value || null })}
+                                placeholder="e.g. 1"
+                                className={cellFieldSm}
+                              />
+                            </div>
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <select
+                              value={row.truck_position ?? ""}
+                              onChange={(e) =>
+                                handleRowSave(row.id, { truck_position: (e.target.value || null) as MxTruckPosition | null })
+                              }
+                              className={cellFieldSm}
+                            >
+                              <option value="">--</option>
+                              {MX_TRUCK_POSITIONS.map((p) => (
+                                <option key={p.value} value={p.value}>
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <button
+                              onClick={() => handleRowDelete(row.id)}
+                              className="text-[11px] font-medium text-red-600 hover:underline"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {sectionRows.length === 0 && (
+              <p className="rounded-lg border border-dashed border-black/10 p-4 text-center text-sm text-black/40 dark:border-white/10 dark:text-white/40">
+                {dayFilter.size > 0 ? "Nothing on the selected day(s)." : "Nothing logged yet."}
+              </p>
+            )}
             <button
               onClick={() => handleAddRow(section.value)}
               className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
@@ -603,6 +654,7 @@ export default function ArrivalsClient({
           </section>
         );
       })}
+    </div>
     </div>
   );
 }
