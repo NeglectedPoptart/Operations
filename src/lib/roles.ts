@@ -89,8 +89,8 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   sales: ["sales", "qc", "buyers", "marketing", "meetings"],
   accounting: ["sales", "compliance", "accounting", "meetings"],
   buyer: ["warehouse", "qc", "sales", "buyers", "meetings"],
-  // Sees everything except Logistics and Management.
-  executive: ["warehouse", "qc", "sales", "compliance", "buyers", "marketing", "accounting", "meetings", "mexico"],
+  // Sees everything except Logistics.
+  executive: ["warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing", "accounting", "meetings", "mexico"],
   // No tabs at all - access to BROKER_CARRIER_PATH is a hardcoded exception
   // in middleware.ts, not tab-based like every other role.
   broker_carrier: [],
