@@ -59,8 +59,8 @@ export default function UsersClient({
         <div>
           <h1 className="text-2xl font-bold">User Roles</h1>
           <p className="text-sm text-black/60 dark:text-white/60">
-            Controls what each signed-in user can see - see the role table on the Management tab for what each
-            level opens. New sign-ups start as Sales until changed here.
+            Controls what each signed-in user can see - click &quot;View Roles &amp; Permissions&quot; below for
+            what each level opens. New sign-ups start as Sales until changed here.
           </p>
         </div>
         <button

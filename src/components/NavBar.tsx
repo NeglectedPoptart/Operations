@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { BROKER_CARRIER_PATH, canAccessTab, ROLES, type Role, type Tab } from "@/lib/roles";
+import { BROKER_CARRIER_PATH, canAccessTab, isSupremeUser, ROLES, type Role, type Tab } from "@/lib/roles";
 
 interface NavItem {
   href: string;
@@ -16,6 +16,9 @@ interface NavCategory {
   href?: string;
   tab?: Tab;
   items?: NavItem[];
+  // Outside the Tab/role system entirely - visible only to the one account
+  // isSupremeUser recognizes, regardless of role (see roles.ts).
+  supremeOnly?: boolean;
 }
 
 const NAV: NavCategory[] = [
@@ -77,15 +80,10 @@ const NAV: NavCategory[] = [
     label: "Management",
     tab: "management",
     items: [
-      { href: "/management/workflow", label: "Workflow" },
       { href: "/management/callout-sheet", label: "Callout Sheet" },
       { href: "/management/schedules", label: "Schedules" },
-      { href: "/management/meal-plans", label: "Meal Plans" },
-      { href: "/management/users", label: "User Roles" },
-      { href: "/management/notifications", label: "Notifications" },
       { href: "/management/order-status-report", label: "Order Status Report" },
       { href: "/management/performance-reviews", label: "Performance Reviews" },
-      { href: "/management/reset", label: "Reset Tools" },
     ],
   },
   {
@@ -129,6 +127,17 @@ const NAV: NavCategory[] = [
       { href: "/shipping-receiving/order-entry", label: "Order Entry" },
       { href: "/shipping-receiving/po-entry", label: "PO Entry" },
       { href: "/shipping-receiving/shipping", label: "Shipping" },
+    ],
+  },
+  {
+    label: "Supreme Tab",
+    supremeOnly: true,
+    items: [
+      { href: "/supreme/workflow", label: "Workflow" },
+      { href: "/supreme/meal-plans", label: "Meal Plans" },
+      { href: "/supreme/users", label: "User Roles" },
+      { href: "/supreme/notifications", label: "Notifications" },
+      { href: "/supreme/reset", label: "Reset Tools" },
     ],
   },
 ];
@@ -242,6 +251,12 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
           <path d="M3.5 8.5 12 13l8.5-4.5M12 13v7" />
         </svg>
       );
+    case "Supreme Tab":
+      return (
+        <svg {...common}>
+          <path d="M12 3.5l2.2 4.6 5 .7-3.6 3.6.9 5-4.5-2.4-4.5 2.4.9-5-3.6-3.6 5-.7z" />
+        </svg>
+      );
     default:
       return (
         <svg {...common}>
@@ -284,8 +299,14 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
   // Home, which every other role gets for free (it has no `.tab`, so the
   // filter below would otherwise always keep it).
   const nav = useMemo(
-    () => (isBrokerCarrier ? [] : NAV.filter((category) => !category.tab || canAccessTab(role, category.tab))),
-    [isBrokerCarrier, role],
+    () =>
+      isBrokerCarrier
+        ? []
+        : NAV.filter((category) => {
+            if (category.supremeOnly) return isSupremeUser(email);
+            return !category.tab || canAccessTab(role, category.tab);
+          }),
+    [isBrokerCarrier, role, email],
   );
 
   const activeCategoryLabel = useMemo(

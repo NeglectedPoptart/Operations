@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { WorkflowSection, WorkflowStatus } from "@/lib/types";
 
 function revalidateAll() {
-  revalidatePath("/management/workflow");
+  revalidatePath("/supreme/workflow");
 }
 
 export async function createWorkflowTask(section: WorkflowSection, name: string, isPermanent: boolean) {

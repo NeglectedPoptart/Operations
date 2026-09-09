@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Recipe, RecipeType } from "@/lib/types";
 
 function revalidateAll() {
-  revalidatePath("/management/meal-plans");
+  revalidatePath("/supreme/meal-plans");
 }
 
 export async function createRecipe(input: {

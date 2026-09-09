@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { BROKER_CARRIER_PATH, canAccessTab, tabForPath, type Role } from "@/lib/roles";
+import { BROKER_CARRIER_PATH, SUPREME_PATH_PREFIX, canAccessTab, isSupremeUser, tabForPath, type Role } from "@/lib/roles";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -65,6 +65,15 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
     return response;
+  }
+
+  // Locked to one specific account regardless of role - checked before the
+  // generic tab logic since tabForPath deliberately doesn't map this prefix
+  // to any Tab (there's nothing for canAccessTab to approve or deny here).
+  if (pathname.startsWith(SUPREME_PATH_PREFIX) && !isSupremeUser(user.email ?? null)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
   }
 
   const tab = tabForPath(pathname);

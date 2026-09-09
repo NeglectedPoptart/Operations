@@ -40,6 +40,19 @@ export type Tab =
 // category of pages.
 export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 
+// The "Supreme Tab" (Workflow, Meal Plans, User Roles, Notifications, Reset
+// Tools) is deliberately NOT part of the Tab/role system at all - it's
+// locked to this one specific account regardless of role, so a second
+// Admin login still can't see it. Same "hardcoded exception outside the tab
+// system" shape as BROKER_CARRIER_PATH above, just gating a whole path
+// prefix instead of a single page (see middleware.ts and NavBar.tsx).
+const SUPREME_EMAIL = "tcamph@harvestbestinc.com";
+export const SUPREME_PATH_PREFIX = "/supreme";
+
+export function isSupremeUser(email: string | null): boolean {
+  return email === SUPREME_EMAIL;
+}
+
 // What each role can open, besides Home (which is open to every
 // authenticated role except broker_carrier - see the Draft Changes /
 // permission levels round, and middleware.ts for the broker_carrier

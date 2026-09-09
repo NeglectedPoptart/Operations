@@ -15,7 +15,7 @@ export async function updateUserRole(id: string, role: Role) {
   if (!data || data.length === 0) {
     throw new Error("Update was blocked - only admins can change roles.");
   }
-  revalidatePath("/management/users");
+  revalidatePath("/supreme/users");
   return data[0];
 }
 
@@ -28,6 +28,6 @@ export async function updateUserBrokerId(id: string, brokerId: string | null) {
   if (!data || data.length === 0) {
     throw new Error("Update was blocked - only admins can change this.");
   }
-  revalidatePath("/management/users");
+  revalidatePath("/supreme/users");
   return data[0];
 }

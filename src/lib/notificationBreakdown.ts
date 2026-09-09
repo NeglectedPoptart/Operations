@@ -73,12 +73,7 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
   {
     tab: "management",
     label: "Management",
-    subtabs: [
-      { label: "Workflow", href: "/management/workflow" },
-      { label: "Callout Sheet", href: "/management/callout-sheet" },
-      { label: "User Roles", href: "/management/users" },
-      { label: "Reset Tools", href: "/management/reset" },
-    ],
+    subtabs: [{ label: "Callout Sheet", href: "/management/callout-sheet" }],
   },
   {
     tab: "compliance",
@@ -181,7 +176,6 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     priceSheetItems,
     buyersList,
     localInbounds,
-    workflowTasks,
     calloutEntries,
     ptoRequests,
     pasFiles,
@@ -212,7 +206,6 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     maxUpdatedAt(supabase, "price_sheet_items"),
     maxUpdatedAt(supabase, "buyers_list_items"),
     maxUpdatedAt(supabase, "local_inbounds"),
-    maxUpdatedAt(supabase, "workflow_tasks"),
     maxUpdatedAt(supabase, "callout_entries"),
     maxUpdatedAt(supabase, "pto_requests"),
     maxUpdatedAt(supabase, "pas_files"),
@@ -247,9 +240,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/buyers/vendor-catalog": priceSheetItems,
     "/buyers/buyers-list": buyersList,
     "/buyers/local-inbounds": localInbounds,
-    "/management/workflow": workflowTasks,
     "/management/callout-sheet": latestOf(calloutEntries, ptoRequests),
-    "/management/users": null, // role changes aren't timestamped
     "/compliance/pas-files": pasFiles,
     "/accounting/ar": arInvoices,
     "/accounting/ar-troubles": arInvoices,

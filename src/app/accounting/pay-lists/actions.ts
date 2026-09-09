@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { sendNotification } from "@/app/management/notifications/actions";
+import { sendNotification } from "@/app/supreme/notifications/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { ApPayListItem } from "@/lib/types";
 

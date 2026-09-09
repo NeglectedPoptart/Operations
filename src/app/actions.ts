@@ -137,7 +137,7 @@ export async function acknowledgeNotification(recipientId: string) {
     .eq("id", recipientId)
     .eq("user_id", user.id);
   if (error) console.error("acknowledgeNotification failed:", error.message);
-  revalidatePath("/management/notifications");
+  revalidatePath("/supreme/notifications");
 }
 
 export interface PageStatusInfo {
@@ -186,7 +186,7 @@ export async function markPageUpToDate(pageKeys: string[]): Promise<PageStatusIn
   const { error: logError } = await supabase.from("page_status_log").insert(rows);
   if (logError) throw new Error(logError.message);
 
-  revalidatePath("/management/notifications");
+  revalidatePath("/supreme/notifications");
   return { markedAt: now, markedByEmail: user?.email ?? null };
 }
 

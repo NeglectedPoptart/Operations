@@ -74,5 +74,5 @@ export async function sendNotification(input: SendNotificationInput) {
     { pagePath: input.pagePath },
   );
 
-  revalidatePath("/management/notifications");
+  revalidatePath("/supreme/notifications");
 }

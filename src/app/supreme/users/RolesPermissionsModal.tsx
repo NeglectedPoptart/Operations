@@ -8,7 +8,7 @@ import type { Broker, Profile } from "@/lib/types";
 // only - the access itself is computed live from canAccessTab below, so
 // this can't drift from what the app actually enforces). Keep the labels
 // here in sync if pages are added, renamed, or moved.
-const SECTIONS: { tab: Tab | null; label: string; pages: string }[] = [
+const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: boolean }[] = [
   { tab: null, label: "Home", pages: "Dashboard / summary" },
   {
     tab: "logistics",
@@ -23,7 +23,11 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string }[] = [
     pages: "FOB - Pharr, Houston/Dallas/East Coast Delivered, Pending to Invoice, Sales Calculator",
   },
   { tab: "buyers", label: "Buyers", pages: "Price Sheets, Vendor Catalog, Buyers List, Local Inbounds" },
-  { tab: "management", label: "Management", pages: "Workflow, Callout Sheet, User Roles, Notifications, Reset Tools" },
+  {
+    tab: "management",
+    label: "Management",
+    pages: "Callout Sheet, Schedules, Order Status Report, Performance Reviews",
+  },
   { tab: "compliance", label: "Compliance", pages: "PAS Files" },
   { tab: "accounting", label: "Accounting", pages: "Accounts Receivable" },
   { tab: "marketing", label: "Marketing", pages: "Brand Assets" },
@@ -32,6 +36,12 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string }[] = [
     tab: "shipping_receiving",
     label: "Shipping/Receiving",
     pages: "Inventory, Order Entry, PO Entry, Shipping",
+  },
+  {
+    tab: null,
+    supremeOnly: true,
+    label: "Supreme Tab",
+    pages: "Workflow, Meal Plans, User Roles, Notifications, Reset Tools",
   },
 ];
 
@@ -96,23 +106,35 @@ export default function RolesPermissionsModal({
                 </tr>
               </thead>
               <tbody>
-                {SECTIONS.map((s) => (
-                  <tr key={s.label} className="border-t border-black/10 dark:border-white/10 print:border-black">
-                    <td className="px-2 py-1.5">
-                      <div className="font-medium print:text-black">{s.label}</div>
-                      <div className="text-[10px] text-black/50 dark:text-white/50 print:text-black">{s.pages}</div>
-                    </td>
-                    {ROLES.map((r) => (
-                      <td key={r.value} className="px-1 py-1.5 text-center">
-                        {hasAccess(r.value, s.tab) ? (
-                          <span className="font-semibold text-green-600 dark:text-green-400 print:text-black">✓</span>
-                        ) : (
-                          <span className="text-black/20 dark:text-white/20 print:text-black/40">—</span>
-                        )}
+                {SECTIONS.map((s) =>
+                  s.supremeOnly ? (
+                    <tr key={s.label} className="border-t border-black/10 dark:border-white/10 print:border-black">
+                      <td className="px-2 py-1.5">
+                        <div className="font-medium print:text-black">{s.label}</div>
+                        <div className="text-[10px] text-black/50 dark:text-white/50 print:text-black">{s.pages}</div>
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      <td colSpan={ROLES.length} className="px-2 py-1.5 text-center text-[10px] italic text-black/50 dark:text-white/50 print:text-black">
+                        Restricted to tcamph@harvestbestinc.com only, regardless of role
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={s.label} className="border-t border-black/10 dark:border-white/10 print:border-black">
+                      <td className="px-2 py-1.5">
+                        <div className="font-medium print:text-black">{s.label}</div>
+                        <div className="text-[10px] text-black/50 dark:text-white/50 print:text-black">{s.pages}</div>
+                      </td>
+                      {ROLES.map((r) => (
+                        <td key={r.value} className="px-1 py-1.5 text-center">
+                          {hasAccess(r.value, s.tab) ? (
+                            <span className="font-semibold text-green-600 dark:text-green-400 print:text-black">✓</span>
+                          ) : (
+                            <span className="text-black/20 dark:text-white/20 print:text-black/40">—</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>
