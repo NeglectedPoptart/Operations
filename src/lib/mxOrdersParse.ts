@@ -54,9 +54,13 @@ function normalizeHeader(cell: string): string {
 }
 
 // HEB: one line per order -----------------------------------------------------
+// The two separators after the date block (before "HEB" and before the HB
+// reference) aren't consistent between messages - seen both "//" and "-"
+// in either spot, and the reference label as both "HB#" and bare "HB":
 // "Lettuce // Loading 9/13 - Delivery 9/14 // HEB P2609-038-482857 - HB# 35099"
+// "Broccoli // Loading 9/13 - Delivery 9/14 - HEB P2609-038-485768 // HB 35119"
 const HEB_ROW_RE =
-  /^(.+?)\s*\/\/\s*Loading\s+(\d{1,2})\/(\d{1,2})\s*-\s*Delivery\s+(\d{1,2})\/(\d{1,2})\s*\/\/\s*HEB\s+(\S+)\s*-\s*HB#\s*(\S+)\s*$/i;
+  /^(.+?)\s*\/\/\s*Loading\s+(\d{1,2})\/(\d{1,2})\s*-\s*Delivery\s+(\d{1,2})\/(\d{1,2})\s*(?:\/\/|-)\s*HEB\s+(\S+)\s*(?:\/\/|-)\s*HB\s*#?\s*(\S+)\s*$/i;
 
 function parseHeb(text: string, todayIso: string): ParseResult {
   const rows: ParsedMxOrderRow[] = [];
