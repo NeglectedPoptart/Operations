@@ -6,7 +6,8 @@ export type Role =
   | "accounting"
   | "buyer"
   | "executive"
-  | "broker_carrier";
+  | "broker_carrier"
+  | "mx";
 
 export const ROLES: { value: Role; label: string }[] = [
   { value: "admin", label: "Admin" },
@@ -17,6 +18,7 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "buyer", label: "Buyer" },
   { value: "executive", label: "Executive" },
   { value: "broker_carrier", label: "Broker/Carrier" },
+  { value: "mx", label: "MX" },
 ];
 
 export type Tab =
@@ -94,6 +96,10 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   // No tabs at all - access to BROKER_CARRIER_PATH is a hardcoded exception
   // in middleware.ts, not tab-based like every other role.
   broker_carrier: [],
+  // Mexico-side staff: Mexico plus the general-interest tabs (Meetings,
+  // Marketing, Compliance, QC, Warehouse), same as every other role, home
+  // dashboard included via the "no tab" exception below.
+  mx: ["mexico", "meetings", "marketing", "compliance", "qc", "warehouse"],
 };
 
 export function tabsForRole(role: Role | null): Tab[] {
