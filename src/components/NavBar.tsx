@@ -89,7 +89,10 @@ const NAV: NavCategory[] = [
   {
     label: "Compliance",
     tab: "compliance",
-    items: [{ href: "/compliance/pas-files", label: "PAS Files" }],
+    items: [
+      { href: "/compliance/pas-files", label: "PAS Files" },
+      { href: "/compliance/food-safety", label: "Food Safety" },
+    ],
   },
   {
     label: "Accounting",

@@ -1030,6 +1030,41 @@ export interface MxOrder {
   updated_at: string;
 }
 
+// Compliance: Food Safety --------------------------------------------------------
+
+export interface FoodSafetyReportType {
+  id: string;
+  name: string;
+  required: boolean;
+  position: number;
+  created_at: string;
+}
+
+export interface FoodSafetyDocument {
+  id: string;
+  grower_id: string;
+  report_type_id: string | null;
+  file_name: string;
+  storage_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  expiration_date: string | null;
+  auto_detected: boolean;
+  notes: string | null;
+  uploaded_by: string | null;
+  last_alert_threshold_sent: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FoodSafetyAlertRecipient {
+  id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export type GrowerGrade = "A" | "B" | "C" | "D" | "F" | "N/A";
+
 // Shipping/Receiving: prototype ERP ---------------------------------------------
 
 // Master data - deliberately its own standalone item/vendor/customer list

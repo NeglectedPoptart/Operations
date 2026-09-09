@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getLastEditedMap } from "@/lib/notificationBreakdown";
 import { getPageStatusLog } from "@/app/actions";
+import { getFoodSafetyAlertRecipientIds } from "@/app/compliance/food-safety/actions";
 import type { AppNotification, NotificationRecipient, Profile, SentNotification } from "@/lib/types";
 import NotificationsClient from "./NotificationsClient";
 
@@ -17,12 +18,17 @@ export default async function NotificationsPage() {
     profilesRes,
     notificationsRes,
     pageStatusLog,
+    foodSafetyRecipientIds,
   ] = await Promise.all([
     supabase.auth.getUser(),
     getLastEditedMap(supabase),
     supabase.from("profiles").select("*").order("email", { ascending: true }),
     supabase.from("notifications").select("*").order("created_at", { ascending: false }).limit(50),
     getPageStatusLog(100),
+    // Defensive: this page is critical enough that a Food Safety-specific
+    // hiccup (or the migration for its tables not having run yet) should
+    // never be able to take the whole Notifications page down with it.
+    getFoodSafetyAlertRecipientIds().catch(() => [] as string[]),
   ]);
 
   if (profilesRes.error) {
@@ -64,6 +70,7 @@ export default async function NotificationsPage() {
       sent={sent}
       currentUserEmail={user?.email ?? null}
       pageStatusLog={pageStatusLog}
+      foodSafetyRecipientIds={foodSafetyRecipientIds}
     />
   );
 }

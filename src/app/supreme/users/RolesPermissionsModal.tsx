@@ -28,7 +28,7 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: b
     label: "Management",
     pages: "Callout Sheet, Schedules, Order Status Report, Performance Reviews",
   },
-  { tab: "compliance", label: "Compliance", pages: "PAS Files" },
+  { tab: "compliance", label: "Compliance", pages: "PAS Files, Food Safety" },
   { tab: "accounting", label: "Accounting", pages: "Accounts Receivable" },
   { tab: "marketing", label: "Marketing", pages: "Brand Assets" },
   { tab: "mexico", label: "Mexico", pages: "Arrivals, Growers" },
