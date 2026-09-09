@@ -24,7 +24,10 @@ function summarizeSalesOrders(rows: SalesOrderRow[]): SalesRepStats[] {
       fob: 0,
     };
     entry.orderCount += 1;
-    entry.casesSold += r.shipped;
+    // A Confirmed order hasn't shipped yet, so its Shipped column reads 0 -
+    // count what was actually ordered instead, or it'd look like Confirmed
+    // orders carry no volume at all.
+    entry.casesSold += r.status.trim().toLowerCase() === "confirmed" ? r.ordered : r.shipped;
     if (r.terms === "Delivered") entry.delivered += 1;
     else entry.fob += 1;
     byRep.set(r.salesperson, entry);
