@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { createClient } from "@/lib/supabase/client";
 import { currentWeekStart, formatWeekLabel, nextWeekStart, prevWeekStart, weekNumberOf } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
+import { parsePastedMxArrivals, type ParsedMxArrivalRow } from "@/lib/mxArrivalsParse";
 import {
   MX_ARRIVAL_DAYS,
   MX_ARRIVAL_SECTIONS,
@@ -18,7 +20,7 @@ import {
   type MxGrowerLabel,
   type MxTruckPosition,
 } from "@/lib/types";
-import { addArrivalRow, deleteArrivalRow, updateArrivalRow } from "./actions";
+import { addArrivalRow, deleteArrivalRow, importMxArrivals, updateArrivalRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -111,12 +113,18 @@ export default function ArrivalsClient({
   initialArrivals: MxArrival[];
 }) {
   const confirm = useConfirm();
+  const router = useRouter();
   const [weekStart, setWeekStart] = useState(initialWeekStart);
   const [cache, setCache] = useState<Record<string, WeekData>>(() => ({
     [initialWeekStart]: { arrivals: initialArrivals },
   }));
   const [extraSlots, setExtraSlots] = useState<Record<string, number>>({});
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [previewRows, setPreviewRows] = useState<ParsedMxArrivalRow[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const week = cache[weekStart] ?? { arrivals: [] };
   const loading = !(weekStart in cache);
@@ -188,6 +196,48 @@ export default function ArrivalsClient({
     setExtraSlots((prev) => ({ ...prev, [row.id]: Math.min(4, slotsShown(row) + 1) }));
   }
 
+  function handlePreview() {
+    const result = parsePastedMxArrivals(pasteText);
+    if (result.error) {
+      setParseError(result.error);
+      setPreviewRows(null);
+      return;
+    }
+    setParseError(null);
+    setPreviewRows(result.rows);
+  }
+
+  function handleCancelPreview() {
+    setPreviewRows(null);
+    setParseError(null);
+  }
+
+  // Growers/labels/commodities are server-component props, not client
+  // state - a router.refresh() re-runs page.tsx's queries so any newly
+  // created master data shows up. The arrival rows themselves are
+  // re-fetched directly (same query loadWeek uses) since cache is only
+  // ever seeded from props on mount, not kept in sync with them afterward.
+  async function handleConfirmImport() {
+    if (!previewRows) return;
+    setImporting(true);
+    try {
+      await importMxArrivals(weekStart, previewRows);
+      setPreviewRows(null);
+      setPasteText("");
+      setShowPaste(false);
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("mx_arrivals")
+        .select("*")
+        .eq("week_start_date", weekStart)
+        .order("position", { ascending: true });
+      patchWeek({ arrivals: (data ?? []) as MxArrival[] });
+      router.refresh();
+    } finally {
+      setImporting(false);
+    }
+  }
+
   async function handleCopyImage() {
     try {
       const blocks: CanvasBlock[] = MX_ARRIVAL_SECTIONS.map((s) => {
@@ -220,15 +270,103 @@ export default function ArrivalsClient({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Arrivals</h1>
-        <button
-          onClick={handleCopyImage}
-          className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
-        >
-          {imageStatus ?? "Copy as Image"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleCopyImage}
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
+          <button
+            onClick={() => setShowPaste((s) => !s)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showPaste ? "Hide paste box" : "Paste from Excel"}
+          </button>
+        </div>
       </div>
 
       <UpdateStatusButton pageKey="mx-arrivals" />
+
+      {showPaste && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Paste the full weekly Arrivals sheet here - all four sections (Lettuce, Broccoli, Bell Peppers/Hot
+            House, Celery/Carrots/Other), each with its own LOADS header row. New growers, labels, and
+            commodities not already on file get created automatically. Rows are added to whichever week is
+            currently shown above (Week {weekNumberOf(weekStart)}).
+          </p>
+          <textarea
+            value={pasteText}
+            onChange={(e) => {
+              setPasteText(e.target.value);
+              setPreviewRows(null);
+              setParseError(null);
+            }}
+            rows={6}
+            placeholder="Paste tab-separated rows from Excel here..."
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
+          />
+          {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+
+          {!previewRows && (
+            <button
+              onClick={handlePreview}
+              disabled={pasteText.trim() === ""}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              Preview
+            </button>
+          )}
+
+          {previewRows && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Found {previewRows.length} row{previewRows.length === 1 ? "" : "s"}.</p>
+              <div className="max-h-64 overflow-auto rounded border border-black/10 dark:border-white/10">
+                <table className="w-full text-xs">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-2 py-1">Section</th>
+                      <th className="px-2 py-1">Grower</th>
+                      <th className="px-2 py-1">Label</th>
+                      <th className="px-2 py-1">Commodity</th>
+                      <th className="px-2 py-1">Manifesto</th>
+                      <th className="px-2 py-1">Arrival</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((r, i) => (
+                      <tr key={i} className="border-t border-black/10 dark:border-white/10">
+                        <td className="px-2 py-1">{MX_ARRIVAL_SECTIONS.find((s) => s.value === r.section)?.label}</td>
+                        <td className="px-2 py-1">{r.growerName}</td>
+                        <td className="px-2 py-1">{r.labelName}</td>
+                        <td className="px-2 py-1">{r.commodityNames.join(" / ")}</td>
+                        <td className="px-2 py-1">{r.manifesto}</td>
+                        <td className="px-2 py-1">{dayInfo(r.arrivalDay)?.label ?? "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirmImport}
+                  disabled={importing}
+                  className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                >
+                  {importing ? "Importing..." : `Add ${previewRows.length} Row${previewRows.length === 1 ? "" : "s"}`}
+                </button>
+                <button
+                  onClick={handleCancelPreview}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <button
