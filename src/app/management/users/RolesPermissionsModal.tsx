@@ -28,6 +28,11 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string }[] = [
   { tab: "accounting", label: "Accounting", pages: "Accounts Receivable" },
   { tab: "marketing", label: "Marketing", pages: "Brand Assets" },
   { tab: "mexico", label: "Mexico", pages: "Arrivals, Growers" },
+  {
+    tab: "shipping_receiving",
+    label: "Shipping/Receiving",
+    pages: "Inventory, Order Entry, PO Entry, Shipping",
+  },
 ];
 
 // Home is open to everyone except broker_carrier, whose access is a single

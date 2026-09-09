@@ -121,6 +121,16 @@ const NAV: NavCategory[] = [
       { href: "/mexico/growers", label: "Growers" },
     ],
   },
+  {
+    label: "Shipping/Receiving",
+    tab: "shipping_receiving",
+    items: [
+      { href: "/shipping-receiving/inventory", label: "Inventory" },
+      { href: "/shipping-receiving/order-entry", label: "Order Entry" },
+      { href: "/shipping-receiving/po-entry", label: "PO Entry" },
+      { href: "/shipping-receiving/shipping", label: "Shipping" },
+    ],
+  },
 ];
 
 // One small stroke icon per category - hand-drawn rather than pulled from
@@ -223,6 +233,13 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
         <svg {...common}>
           <path d="M12 3.5c-3.6 0-6.5 2.8-6.5 6.5 0 4.9 6.5 10.5 6.5 10.5s6.5-5.6 6.5-10.5c0-3.7-2.9-6.5-6.5-6.5z" />
           <circle cx="12" cy="10" r="2.3" />
+        </svg>
+      );
+    case "Shipping/Receiving":
+      return (
+        <svg {...common}>
+          <path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5z" />
+          <path d="M3.5 8.5 12 13l8.5-4.5M12 13v7" />
         </svg>
       );
     default:

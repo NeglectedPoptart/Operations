@@ -30,7 +30,8 @@ export type Tab =
   | "marketing"
   | "accounting"
   | "meetings"
-  | "mexico";
+  | "mexico"
+  | "shipping_receiving";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -56,6 +57,7 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "accounting",
     "meetings",
     "mexico",
+    "shipping_receiving",
   ],
   // Sees everything except Management.
   operations: [
@@ -104,5 +106,6 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/accounting")) return "accounting";
   if (pathname.startsWith("/meetings")) return "meetings";
   if (pathname.startsWith("/mexico")) return "mexico";
+  if (pathname.startsWith("/shipping-receiving")) return "shipping_receiving";
   return null;
 }
