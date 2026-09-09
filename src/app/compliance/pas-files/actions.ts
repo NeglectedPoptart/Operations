@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { extractText, getDocumentProxy } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
 import { isPasRow, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import type { PasFile } from "@/lib/types";
@@ -10,6 +11,19 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 function revalidateAll() {
   revalidatePath("/compliance/pas-files");
   revalidatePath("/sales/pending-to-invoice");
+}
+
+export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) return { error: "No file received." };
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await getDocumentProxy(data);
+    const { text } = await extractText(pdf, { mergePages: true });
+    return { text };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 function matchKey(orderNo: string, po: string): string {

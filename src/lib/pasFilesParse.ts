@@ -135,3 +135,63 @@ export function parsePastedPasFiles(text: string): ParseResult {
 export function isPasRow(row: ParsedPasFileRow): boolean {
   return row.po.trim().toUpperCase().includes("PAS") || row.order_type.trim().toUpperCase() === "PAS";
 }
+
+// unpdf extracts the "Orders Pending to Invoice" report with columns glued
+// back together in a fixed but visually-scrambled order (the same quirk as
+// the other ERP PDF exports - see salesOrderParse.ts / oldAgeParse.ts).
+// Reverse-engineered against a real export, each row prints as:
+//   OrderNo Slp Date ShipDate Status OrderType SalesType(glued)ShipQty
+//   Whse(glued)FobAmt Customer(glued)Days(glued)PO
+// with no separator at all between values that aren't genuinely
+// whitespace-separated in the source sheet. Days (a computed aging value,
+// same as the paste parser above) is glued directly onto PO with nothing
+// between them, so we split on the first digit run in that combined blob
+// and discard it - this is only ambiguous when PO itself starts with a
+// bare digit, which never happens on a real PAS order (its PO always
+// carries the word "PAS" or a person's name, e.g. "PAS 6/9", "Eric PAS
+// 8/21") - only on the non-PAS invoice numbers this page doesn't care
+// about matching exactly.
+const PDF_ROW_RE =
+  /^(\d{5,10})\s+(\S+)\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]+)\s+([A-Za-z]+)\s+([A-Za-z]+)(\d[\d,]*)\s+(\d{2}(?:,\s*\d{2})*)([\d,]+\.\d{2})(.*)$/;
+
+function parsePdfRow(line: string): ParsedPasFileRow | null {
+  const match = line.trim().match(PDF_ROW_RE);
+  if (!match) return null;
+  const [, orderNo, slp, date, shipDate, status, orderType, salesType, shipQty, whse, fobAmt, remainder] = match;
+
+  const remainderMatch = remainder.match(/^(\D*)(\d+)(.*)$/);
+  const customer = (remainderMatch ? remainderMatch[1] : remainder).trim();
+  const po = remainderMatch ? remainderMatch[3].trim() : "";
+
+  return {
+    order_no: orderNo,
+    po,
+    customer,
+    slp,
+    order_date: parseUsDate(date),
+    ship_date: parseUsDate(shipDate),
+    ship_qty: parseNumber(shipQty),
+    fob_amt: parseNumber(fobAmt),
+    whse,
+    status,
+    order_type: orderType,
+    sales_type: salesType,
+    update_notes: "",
+    last_contact: "",
+  };
+}
+
+export function parsePdfPasFiles(text: string): ParseResult {
+  const rows = text
+    .split(/\r?\n/)
+    .map(parsePdfRow)
+    .filter((r): r is ParsedPasFileRow => r !== null);
+
+  if (rows.length === 0) {
+    return {
+      rows: [],
+      error: "Couldn't find any order rows in this PDF - make sure it's the \"Orders Pending to Invoice\" export.",
+    };
+  }
+  return { rows };
+}

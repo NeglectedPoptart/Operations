@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
-import { isPasRow, parsePastedPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
+import { isPasRow, parsePastedPasFiles, parsePdfPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
-import { addPasFileRow, deletePasFileRow, importPendingList, updatePasFileRow } from "./actions";
+import { addPasFileRow, deletePasFileRow, extractPdfText, importPendingList, updatePasFileRow } from "./actions";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 
 const PAS_FILE_HEADERS = [
@@ -116,6 +116,7 @@ export default function PasFilesClient({
   const [previewRows, setPreviewRows] = useState<ParsedPasFileRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [adding, setAdding] = useState(false);
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
@@ -192,6 +193,39 @@ export default function PasFilesClient({
     }
     setParseError(null);
     setPreviewRows(result.rows);
+  }
+
+  // The PDF's extracted text isn't tab-separated like a real Excel paste - it
+  // comes out of unpdf with columns glued back together in a scrambled order
+  // (see parsePdfPasFiles's comments) - so this runs its own parser directly
+  // rather than routing through the paste textarea/parsePastedPasFiles.
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPdf(true);
+    setParseError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setParseError(`Couldn't read that PDF (${result.error}). It may be password protected or corrupted - try pasting the text instead.`);
+        return;
+      }
+      const parsed = parsePdfPasFiles(result.text);
+      if (parsed.error) {
+        setParseError(parsed.error);
+        setPreviewRows(null);
+        return;
+      }
+      setPreviewRows(parsed.rows);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try pasting the text instead.`);
+    } finally {
+      setUploadingPdf(false);
+    }
   }
 
   function previewStatus(row: ParsedPasFileRow) {
@@ -337,13 +371,20 @@ export default function PasFilesClient({
             {parseError && <p className="text-sm text-red-600">{parseError}</p>}
 
             {!previewRows && (
-              <button
-                onClick={handlePreview}
-                disabled={pasteText.trim() === ""}
-                className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-              >
-                Preview
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handlePreview}
+                  disabled={pasteText.trim() === ""}
+                  className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                >
+                  Preview
+                </button>
+                <span className="text-xs text-black/40 dark:text-white/40">or</span>
+                <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  {uploadingPdf ? "Reading PDF..." : "Upload PDF"}
+                  <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+                </label>
+              </div>
             )}
 
             {previewRows && (
