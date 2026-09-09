@@ -34,6 +34,26 @@ function orderSummaryLine(o: MxOrder): string {
     .join(" · ");
 }
 
+// Sub-groups one customer's orders into one bucket per delivery date, in
+// date order (undated last) - mirrors groupByLoadingDate's approach for the
+// Logistics board's own per-date tiles.
+function groupByDeliveryDate(orders: MxOrder[]): { date: string | null; orders: MxOrder[] }[] {
+  const sorted = [...orders].sort((a, b) => (a.delivery_date ?? "9999-99-99").localeCompare(b.delivery_date ?? "9999-99-99"));
+  const groups: { date: string | null; orders: MxOrder[] }[] = [];
+  const byDate = new Map<string | null, MxOrder[]>();
+  for (const o of sorted) {
+    const key = o.delivery_date;
+    let bucket = byDate.get(key);
+    if (!bucket) {
+      bucket = [];
+      byDate.set(key, bucket);
+      groups.push({ date: key, orders: bucket });
+    }
+    bucket.push(o);
+  }
+  return groups;
+}
+
 export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder[] }) {
   const confirm = useConfirm();
   const [orders, setOrders] = useState(initialOrders);
@@ -55,8 +75,9 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
   );
 
   // Grouped by customer so HEB's orders, Fiesta's orders, etc. each read as
-  // their own list instead of one long mixed table - sorted by customer
-  // name, then by delivery date (soonest first, undated last) within it.
+  // their own section, and within each customer grouped again by delivery
+  // date into its own tile - a customer with orders on 5 different dates
+  // reads as 5 small cards instead of one long undifferentiated list.
   const groupedOrders = useMemo(() => {
     const groups = new Map<string, MxOrder[]>();
     for (const o of visibleOrders) {
@@ -65,10 +86,7 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
       groups.get(key)!.push(o);
     }
     return Array.from(groups.entries())
-      .map(([customer, list]) => ({
-        customer,
-        list: [...list].sort((a, b) => (a.delivery_date ?? "9999-99-99").localeCompare(b.delivery_date ?? "9999-99-99")),
-      }))
+      .map(([customer, list]) => ({ customer, dateGroups: groupByDeliveryDate(list), count: list.length }))
       .sort((a, b) => a.customer.localeCompare(b.customer));
   }, [visibleOrders]);
 
@@ -283,11 +301,20 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
             {groupedOrders.map((group) => (
               <section key={group.customer} className="space-y-2">
                 <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
-                  {group.customer} <span className="text-sm font-normal text-black/40">({group.list.length})</span>
+                  {group.customer} <span className="text-sm font-normal text-black/40">({group.count})</span>
                 </h2>
-                <div className="divide-y divide-black/10 rounded-lg border border-black/10 dark:divide-white/10 dark:border-white/10">
-                  {group.list.map((o) =>
-                    editingId === o.id ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {group.dateGroups.map((dateGroup) => (
+                    <div
+                      key={dateGroup.date ?? "no-date"}
+                      className="divide-y divide-black/10 rounded-lg border border-black/10 dark:divide-white/10 dark:border-white/10"
+                    >
+                      <h3 className="bg-black/5 px-3 py-1.5 text-xs font-semibold text-black/60 dark:bg-white/5 dark:text-white/60">
+                        {dateGroup.date ? formatDate(dateGroup.date) : "No date set"}{" "}
+                        <span className="font-normal text-black/40">({dateGroup.orders.length})</span>
+                      </h3>
+                      {dateGroup.orders.map((o) =>
+                        editingId === o.id ? (
                       <div key={o.id} className="space-y-2 p-3">
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <label className="text-xs font-medium">
@@ -457,7 +484,9 @@ export default function OrdersClient({ initialOrders }: { initialOrders: MxOrder
                         </button>
                       </div>
                     ),
-                  )}
+                      )}
+                    </div>
+                  ))}
                 </div>
               </section>
             ))}
