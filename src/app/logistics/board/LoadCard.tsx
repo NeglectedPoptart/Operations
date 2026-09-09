@@ -10,10 +10,14 @@ export default function LoadCard({
   load,
   onEdit,
   dateFirst = false,
+  selectedLotGrowers,
 }: {
   load: Load;
   onEdit: () => void;
   dateFirst?: boolean;
+  // Grower name(s) from any Mexico Arrivals row paired with this load -
+  // undefined/empty means nothing's been paired to it.
+  selectedLotGrowers?: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const confirm = useConfirm();
@@ -44,6 +48,11 @@ export default function LoadCard({
 
   return (
     <div className={`rounded-lg border p-3 shadow-sm ${borderClass}`}>
+      {selectedLotGrowers && selectedLotGrowers.length > 0 && (
+        <p className="mb-2 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+          📦 Selected Lot: {selectedLotGrowers.join(", ")}
+        </p>
+      )}
       <LoadSummary load={load} dateFirst={dateFirst} />
 
       <div className="mt-2 flex flex-wrap gap-2">

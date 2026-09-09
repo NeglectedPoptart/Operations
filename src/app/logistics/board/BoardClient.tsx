@@ -15,12 +15,14 @@ export default function BoardClient({
   hubOptions,
   cityOptions,
   initialOverdueLoads,
+  selectedLotsByLoadId,
 }: {
   loads: Load[];
   brokers: Broker[];
   hubOptions: string[];
   cityOptions: string[];
   initialOverdueLoads: Load[] | null;
+  selectedLotsByLoadId: Record<string, string[]>;
 }) {
   const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(undefined);
   const [newStatus, setNewStatus] = useState<LoadStatus>("pending_to_load");
@@ -118,7 +120,13 @@ export default function BoardClient({
                     </h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {group.loads.map((load) => (
-                        <LoadCard key={load.id} load={load} onEdit={() => setEditingLoad(load)} dateFirst />
+                        <LoadCard
+                          key={load.id}
+                          load={load}
+                          onEdit={() => setEditingLoad(load)}
+                          dateFirst
+                          selectedLotGrowers={selectedLotsByLoadId[load.id]}
+                        />
                       ))}
                     </div>
                   </div>
@@ -127,7 +135,12 @@ export default function BoardClient({
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 {sectionLoads.map((load) => (
-                  <LoadCard key={load.id} load={load} onEdit={() => setEditingLoad(load)} />
+                  <LoadCard
+                    key={load.id}
+                    load={load}
+                    onEdit={() => setEditingLoad(load)}
+                    selectedLotGrowers={selectedLotsByLoadId[load.id]}
+                  />
                 ))}
               </div>
             )}

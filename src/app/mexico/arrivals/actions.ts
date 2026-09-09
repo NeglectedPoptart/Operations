@@ -10,6 +10,7 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 function revalidateAll() {
   revalidatePath("/mexico/arrivals");
   revalidatePath("/mexico/growers");
+  revalidatePath("/logistics/board");
 }
 
 // Finds each distinct name in an existing lookup table (case-insensitive),
@@ -147,6 +148,7 @@ export async function updateArrivalRow(
     notes?: string | null;
     truck_group?: string | null;
     truck_position?: MxTruckPosition | null;
+    linked_load_id?: string | null;
   },
 ) {
   const supabase = await createClient();

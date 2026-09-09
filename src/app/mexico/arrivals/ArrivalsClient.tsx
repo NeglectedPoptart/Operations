@@ -12,6 +12,7 @@ import {
   MX_ARRIVAL_DAYS,
   MX_ARRIVAL_SECTIONS,
   MX_TRUCK_POSITIONS,
+  type LoadOption,
   type MxArrival,
   type MxArrivalDay,
   type MxArrivalSection,
@@ -108,12 +109,14 @@ export default function ArrivalsClient({
   labels,
   commodities,
   initialArrivals,
+  loadOptions,
 }: {
   initialWeekStart: string;
   growers: MxGrower[];
   labels: MxGrowerLabel[];
   commodities: MxCommodity[];
   initialArrivals: MxArrival[];
+  loadOptions: LoadOption[];
 }) {
   const confirm = useConfirm();
   const router = useRouter();
@@ -485,6 +488,7 @@ export default function ArrivalsClient({
                       <th className="px-1.5 py-1 font-medium">Manifesto</th>
                       <th className="px-1.5 py-1 font-medium">Arrival</th>
                       <th className="px-1.5 py-1 font-medium">Notes</th>
+                      <th className="px-1.5 py-1 font-medium">Load</th>
                       <th className="px-1.5 py-1 font-medium">Truck</th>
                       <th className="px-1.5 py-1 font-medium">Pos</th>
                       <th className="px-1.5 py-1" />
@@ -595,6 +599,20 @@ export default function ArrivalsClient({
                               onBlur={(e) => handleRowSave(row.id, { notes: e.target.value })}
                               className={cellField}
                             />
+                          </td>
+                          <td className="min-w-[9rem] px-1.5 py-1">
+                            <select
+                              value={row.linked_load_id ?? ""}
+                              onChange={(e) => handleRowSave(row.id, { linked_load_id: e.target.value || null })}
+                              className={cellField}
+                            >
+                              <option value="">--</option>
+                              {loadOptions.map((l) => (
+                                <option key={l.id} value={l.id}>
+                                  {l.label}
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           <td className="px-1.5 py-1">
                             <div className="flex items-center gap-1">

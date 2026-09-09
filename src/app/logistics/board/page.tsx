@@ -16,6 +16,7 @@ export default async function BoardPage() {
     { data: brokers, error: brokersError },
     { data: hubs, error: hubsError },
     { data: destinationCities, error: destinationCitiesError },
+    { data: linkedArrivals, error: linkedArrivalsError },
   ] = await Promise.all([
     supabase.auth.getUser(),
     supabase
@@ -27,15 +28,28 @@ export default async function BoardPage() {
     supabase.from("brokers").select("*").order("name", { ascending: true }),
     supabase.from("hubs").select("*").order("name", { ascending: true }),
     supabase.from("destination_cities").select("*").order("city", { ascending: true }),
+    supabase.from("mx_arrivals").select("linked_load_id, mx_growers(name)").not("linked_load_id", "is", null),
   ]);
 
-  if (loadsError || brokersError || hubsError || destinationCitiesError) {
+  if (loadsError || brokersError || hubsError || destinationCitiesError || linkedArrivalsError) {
     return (
       <p className="text-red-600">
         Failed to load board:{" "}
-        {loadsError?.message ?? brokersError?.message ?? hubsError?.message ?? destinationCitiesError?.message}
+        {loadsError?.message ?? brokersError?.message ?? hubsError?.message ?? destinationCitiesError?.message ??
+          linkedArrivalsError?.message}
       </p>
     );
+  }
+
+  // A load can (rarely) carry more than one inbound lot - grouped here so
+  // the card can show every grower paired to it, not just the first. A
+  // plain object rather than a Map, since this crosses the server/client
+  // component boundary as a prop.
+  const selectedLotsByLoadId: Record<string, string[]> = {};
+  for (const a of (linkedArrivals ?? []) as unknown as { linked_load_id: string; mx_growers: { name: string } | null }[]) {
+    const growerName = a.mx_growers?.name;
+    if (!growerName) continue;
+    (selectedLotsByLoadId[a.linked_load_id] ??= []).push(growerName);
   }
 
   const hubOptions = ((hubs ?? []) as Hub[]).map((h) => h.name);
@@ -71,6 +85,7 @@ export default async function BoardPage() {
       hubOptions={hubOptions}
       cityOptions={cityOptions}
       initialOverdueLoads={initialOverdueLoads}
+      selectedLotsByLoadId={selectedLotsByLoadId}
     />
   );
 }

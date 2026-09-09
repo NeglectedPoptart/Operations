@@ -107,6 +107,13 @@ export interface LoadPickup {
   location: string | null;
 }
 
+// A short display label for pairing UI (Mexico Arrivals' Load dropdown) that
+// doesn't need the full Load shape (stops, pickups, broker, etc.).
+export interface LoadOption {
+  id: string;
+  label: string;
+}
+
 export interface Load {
   id: string;
   loading_date: string | null;
@@ -979,6 +986,9 @@ export interface MxArrival {
   notes: string | null;
   truck_group: string | null;
   truck_position: MxTruckPosition | null;
+  // Pairs this inbound with the domestic Logistics load actually carrying
+  // it onward - optional, set from the Arrivals table's Load dropdown.
+  linked_load_id: string | null;
   created_at: string;
   updated_at: string;
 }
