@@ -7,7 +7,8 @@ export type Role =
   | "buyer"
   | "executive"
   | "broker_carrier"
-  | "mx";
+  | "mx"
+  | "buyer_sales";
 
 export const ROLES: { value: Role; label: string }[] = [
   { value: "admin", label: "Admin" },
@@ -19,6 +20,7 @@ export const ROLES: { value: Role; label: string }[] = [
   { value: "executive", label: "Executive" },
   { value: "broker_carrier", label: "Broker/Carrier" },
   { value: "mx", label: "MX" },
+  { value: "buyer_sales", label: "Buyer/Sales" },
 ];
 
 export type Tab =
@@ -117,6 +119,10 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   // Marketing, Compliance, QC, Warehouse), same as every other role, home
   // dashboard included via the "no tab" exception below.
   mx: ["mexico", "meetings", "marketing", "compliance", "qc", "warehouse"],
+  // Hybrid for staff who need both Buyer's tabs and full Sales access
+  // (including CRM) rather than one or the other - the union of buyer's and
+  // sales' tabs above.
+  buyer_sales: ["warehouse", "qc", "sales", "buyers", "meetings", "marketing", "crm"],
 };
 
 export function tabsForRole(role: Role | null): Tab[] {

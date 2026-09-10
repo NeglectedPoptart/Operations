@@ -20,7 +20,7 @@ export default async function CrmCompaniesPage() {
   ] = await Promise.all([
     supabase.from("crm_companies").select("*").order("name", { ascending: true }),
     supabase.from("crm_activities").select("*").order("activity_date", { ascending: false }),
-    supabase.from("profiles").select("id, email, role").in("role", ["admin", "executive", "sales"]),
+    supabase.from("profiles").select("id, email, role").in("role", ["admin", "executive", "sales", "buyer_sales"]),
     user
       ? supabase.from("profiles").select("role").eq("id", user.id).single()
       : Promise.resolve({ data: null, error: null }),
