@@ -12,6 +12,7 @@ import {
   CRM_STATUSES,
   type CrmActivity,
   type CrmActivityType,
+  type CrmBucket,
   type CrmCompany,
   type CrmOutcome,
   type CrmPriority,
@@ -20,8 +21,10 @@ import {
 import {
   addCrmActivity,
   assignCrmCompany,
+  createCrmBucket,
   createCrmCompany,
   deleteCrmActivity,
+  deleteCrmBucket,
   deleteCrmCompany,
   importCrmCompanies,
   updateCrmActivity,
@@ -88,6 +91,8 @@ function CompanyCard({
   assignableUsers,
   currentUserId,
   onAssign,
+  buckets,
+  onSetBucket,
 }: {
   company: CrmCompany;
   activities: CrmActivity[];
@@ -102,6 +107,8 @@ function CompanyCard({
   assignableUsers: AssignableUser[];
   currentUserId: string;
   onAssign: (userId: string | null) => void;
+  buckets: CrmBucket[];
+  onSetBucket: (bucketId: string | null) => void;
 }) {
   const confirm = useConfirm();
   const [draftDate, setDraftDate] = useState(todayISO());
@@ -176,12 +183,27 @@ function CompanyCard({
           )}
         </span>
 
+        {company.assigned_to === null && (
+          <select
+            value={company.bucket_id ?? ""}
+            onChange={(e) => onSetBucket(e.target.value || null)}
+            className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+          >
+            <option value="">General</option>
+            {buckets.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        )}
+
         <select
           value={company.assigned_to ?? ""}
           onChange={(e) => onAssign(e.target.value || null)}
           className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
         >
-          <option value="">General Bucket</option>
+          <option value="">Unassigned</option>
           {isAdminOrExec
             ? assignableUsers.map((u) => (
                 <option key={u.id} value={u.id}>
@@ -453,17 +475,19 @@ function CompanyCard({
   );
 }
 
-type CrmView = "bucket" | "mine" | "all";
+type CrmView = { kind: "bucket"; bucketId: string | null } | { kind: "mine" } | { kind: "all" };
 
 export default function CrmCompaniesClient({
   initialCompanies,
   initialActivities,
+  initialBuckets,
   assignableUsers,
   currentUserId,
   currentUserRole,
 }: {
   initialCompanies: CrmCompany[];
   initialActivities: CrmActivity[];
+  initialBuckets: CrmBucket[];
   assignableUsers: AssignableUser[];
   currentUserId: string;
   currentUserRole: Role | null;
@@ -473,11 +497,15 @@ export default function CrmCompaniesClient({
   const nameById = useMemo(() => new Map(assignableUsers.map((u) => [u.id, displayNameForEmail(u.email)])), [assignableUsers]);
   const [companies, setCompanies] = useState(initialCompanies);
   const [activities, setActivities] = useState(initialActivities);
+  const [buckets, setBuckets] = useState(initialBuckets);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CrmStatus | "all">("all");
   const [sortBy, setSortBy] = useState<"name" | "city">("name");
-  const [view, setView] = useState<CrmView>("bucket");
+  const [view, setView] = useState<CrmView>({ kind: "bucket", bucketId: null });
+  const [showNewBucket, setShowNewBucket] = useState(false);
+  const [newBucketName, setNewBucketName] = useState("");
+  const [creatingBucket, setCreatingBucket] = useState(false);
 
   const [newCompanyName, setNewCompanyName] = useState("");
   const [addingCompany, setAddingCompany] = useState(false);
@@ -518,23 +546,30 @@ export default function CrmCompaniesClient({
     );
   }
 
-  const bucketCompanies = useMemo(
-    () => companies.filter((c) => c.assigned_to === null),
-    [companies],
-  );
+  const unassignedCompanies = useMemo(() => companies.filter((c) => c.assigned_to === null), [companies]);
   const mineCompanies = useMemo(
     () => companies.filter((c) => c.assigned_to === currentUserId),
     [companies, currentUserId],
   );
+  const assignedCount = companies.length - unassignedCompanies.length;
+
+  function bucketCount(bucketId: string | null): number {
+    return unassignedCompanies.filter((c) => c.bucket_id === bucketId).length;
+  }
 
   const filteredCompanies = useMemo(() => {
-    const source = view === "bucket" ? bucketCompanies : view === "mine" ? mineCompanies : [];
+    const source =
+      view.kind === "bucket"
+        ? unassignedCompanies.filter((c) => c.bucket_id === view.bucketId)
+        : view.kind === "mine"
+          ? mineCompanies
+          : [];
     return sortCompanies(source.filter(matchesSearchStatus));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bucketCompanies, mineCompanies, view, search, statusFilter, sortBy]);
+  }, [unassignedCompanies, mineCompanies, view, search, statusFilter, sortBy]);
 
   const allPipelineGroups = useMemo(() => {
-    if (view !== "all") return [];
+    if (view.kind !== "all") return [];
     const byUser = new Map<string, CrmCompany[]>();
     for (const c of companies) {
       if (!c.assigned_to) continue;
@@ -584,6 +619,37 @@ export default function CrmCompaniesClient({
       setCompanies(prevCompanies);
       alert(e instanceof Error ? e.message : "Couldn't update the assignment.");
     }
+  }
+
+  function handleSetBucket(id: string, bucketId: string | null) {
+    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, bucket_id: bucketId } : c)));
+    updateCrmCompany(id, { bucket_id: bucketId }).catch(() => {});
+  }
+
+  async function handleCreateBucket() {
+    const name = newBucketName.trim();
+    if (!name) return;
+    setCreatingBucket(true);
+    try {
+      const row = (await createCrmBucket(name)) as CrmBucket;
+      setBuckets((prev) => [...prev, row]);
+      setNewBucketName("");
+      setShowNewBucket(false);
+      setView({ kind: "bucket", bucketId: row.id });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Couldn't create the bucket.");
+    } finally {
+      setCreatingBucket(false);
+    }
+  }
+
+  async function handleDeleteBucket(id: string) {
+    const bucket = buckets.find((b) => b.id === id);
+    if (!(await confirm(`Delete "${bucket?.name ?? "this bucket"}"? Its companies return to the General Bucket.`))) return;
+    setBuckets((prev) => prev.filter((b) => b.id !== id));
+    setCompanies((prev) => prev.map((c) => (c.bucket_id === id ? { ...c, bucket_id: null } : c)));
+    setView({ kind: "bucket", bucketId: null });
+    await deleteCrmBucket(id).catch(() => {});
   }
 
   async function handleDelete(id: string, name: string) {
@@ -762,21 +828,34 @@ export default function CrmCompaniesClient({
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         <button
-          onClick={() => setView("bucket")}
+          onClick={() => setView({ kind: "bucket", bucketId: null })}
           className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-            view === "bucket"
+            view.kind === "bucket" && view.bucketId === null
               ? "bg-green-600 text-white"
               : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
           }`}
         >
-          General Bucket ({bucketCompanies.length})
+          General ({bucketCount(null)})
         </button>
+        {buckets.map((b) => (
+          <button
+            key={b.id}
+            onClick={() => setView({ kind: "bucket", bucketId: b.id })}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+              view.kind === "bucket" && view.bucketId === b.id
+                ? "bg-green-600 text-white"
+                : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+            }`}
+          >
+            {b.name} ({bucketCount(b.id)})
+          </button>
+        ))}
         <button
-          onClick={() => setView("mine")}
+          onClick={() => setView({ kind: "mine" })}
           className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-            view === "mine"
+            view.kind === "mine"
               ? "bg-green-600 text-white"
               : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
           }`}
@@ -785,17 +864,49 @@ export default function CrmCompaniesClient({
         </button>
         {isAdminOrExec && (
           <button
-            onClick={() => setView("all")}
+            onClick={() => setView({ kind: "all" })}
             className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-              view === "all"
+              view.kind === "all"
                 ? "bg-green-600 text-white"
                 : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
             }`}
           >
-            All Pipelines ({companies.length - bucketCompanies.length})
+            All Pipelines ({assignedCount})
+          </button>
+        )}
+        {isAdminOrExec && (
+          <button
+            onClick={() => setShowNewBucket((s) => !s)}
+            className="rounded-full border border-dashed border-black/30 px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:border-white/30 dark:text-white/60 dark:hover:bg-white/10"
+          >
+            {showNewBucket ? "Cancel" : "+ New Bucket"}
           </button>
         )}
       </div>
+
+      {showNewBucket && isAdminOrExec && (
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={newBucketName}
+            onChange={(e) => setNewBucketName(e.target.value)}
+            placeholder="Bucket name (e.g. Priority Customers)"
+            className={`${field} max-w-xs`}
+          />
+          <button
+            onClick={handleCreateBucket}
+            disabled={creatingBucket || newBucketName.trim() === ""}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            {creatingBucket ? "Creating..." : "Create Bucket"}
+          </button>
+        </div>
+      )}
+
+      {isAdminOrExec && view.kind === "bucket" && view.bucketId !== null && (
+        <button onClick={() => handleDeleteBucket(view.bucketId!)} className="text-xs font-medium text-red-600 hover:underline">
+          Delete this bucket (companies return to General)
+        </button>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
         <input
@@ -839,7 +950,7 @@ export default function CrmCompaniesClient({
         </div>
       </div>
 
-      {view === "all" ? (
+      {view.kind === "all" ? (
         <div className="space-y-6">
           {allPipelineGroups.map((g) => (
             <div key={g.userId} className="space-y-3">
@@ -863,6 +974,8 @@ export default function CrmCompaniesClient({
                     assignableUsers={assignableUsers}
                     currentUserId={currentUserId}
                     onAssign={(userId) => handleAssign(c.id, userId)}
+                    buckets={buckets}
+                    onSetBucket={(bucketId) => handleSetBucket(c.id, bucketId)}
                   />
                 ))}
               </div>
@@ -890,11 +1003,13 @@ export default function CrmCompaniesClient({
               assignableUsers={assignableUsers}
               currentUserId={currentUserId}
               onAssign={(userId) => handleAssign(c.id, userId)}
+              buckets={buckets}
+              onSetBucket={(bucketId) => handleSetBucket(c.id, bucketId)}
             />
           ))}
           {filteredCompanies.length === 0 && (
             <p className="px-1 text-sm text-black/40 dark:text-white/40">
-              {view === "mine" ? "Nothing in your pipeline yet - claim one from the General Bucket." : "No companies match - add one above or adjust your filters."}
+              {view.kind === "mine" ? "Nothing in your pipeline yet - claim one from a bucket." : "No companies match - add one above or adjust your filters."}
             </p>
           )}
         </div>

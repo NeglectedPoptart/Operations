@@ -10,6 +10,20 @@ function revalidateAll() {
   revalidatePath("/crm/companies");
 }
 
+// Shared by assignCrmCompany and the bucket CRUD below - both are Admin/Exec
+// gated actions that need to know the current user's role server-side, not
+// just have the button hidden client-side.
+async function requireAdminOrExec(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+  const { data: profile, error } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  if (error) throw new Error(error.message);
+  const isAdminOrExec = (profile.role as Role) === "admin" || (profile.role as Role) === "executive";
+  return { userId: user.id, isAdminOrExec };
+}
+
 // Paste is the same running Blue Book export re-pasted over time, so a row
 // is skipped if it already exists - matched by Blue Book ID when the sheet
 // has one, falling back to a case-insensitive name match for hand-entered
@@ -89,6 +103,7 @@ export async function updateCrmCompany(
     primary_contact: string | null;
     email: string | null;
     notes: string | null;
+    bucket_id: string | null;
   }>,
 ) {
   const supabase = await createClient();
@@ -104,21 +119,10 @@ export async function updateCrmCompany(
 // and can't pull a company out of someone else's pipeline.
 export async function assignCrmCompany(companyId: string, assignToUserId: string | null) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Not signed in.");
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profileError) throw new Error(profileError.message);
-  const isAdminOrExec = (profile.role as Role) === "admin" || (profile.role as Role) === "executive";
+  const { userId, isAdminOrExec } = await requireAdminOrExec(supabase);
 
   if (!isAdminOrExec) {
-    if (assignToUserId !== null && assignToUserId !== user.id) {
+    if (assignToUserId !== null && assignToUserId !== userId) {
       throw new Error("You can only assign companies to yourself.");
     }
     const { data: company, error: companyError } = await supabase
@@ -127,7 +131,7 @@ export async function assignCrmCompany(companyId: string, assignToUserId: string
       .eq("id", companyId)
       .single();
     if (companyError) throw new Error(companyError.message);
-    if (company.assigned_to !== null && company.assigned_to !== user.id) {
+    if (company.assigned_to !== null && company.assigned_to !== userId) {
       throw new Error("This company is already assigned to someone else.");
     }
   }
@@ -136,6 +140,36 @@ export async function assignCrmCompany(companyId: string, assignToUserId: string
     .from("crm_companies")
     .update({ assigned_to: assignToUserId, assigned_at: assignToUserId ? new Date().toISOString() : null })
     .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// Bucket structure (creating/removing a segment of the shared pool) is
+// Admin/Exec only - moving a company INTO a bucket is just a normal field
+// on updateCrmCompany above, open to anyone with CRM access.
+export async function createCrmBucket(name: string) {
+  const supabase = await createClient();
+  const { isAdminOrExec } = await requireAdminOrExec(supabase);
+  if (!isAdminOrExec) throw new Error("Only Admin/Exec can create buckets.");
+
+  const { data: existing, error: existingError } = await supabase.from("crm_buckets").select("position");
+  if (existingError) throw new Error(existingError.message);
+  const nextPosition = (existing ?? []).reduce((max, b) => Math.max(max, b.position), 0) + 1;
+
+  const { data, error } = await supabase.from("crm_buckets").insert({ name, position: nextPosition }).select().single();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return data;
+}
+
+// Companies sitting in the deleted bucket fall back to the General Bucket
+// automatically (bucket_id's on delete set null).
+export async function deleteCrmBucket(id: string) {
+  const supabase = await createClient();
+  const { isAdminOrExec } = await requireAdminOrExec(supabase);
+  if (!isAdminOrExec) throw new Error("Only Admin/Exec can delete buckets.");
+
+  const { error } = await supabase.from("crm_buckets").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
 }

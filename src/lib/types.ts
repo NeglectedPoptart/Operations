@@ -1234,13 +1234,26 @@ export interface CrmCompany {
   primary_contact: string | null;
   email: string | null;
   notes: string | null;
-  // Null while sitting in the shared General Bucket - set to a profile id
-  // once a salesperson (or an Admin/Exec on their behalf) claims it into
-  // that person's own pipeline.
+  // Which unclaimed bucket this sits in - null means the default General
+  // Bucket (always exists, isn't a real crm_buckets row). Only meaningful
+  // while assigned_to is null; ignored once claimed into a pipeline.
+  bucket_id: string | null;
+  // Null while sitting in a bucket - set to a profile id once a salesperson
+  // (or an Admin/Exec on their behalf) claims it into that person's own
+  // pipeline.
   assigned_to: string | null;
   assigned_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// A named segment of the shared unclaimed pool (e.g. "Priority Customers"),
+// alongside the implicit, always-present General Bucket (bucket_id null).
+export interface CrmBucket {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
 }
 
 // CRM: Activities -------
