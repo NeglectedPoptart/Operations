@@ -73,6 +73,11 @@ const NAV: NavCategory[] = [
     ],
   },
   {
+    label: "CRM",
+    tab: "crm",
+    items: [{ href: "/crm/companies", label: "Companies" }],
+  },
+  {
     label: "Buyers",
     tab: "buyers",
     items: [
@@ -130,7 +135,7 @@ const NAV: NavCategory[] = [
     ],
   },
   {
-    label: "Shipping/Receiving",
+    label: "ERP",
     tab: "shipping_receiving",
     items: [
       { href: "/shipping-receiving/inventory", label: "Inventory" },
@@ -203,6 +208,15 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
           <path d="M12 7.5v9M9.5 15c0 1.1 1.1 2 2.5 2s2.5-.9 2.5-2-1.1-1.5-2.5-1.8S9.5 12.6 9.5 11.5 10.6 9.5 12 9.5s2.5.6 2.5 1.5" />
         </svg>
       );
+    case "CRM":
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="9" r="3" />
+          <path d="M3.5 19c.6-3 2.7-4.7 5.5-4.7s4.9 1.7 5.5 4.7" />
+          <path d="M15 8.5a2.6 2.6 0 1 1 2 4.3" />
+          <path d="M15.5 14.3c2.2.3 3.7 1.8 4 4.2" />
+        </svg>
+      );
     case "Buyers":
       return (
         <svg {...common}>
@@ -254,7 +268,7 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
           <circle cx="12" cy="10" r="2.3" />
         </svg>
       );
-    case "Shipping/Receiving":
+    case "ERP":
       return (
         <svg {...common}>
           <path d="M3.5 8.5 12 4l8.5 4.5v7L12 20l-8.5-4.5z" />

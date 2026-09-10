@@ -22,6 +22,7 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: b
     label: "Sales",
     pages: "FOB - Pharr, Houston/Dallas/East Coast Delivered, Pending to Invoice, Sales Calculator",
   },
+  { tab: "crm", label: "CRM", pages: "Companies" },
   { tab: "buyers", label: "Buyers", pages: "Price Sheets, Vendor Catalog, Buyers List, Local Inbounds" },
   {
     tab: "management",
@@ -34,7 +35,7 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: b
   { tab: "mexico", label: "Mexico", pages: "Arrivals, Orders, Growers" },
   {
     tab: "shipping_receiving",
-    label: "Shipping/Receiving",
+    label: "ERP",
     pages: "Inventory, Order Entry, PO Entry, Shipping",
   },
   {

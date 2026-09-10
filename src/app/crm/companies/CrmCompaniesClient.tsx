@@ -1,0 +1,714 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useConfirm } from "@/components/ConfirmProvider";
+import { parseCrmCompaniesText, type ParsedCrmCompanyRow } from "@/lib/crmCompaniesParse";
+import { todayISO } from "@/lib/dates";
+import {
+  CRM_ACTIVITY_TYPES,
+  CRM_OUTCOMES,
+  CRM_PRIORITIES,
+  CRM_STATUSES,
+  type CrmActivity,
+  type CrmActivityType,
+  type CrmCompany,
+  type CrmOutcome,
+  type CrmPriority,
+  type CrmStatus,
+} from "@/lib/types";
+import {
+  addCrmActivity,
+  createCrmCompany,
+  deleteCrmActivity,
+  deleteCrmCompany,
+  importCrmCompanies,
+  updateCrmActivity,
+  updateCrmCompany,
+} from "./actions";
+
+const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+
+const STATUS_BADGE: Record<CrmStatus, string> = {
+  prospect: "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60",
+  contacted: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  qualified: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+  customer: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+  inactive: "bg-black/5 text-black/40 dark:bg-white/5 dark:text-white/40",
+  do_not_contact: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+};
+
+const PRIORITY_BADGE: Record<CrmPriority, string> = {
+  high: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  medium: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  low: "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60",
+};
+
+const STATUS_LABEL = new Map(CRM_STATUSES.map((s) => [s.value, s.label]));
+const ACTIVITY_TYPE_LABEL = new Map(CRM_ACTIVITY_TYPES.map((t) => [t.value, t.label]));
+const OUTCOME_LABEL = new Map(CRM_OUTCOMES.map((o) => [o.value, o.label]));
+
+function formatShortDate(iso: string | null): string {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y.slice(2)}`;
+}
+
+// One company's expand-in-place detail: editable fields plus its activity
+// log - kept as its own component (rather than inlined in the map, as
+// Growers does) since the add-activity mini-form needs its own draft state
+// per card.
+function CompanyCard({
+  company,
+  activities,
+  expanded,
+  onToggle,
+  onSave,
+  onDelete,
+  onAddActivity,
+  onUpdateActivity,
+  onDeleteActivity,
+}: {
+  company: CrmCompany;
+  activities: CrmActivity[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSave: (patch: Partial<CrmCompany>) => void;
+  onDelete: () => void;
+  onAddActivity: (input: Parameters<typeof addCrmActivity>[1]) => Promise<void>;
+  onUpdateActivity: (id: string, patch: Partial<CrmActivity>) => void;
+  onDeleteActivity: (id: string) => void;
+}) {
+  const confirm = useConfirm();
+  const [draftDate, setDraftDate] = useState(todayISO());
+  const [draftContact, setDraftContact] = useState("");
+  const [draftType, setDraftType] = useState<CrmActivityType | "">("");
+  const [draftOutcome, setDraftOutcome] = useState<CrmOutcome | "">("");
+  const [draftNotes, setDraftNotes] = useState("");
+  const [draftNextAction, setDraftNextAction] = useState("");
+  const [draftNextFollowUp, setDraftNextFollowUp] = useState("");
+  const [draftOwner, setDraftOwner] = useState("");
+  const [logging, setLogging] = useState(false);
+
+  async function handleLogActivity() {
+    setLogging(true);
+    try {
+      await onAddActivity({
+        activity_date: draftDate,
+        contact_person: draftContact || null,
+        activity_type: draftType || null,
+        outcome: draftOutcome || null,
+        notes: draftNotes || null,
+        next_action: draftNextAction || null,
+        next_follow_up: draftNextFollowUp || null,
+        owner: draftOwner || null,
+      });
+      setDraftContact("");
+      setDraftType("");
+      setDraftOutcome("");
+      setDraftNotes("");
+      setDraftNextAction("");
+      setDraftNextFollowUp("");
+      setDraftOwner("");
+    } finally {
+      setLogging(false);
+    }
+  }
+
+  async function handleDeleteActivity(id: string) {
+    if (!(await confirm("Delete this activity entry?"))) return;
+    onDeleteActivity(id);
+  }
+
+  return (
+    <div
+      className={`rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10 ${expanded ? "sm:col-span-2 lg:col-span-3" : ""}`}
+    >
+      <button onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left">
+        <span>
+          <span className="font-medium">{company.name}</span>
+          {company.city_state && (
+            <span className="ml-2 text-sm font-normal text-black/50 dark:text-white/50">{company.city_state}</span>
+          )}
+          <span className="mt-1 flex flex-wrap gap-1.5">
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[company.crm_status]}`}>
+              {STATUS_LABEL.get(company.crm_status)}
+            </span>
+            {company.priority && (
+              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PRIORITY_BADGE[company.priority]}`}>
+                {company.priority === "high" ? "High Priority" : company.priority === "medium" ? "Medium Priority" : "Low Priority"}
+              </span>
+            )}
+          </span>
+        </span>
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+        >
+          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="mt-4 space-y-4 border-t border-black/10 pt-4 dark:border-white/10">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <label className="text-xs font-medium">
+              Company
+              <input defaultValue={company.name} onBlur={(e) => onSave({ name: e.target.value })} className={`${field} mt-1`} />
+            </label>
+            <label className="text-xs font-medium">
+              Legal / Alternate Name
+              <input
+                defaultValue={company.legal_name ?? ""}
+                onBlur={(e) => onSave({ legal_name: e.target.value || null })}
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-medium">
+              City / State
+              <input
+                defaultValue={company.city_state ?? ""}
+                onBlur={(e) => onSave({ city_state: e.target.value || null })}
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Phone
+              <input
+                defaultValue={company.phone ?? ""}
+                onBlur={(e) => onSave({ phone: e.target.value || null })}
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Primary Contact
+              <input
+                defaultValue={company.primary_contact ?? ""}
+                onBlur={(e) => onSave({ primary_contact: e.target.value || null })}
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Email
+              <input
+                defaultValue={company.email ?? ""}
+                onBlur={(e) => onSave({ email: e.target.value || null })}
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="text-xs font-medium">
+              CRM Status
+              <select
+                value={company.crm_status}
+                onChange={(e) => onSave({ crm_status: e.target.value as CrmStatus })}
+                className={`${field} mt-1`}
+              >
+                {CRM_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium">
+              Priority
+              <select
+                value={company.priority ?? ""}
+                onChange={(e) => onSave({ priority: (e.target.value || null) as CrmPriority | null })}
+                className={`${field} mt-1`}
+              >
+                <option value="">--</option>
+                {CRM_PRIORITIES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium sm:col-span-2 lg:col-span-1">
+              Blue Book Info
+              <p className="mt-1 rounded border border-gray-200 bg-black/5 px-2 py-1 text-sm dark:border-white/10 dark:bg-white/5">
+                {company.blue_book_id ? `#${company.blue_book_id}` : "No Blue Book ID"}
+                {company.location_type ? ` · ${company.location_type}` : ""}
+                {company.classification ? ` · ${company.classification}` : ""}
+                {company.score !== null ? ` · Score ${company.score}` : ""}
+                {company.rating !== null ? ` · Rating ${company.rating}` : ""}
+                {company.source_status ? ` · ${company.source_status}` : ""}
+                {company.profile_url && /^https?:\/\//i.test(company.profile_url) && (
+                  <>
+                    {" · "}
+                    <a href={company.profile_url} target="_blank" rel="noreferrer" className="underline">
+                      Profile
+                    </a>
+                  </>
+                )}
+              </p>
+            </label>
+            <label className="text-xs font-medium sm:col-span-2 lg:col-span-3">
+              CRM Notes
+              <textarea
+                defaultValue={company.notes ?? ""}
+                onBlur={(e) => onSave({ notes: e.target.value || null })}
+                rows={2}
+                className={`${field} mt-1`}
+              />
+            </label>
+          </div>
+
+          <div className="space-y-2 rounded-md bg-black/5 p-3 dark:bg-white/5">
+            <h3 className="text-xs font-bold text-green-700 dark:text-green-400">Activity Log</h3>
+            {activities.length === 0 && <p className="text-xs text-black/40 dark:text-white/40">No activity logged yet.</p>}
+            {activities.map((a) => (
+              <div key={a.id} className="rounded border border-black/10 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-neutral-900">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {formatShortDate(a.activity_date)}
+                    {a.activity_type && ` · ${ACTIVITY_TYPE_LABEL.get(a.activity_type)}`}
+                    {a.outcome && ` · ${OUTCOME_LABEL.get(a.outcome)}`}
+                  </span>
+                  <button onClick={() => handleDeleteActivity(a.id)} className="text-red-600 hover:underline">
+                    Delete
+                  </button>
+                </div>
+                {a.contact_person && <p className="mt-0.5 text-black/60 dark:text-white/60">With: {a.contact_person}</p>}
+                {a.notes && <p className="mt-0.5">{a.notes}</p>}
+                {(a.next_action || a.next_follow_up) && (
+                  <p className="mt-0.5 text-black/60 dark:text-white/60">
+                    Next: {a.next_action}
+                    {a.next_follow_up ? ` (by ${formatShortDate(a.next_follow_up)})` : ""}
+                  </p>
+                )}
+                {a.owner && <p className="mt-0.5 text-black/40 dark:text-white/40">Owner: {a.owner}</p>}
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <select
+                    value={a.activity_type ?? ""}
+                    onChange={(e) => onUpdateActivity(a.id, { activity_type: (e.target.value || null) as CrmActivityType | null })}
+                    className="rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px] text-black"
+                  >
+                    <option value="">Type: --</option>
+                    {CRM_ACTIVITY_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={a.outcome ?? ""}
+                    onChange={(e) => onUpdateActivity(a.id, { outcome: (e.target.value || null) as CrmOutcome | null })}
+                    className="rounded border border-gray-300 bg-white px-1 py-0.5 text-[11px] text-black"
+                  >
+                    <option value="">Outcome: --</option>
+                    {CRM_OUTCOMES.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+
+            <div className="grid grid-cols-2 gap-2 pt-2 sm:grid-cols-4">
+              <label className="text-[11px] font-medium">
+                Date
+                <input
+                  type="date"
+                  value={draftDate}
+                  onChange={(e) => setDraftDate(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                />
+              </label>
+              <label className="text-[11px] font-medium">
+                Contact
+                <input
+                  value={draftContact}
+                  onChange={(e) => setDraftContact(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                />
+              </label>
+              <label className="text-[11px] font-medium">
+                Type
+                <select
+                  value={draftType}
+                  onChange={(e) => setDraftType(e.target.value as CrmActivityType | "")}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                >
+                  <option value="">--</option>
+                  {CRM_ACTIVITY_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-[11px] font-medium">
+                Outcome
+                <select
+                  value={draftOutcome}
+                  onChange={(e) => setDraftOutcome(e.target.value as CrmOutcome | "")}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                >
+                  <option value="">--</option>
+                  {CRM_OUTCOMES.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="col-span-2 text-[11px] font-medium sm:col-span-4">
+                Notes
+                <input
+                  value={draftNotes}
+                  onChange={(e) => setDraftNotes(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                />
+              </label>
+              <label className="text-[11px] font-medium">
+                Next Action
+                <input
+                  value={draftNextAction}
+                  onChange={(e) => setDraftNextAction(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                />
+              </label>
+              <label className="text-[11px] font-medium">
+                Follow-Up By
+                <input
+                  type="date"
+                  value={draftNextFollowUp}
+                  onChange={(e) => setDraftNextFollowUp(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                />
+              </label>
+              <label className="text-[11px] font-medium">
+                Owner
+                <input
+                  value={draftOwner}
+                  onChange={(e) => setDraftOwner(e.target.value)}
+                  className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+                />
+              </label>
+            </div>
+            <button
+              onClick={handleLogActivity}
+              disabled={logging}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {logging ? "Logging..." : "Log Activity"}
+            </button>
+          </div>
+
+          <button onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline">
+            Delete Company
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function CrmCompaniesClient({
+  initialCompanies,
+  initialActivities,
+}: {
+  initialCompanies: CrmCompany[];
+  initialActivities: CrmActivity[];
+}) {
+  const confirm = useConfirm();
+  const [companies, setCompanies] = useState(initialCompanies);
+  const [activities, setActivities] = useState(initialActivities);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CrmStatus | "all">("all");
+
+  const [newCompanyName, setNewCompanyName] = useState("");
+  const [addingCompany, setAddingCompany] = useState(false);
+
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [previewRows, setPreviewRows] = useState<ParsedCrmCompanyRow[] | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const activitiesByCompany = useMemo(() => {
+    const map = new Map<string, CrmActivity[]>();
+    for (const a of activities) {
+      const list = map.get(a.company_id) ?? [];
+      list.push(a);
+      map.set(a.company_id, list);
+    }
+    return map;
+  }, [activities]);
+
+  const filteredCompanies = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return companies.filter((c) => {
+      if (statusFilter !== "all" && c.crm_status !== statusFilter) return false;
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        (c.city_state ?? "").toLowerCase().includes(q) ||
+        (c.blue_book_id ?? "").toLowerCase().includes(q) ||
+        (c.primary_contact ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [companies, search, statusFilter]);
+
+  const statusCounts = useMemo(() => {
+    const counts = new Map<CrmStatus, number>();
+    for (const c of companies) counts.set(c.crm_status, (counts.get(c.crm_status) ?? 0) + 1);
+    return counts;
+  }, [companies]);
+
+  function toggle(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleSave(id: string, patch: Partial<CrmCompany>) {
+    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    updateCrmCompany(id, patch).catch(() => {});
+  }
+
+  async function handleDelete(id: string, name: string) {
+    if (!(await confirm(`Delete "${name}"? This also removes its activity log.`))) return;
+    setCompanies((prev) => prev.filter((c) => c.id !== id));
+    setActivities((prev) => prev.filter((a) => a.company_id !== id));
+    await deleteCrmCompany(id).catch(() => {});
+  }
+
+  async function handleAddCompany() {
+    const name = newCompanyName.trim();
+    if (!name) return;
+    setAddingCompany(true);
+    try {
+      const row = (await createCrmCompany(name)) as CrmCompany;
+      setCompanies((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewCompanyName("");
+      setExpandedIds((prev) => new Set(prev).add(row.id));
+    } catch {
+      alert(`Couldn't add "${name}" - a company with that name may already exist.`);
+    } finally {
+      setAddingCompany(false);
+    }
+  }
+
+  async function handleAddActivity(companyId: string, input: Parameters<typeof addCrmActivity>[1]) {
+    const row = (await addCrmActivity(companyId, input)) as CrmActivity;
+    setActivities((prev) => [row, ...prev]);
+  }
+
+  function handleUpdateActivity(id: string, patch: Partial<CrmActivity>) {
+    setActivities((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+    updateCrmActivity(id, patch).catch(() => {});
+  }
+
+  function handleDeleteActivity(id: string) {
+    setActivities((prev) => prev.filter((a) => a.id !== id));
+    deleteCrmActivity(id).catch(() => {});
+  }
+
+  function handlePreview() {
+    const result = parseCrmCompaniesText(pasteText);
+    if (result.error) {
+      setParseError(result.error);
+      setPreviewRows(null);
+      return;
+    }
+    setParseError(null);
+    setPreviewRows(result.rows);
+  }
+
+  function handleCancelPreview() {
+    setPreviewRows(null);
+    setParseError(null);
+  }
+
+  async function handleConfirmImport() {
+    if (!previewRows) return;
+    setImporting(true);
+    try {
+      const inserted = (await importCrmCompanies(previewRows)) as CrmCompany[];
+      setCompanies((prev) => [...prev, ...inserted].sort((a, b) => a.name.localeCompare(b.name)));
+      setPreviewRows(null);
+      setPasteText("");
+      setShowPaste(false);
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">CRM - Companies</h1>
+        <button
+          onClick={() => setShowPaste((s) => !s)}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+        >
+          {showPaste ? "Hide paste box" : "Paste from Excel"}
+        </button>
+      </div>
+
+      {showPaste && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+          <p className="text-xs text-black/50 dark:text-white/50">
+            Paste rows copied from the &quot;Companies&quot; sheet (header row included or not) - Blue Book ID, Company, Legal /
+            Alternate Name, City / State, Location Type, Phone, Classification, Score, Rating, Source Status, Profile URL, CRM
+            Status, Primary Contact, Email, CRM Notes.
+          </p>
+          <textarea
+            value={pasteText}
+            onChange={(e) => {
+              setPasteText(e.target.value);
+              setPreviewRows(null);
+              setParseError(null);
+            }}
+            rows={6}
+            placeholder="Paste the Companies sheet rows here..."
+            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
+          />
+          {parseError && <p className="text-sm text-red-600">{parseError}</p>}
+
+          {!previewRows && (
+            <button
+              onClick={handlePreview}
+              disabled={pasteText.trim() === ""}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              Preview
+            </button>
+          )}
+
+          {previewRows && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                Found {previewRows.length} row{previewRows.length === 1 ? "" : "s"} (already-imported companies are skipped
+                automatically).
+              </p>
+              <div className="max-h-64 overflow-auto rounded border border-black/10 dark:border-white/10">
+                <table className="w-full text-xs">
+                  <thead className="bg-black/5 text-left dark:bg-white/5">
+                    <tr>
+                      <th className="px-2 py-1">Blue Book ID</th>
+                      <th className="px-2 py-1">Company</th>
+                      <th className="px-2 py-1">City / State</th>
+                      <th className="px-2 py-1">Phone</th>
+                      <th className="px-2 py-1">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((r, i) => (
+                      <tr key={i} className="border-t border-black/10 dark:border-white/10">
+                        <td className="px-2 py-1">{r.blueBookId}</td>
+                        <td className="px-2 py-1">{r.name}</td>
+                        <td className="px-2 py-1">{r.cityState}</td>
+                        <td className="px-2 py-1">{r.phone}</td>
+                        <td className="px-2 py-1">{STATUS_LABEL.get(r.crmStatus)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleConfirmImport}
+                  disabled={importing}
+                  className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+                >
+                  {importing ? "Adding..." : `Add ${previewRows.length} Row${previewRows.length === 1 ? "" : "s"}`}
+                </button>
+                <button
+                  onClick={handleCancelPreview}
+                  className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={newCompanyName}
+          onChange={(e) => setNewCompanyName(e.target.value)}
+          placeholder="Add a company..."
+          className={`${field} max-w-xs`}
+        />
+        <button
+          onClick={handleAddCompany}
+          disabled={addingCompany || newCompanyName.trim() === ""}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+        >
+          {addingCompany ? "Adding..." : "+ Add Company"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, city, contact, Blue Book ID..."
+          className={`${field} max-w-xs bg-white`}
+        />
+        <span className="font-medium text-black/60 dark:text-white/60">
+          {filteredCompanies.length} of {companies.length}
+        </span>
+        <div className="ml-auto flex flex-wrap gap-1">
+          <button
+            onClick={() => setStatusFilter("all")}
+            className={`rounded-full px-3 py-1 text-xs font-medium ${
+              statusFilter === "all"
+                ? "bg-green-600 text-white"
+                : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+            }`}
+          >
+            All ({companies.length})
+          </button>
+          {CRM_STATUSES.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => setStatusFilter(s.value)}
+              className={`rounded-full px-3 py-1 text-xs font-medium ${
+                statusFilter === s.value
+                  ? "bg-green-600 text-white"
+                  : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+              }`}
+            >
+              {s.label} ({statusCounts.get(s.value) ?? 0})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {filteredCompanies.map((c) => (
+          <CompanyCard
+            key={c.id}
+            company={c}
+            activities={activitiesByCompany.get(c.id) ?? []}
+            expanded={expandedIds.has(c.id)}
+            onToggle={() => toggle(c.id)}
+            onSave={(patch) => handleSave(c.id, patch)}
+            onDelete={() => handleDelete(c.id, c.name)}
+            onAddActivity={(input) => handleAddActivity(c.id, input)}
+            onUpdateActivity={handleUpdateActivity}
+            onDeleteActivity={handleDeleteActivity}
+          />
+        ))}
+        {filteredCompanies.length === 0 && (
+          <p className="px-1 text-sm text-black/40 dark:text-white/40">No companies match - add one above or adjust your filters.</p>
+        )}
+      </div>
+    </div>
+  );
+}

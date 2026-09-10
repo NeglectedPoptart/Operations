@@ -1194,3 +1194,98 @@ export interface SrSoLine {
   created_at: string;
   updated_at: string;
 }
+
+// CRM: Companies -------
+
+export type CrmStatus = "prospect" | "contacted" | "qualified" | "customer" | "inactive" | "do_not_contact";
+
+export const CRM_STATUSES: { value: CrmStatus; label: string }[] = [
+  { value: "prospect", label: "Prospect" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "customer", label: "Customer" },
+  { value: "inactive", label: "Inactive" },
+  { value: "do_not_contact", label: "Do Not Contact" },
+];
+
+export type CrmPriority = "high" | "medium" | "low";
+
+export const CRM_PRIORITIES: { value: CrmPriority; label: string }[] = [
+  { value: "high", label: "High" },
+  { value: "medium", label: "Medium" },
+  { value: "low", label: "Low" },
+];
+
+export interface CrmCompany {
+  id: string;
+  blue_book_id: string | null;
+  name: string;
+  legal_name: string | null;
+  city_state: string | null;
+  location_type: string | null;
+  phone: string | null;
+  classification: string | null;
+  score: number | null;
+  rating: number | null;
+  source_status: string | null;
+  profile_url: string | null;
+  crm_status: CrmStatus;
+  priority: CrmPriority | null;
+  primary_contact: string | null;
+  email: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// CRM: Activities -------
+
+export type CrmActivityType = "call" | "email" | "meeting" | "quote" | "follow_up" | "visit" | "other";
+
+export const CRM_ACTIVITY_TYPES: { value: CrmActivityType; label: string }[] = [
+  { value: "call", label: "Call" },
+  { value: "email", label: "Email" },
+  { value: "meeting", label: "Meeting" },
+  { value: "quote", label: "Quote" },
+  { value: "follow_up", label: "Follow-Up" },
+  { value: "visit", label: "Visit" },
+  { value: "other", label: "Other" },
+];
+
+export type CrmOutcome =
+  | "no_answer"
+  | "left_message"
+  | "connected"
+  | "interested"
+  | "quote_sent"
+  | "follow_up_needed"
+  | "won"
+  | "lost"
+  | "other";
+
+export const CRM_OUTCOMES: { value: CrmOutcome; label: string }[] = [
+  { value: "no_answer", label: "No Answer" },
+  { value: "left_message", label: "Left Message" },
+  { value: "connected", label: "Connected" },
+  { value: "interested", label: "Interested" },
+  { value: "quote_sent", label: "Quote Sent" },
+  { value: "follow_up_needed", label: "Follow-Up Needed" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
+  { value: "other", label: "Other" },
+];
+
+export interface CrmActivity {
+  id: string;
+  company_id: string;
+  activity_date: string;
+  contact_person: string | null;
+  activity_type: CrmActivityType | null;
+  outcome: CrmOutcome | null;
+  notes: string | null;
+  next_action: string | null;
+  next_follow_up: string | null;
+  owner: string | null;
+  created_at: string;
+  updated_at: string;
+}

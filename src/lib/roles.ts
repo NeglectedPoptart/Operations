@@ -33,7 +33,8 @@ export type Tab =
   | "accounting"
   | "meetings"
   | "mexico"
-  | "shipping_receiving";
+  | "shipping_receiving"
+  | "crm";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -73,6 +74,7 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "meetings",
     "mexico",
     "shipping_receiving",
+    "crm",
   ],
   // Sees everything except Management.
   operations: [
@@ -91,11 +93,23 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   // it - middleware.ts additionally restricts Warehouse/QC to just
   // Arrivals and Orders, not Growers (see warehouseQcMexicoAllowed below).
   warehouse_qc: ["warehouse", "qc", "buyers", "meetings", "mexico"],
-  sales: ["sales", "qc", "buyers", "marketing", "meetings"],
+  sales: ["sales", "qc", "buyers", "marketing", "meetings", "crm"],
   accounting: ["sales", "compliance", "accounting", "meetings"],
   buyer: ["warehouse", "qc", "sales", "buyers", "meetings"],
   // Sees everything except Logistics.
-  executive: ["warehouse", "qc", "sales", "management", "compliance", "buyers", "marketing", "accounting", "meetings", "mexico"],
+  executive: [
+    "warehouse",
+    "qc",
+    "sales",
+    "management",
+    "compliance",
+    "buyers",
+    "marketing",
+    "accounting",
+    "meetings",
+    "mexico",
+    "crm",
+  ],
   // No tabs at all - access to BROKER_CARRIER_PATH is a hardcoded exception
   // in middleware.ts, not tab-based like every other role.
   broker_carrier: [],
@@ -129,6 +143,7 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/meetings")) return "meetings";
   if (pathname.startsWith("/mexico")) return "mexico";
   if (pathname.startsWith("/shipping-receiving")) return "shipping_receiving";
+  if (pathname.startsWith("/crm")) return "crm";
   return null;
 }
 
