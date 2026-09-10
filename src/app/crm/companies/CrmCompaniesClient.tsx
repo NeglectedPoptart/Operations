@@ -87,7 +87,6 @@ function CompanyCard({
   isAdminOrExec,
   assignableUsers,
   currentUserId,
-  assignedUserLabel,
   onAssign,
 }: {
   company: CrmCompany;
@@ -102,7 +101,6 @@ function CompanyCard({
   isAdminOrExec: boolean;
   assignableUsers: AssignableUser[];
   currentUserId: string;
-  assignedUserLabel: string | null;
   onAssign: (userId: string | null) => void;
 }) {
   const confirm = useConfirm();
@@ -147,75 +145,57 @@ function CompanyCard({
   }
 
   return (
-    <div
-      className={`rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10 ${expanded ? "sm:col-span-2 lg:col-span-3" : ""}`}
-    >
-      <button onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left">
-        <span>
-          <span className="font-medium">{company.name}</span>
-          {company.city_state && (
-            <span className="ml-2 text-sm font-normal text-black/50 dark:text-white/50">{company.city_state}</span>
-          )}
-          <span className="mt-1 flex flex-wrap gap-1.5">
-            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[company.crm_status]}`}>
-              {STATUS_LABEL.get(company.crm_status)}
-            </span>
-            {company.priority && (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PRIORITY_BADGE[company.priority]}`}>
-                {company.priority === "high" ? "High Priority" : company.priority === "medium" ? "Medium Priority" : "Low Priority"}
-              </span>
+    <div className="rounded-lg border border-black/10 px-3 py-2 shadow-sm dark:border-white/10">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+          >
+            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="min-w-0 truncate">
+            <span className="font-medium">{company.name}</span>
+            {company.city_state && (
+              <span className="ml-2 text-sm font-normal text-black/50 dark:text-white/50">{company.city_state}</span>
             )}
           </span>
-        </span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
-        >
-          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+        </button>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {isAdminOrExec ? (
-          <label className="flex items-center gap-1.5 text-xs font-medium">
-            Assigned to
-            <select
-              value={company.assigned_to ?? ""}
-              onChange={(e) => onAssign(e.target.value || null)}
-              className="rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
-            >
-              <option value="">-- General Bucket --</option>
-              {assignableUsers.map((u) => (
+        <span className="flex shrink-0 flex-wrap gap-1.5">
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_BADGE[company.crm_status]}`}>
+            {STATUS_LABEL.get(company.crm_status)}
+          </span>
+          {company.priority && (
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${PRIORITY_BADGE[company.priority]}`}>
+              {company.priority === "high" ? "High Priority" : company.priority === "medium" ? "Medium Priority" : "Low Priority"}
+            </span>
+          )}
+        </span>
+
+        <select
+          value={company.assigned_to ?? ""}
+          onChange={(e) => onAssign(e.target.value || null)}
+          className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+        >
+          <option value="">General Bucket</option>
+          {isAdminOrExec
+            ? assignableUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {displayNameForEmail(u.email)}
                 </option>
-              ))}
-            </select>
-          </label>
-        ) : company.assigned_to === currentUserId ? (
-          <button
-            onClick={() => onAssign(null)}
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-          >
-            Return to Bucket
-          </button>
-        ) : company.assigned_to === null ? (
-          <button
-            onClick={() => onAssign(currentUserId)}
-            className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
-          >
-            Claim for Me
-          </button>
-        ) : (
-          <span className="text-xs text-black/40 dark:text-white/40">Assigned to {assignedUserLabel ?? "another rep"}</span>
-        )}
+              ))
+            : (
+                <option value={currentUserId}>Me</option>
+              )}
+        </select>
       </div>
 
       {expanded && (
-        <div className="mt-4 space-y-4 border-t border-black/10 pt-4 dark:border-white/10">
+        <div className="mt-3 space-y-4 border-t border-black/10 pt-3 dark:border-white/10">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <label className="text-xs font-medium">
               Company
@@ -866,7 +846,7 @@ export default function CrmCompaniesClient({
               <h2 className="text-lg font-bold text-green-700 dark:text-green-400">
                 {g.name} Pipeline ({g.companies.length})
               </h2>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="flex flex-col gap-2">
                 {g.companies.map((c) => (
                   <CompanyCard
                     key={c.id}
@@ -882,7 +862,6 @@ export default function CrmCompaniesClient({
                     isAdminOrExec={isAdminOrExec}
                     assignableUsers={assignableUsers}
                     currentUserId={currentUserId}
-                    assignedUserLabel={c.assigned_to ? (nameById.get(c.assigned_to) ?? null) : null}
                     onAssign={(userId) => handleAssign(c.id, userId)}
                   />
                 ))}
@@ -894,7 +873,7 @@ export default function CrmCompaniesClient({
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-col gap-2">
           {filteredCompanies.map((c) => (
             <CompanyCard
               key={c.id}
@@ -910,7 +889,6 @@ export default function CrmCompaniesClient({
               isAdminOrExec={isAdminOrExec}
               assignableUsers={assignableUsers}
               currentUserId={currentUserId}
-              assignedUserLabel={c.assigned_to ? (nameById.get(c.assigned_to) ?? null) : null}
               onAssign={(userId) => handleAssign(c.id, userId)}
             />
           ))}
