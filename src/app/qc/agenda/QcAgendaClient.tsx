@@ -31,6 +31,7 @@ import {
   deleteHoldoverRow,
   deleteInboundRow,
   deleteRepackRow,
+  pullArrivalsForDate,
   pullHoldoversFromInspections,
   pullOldAgeIntoFloorAging,
   saveQcAgendaMeta,
@@ -229,6 +230,7 @@ export default function QcAgendaClient({
   }));
   const [pulling, setPulling] = useState(false);
   const [pullingHoldovers, setPullingHoldovers] = useState(false);
+  const [pullingArrivals, setPullingArrivals] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
@@ -286,6 +288,18 @@ export default function QcAgendaClient({
     if (!(await confirm("Delete this row?"))) return;
     patchDay({ inbounds: day.inbounds.filter((r) => r.id !== id) });
     await deleteInboundRow(id).catch(() => {});
+  }
+
+  async function handlePullArrivals() {
+    setPullingArrivals(true);
+    try {
+      const newRows = await pullArrivalsForDate(date);
+      if (newRows.length > 0) {
+        patchDay({ inbounds: [...day.inbounds, ...(newRows as QcAgendaInbound[])] });
+      }
+    } finally {
+      setPullingArrivals(false);
+    }
   }
 
   async function handlePullOldAge() {
@@ -529,9 +543,16 @@ export default function QcAgendaClient({
       </div>
 
       <section className="space-y-2">
-        <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
-          Inbounds
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-green-600 pb-1">
+          <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Inbounds</h2>
+          <button
+            onClick={handlePullArrivals}
+            disabled={pullingArrivals}
+            className="rounded-md border border-green-600 px-2 py-1 text-xs font-medium text-green-700 hover:bg-green-50 disabled:opacity-60 print:hidden dark:text-green-400 dark:hover:bg-green-900/20"
+          >
+            {pullingArrivals ? "Pulling..." : "Pull Arrivals"}
+          </button>
+        </div>
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10 print:border-black">
           <table className="w-full text-sm print:text-[9px]">
             <thead className="bg-black/5 text-left dark:bg-white/5 print:bg-transparent">

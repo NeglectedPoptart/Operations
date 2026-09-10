@@ -436,6 +436,9 @@ export interface QcAgendaInbound {
   photo_report: string | null;
   status: QcInboundStatus | null;
   notes: string | null;
+  // Set when this row came from "Pull Arrivals" (see Mexico > Arrivals) -
+  // lets a re-click skip whatever's already been pulled for the day.
+  mx_arrival_id: string | null;
   created_at: string;
   updated_at: string;
 }
