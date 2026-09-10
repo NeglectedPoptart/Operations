@@ -1234,6 +1234,11 @@ export interface CrmCompany {
   primary_contact: string | null;
   email: string | null;
   notes: string | null;
+  // Null while sitting in the shared General Bucket - set to a profile id
+  // once a salesperson (or an Admin/Exec on their behalf) claims it into
+  // that person's own pipeline.
+  assigned_to: string | null;
+  assigned_at: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { parseCrmCompaniesText, type ParsedCrmCompanyRow } from "@/lib/crmCompaniesParse";
 import { todayISO } from "@/lib/dates";
+import type { Role } from "@/lib/roles";
 import {
   CRM_ACTIVITY_TYPES,
   CRM_OUTCOMES,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/types";
 import {
   addCrmActivity,
+  assignCrmCompany,
   createCrmCompany,
   deleteCrmActivity,
   deleteCrmCompany,
@@ -25,6 +27,21 @@ import {
   updateCrmActivity,
   updateCrmCompany,
 } from "./actions";
+
+export interface AssignableUser {
+  id: string;
+  email: string | null;
+  role: Role;
+}
+
+// The email-local-part-as-a-name convention this company already uses
+// (tcamph@... -> "Tcamph") - good enough for a pipeline label without
+// needing a dedicated display-name field on profiles.
+function displayNameForEmail(email: string | null): string {
+  if (!email) return "Unknown";
+  const local = email.split("@")[0];
+  return local.charAt(0).toUpperCase() + local.slice(1);
+}
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -67,6 +84,11 @@ function CompanyCard({
   onAddActivity,
   onUpdateActivity,
   onDeleteActivity,
+  isAdminOrExec,
+  assignableUsers,
+  currentUserId,
+  assignedUserLabel,
+  onAssign,
 }: {
   company: CrmCompany;
   activities: CrmActivity[];
@@ -77,6 +99,11 @@ function CompanyCard({
   onAddActivity: (input: Parameters<typeof addCrmActivity>[1]) => Promise<void>;
   onUpdateActivity: (id: string, patch: Partial<CrmActivity>) => void;
   onDeleteActivity: (id: string) => void;
+  isAdminOrExec: boolean;
+  assignableUsers: AssignableUser[];
+  currentUserId: string;
+  assignedUserLabel: string | null;
+  onAssign: (userId: string | null) => void;
 }) {
   const confirm = useConfirm();
   const [draftDate, setDraftDate] = useState(todayISO());
@@ -150,6 +177,42 @@ function CompanyCard({
           <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {isAdminOrExec ? (
+          <label className="flex items-center gap-1.5 text-xs font-medium">
+            Assigned to
+            <select
+              value={company.assigned_to ?? ""}
+              onChange={(e) => onAssign(e.target.value || null)}
+              className="rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+            >
+              <option value="">-- General Bucket --</option>
+              {assignableUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {displayNameForEmail(u.email)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : company.assigned_to === currentUserId ? (
+          <button
+            onClick={() => onAssign(null)}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            Return to Bucket
+          </button>
+        ) : company.assigned_to === null ? (
+          <button
+            onClick={() => onAssign(currentUserId)}
+            className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+          >
+            Claim for Me
+          </button>
+        ) : (
+          <span className="text-xs text-black/40 dark:text-white/40">Assigned to {assignedUserLabel ?? "another rep"}</span>
+        )}
+      </div>
 
       {expanded && (
         <div className="mt-4 space-y-4 border-t border-black/10 pt-4 dark:border-white/10">
@@ -410,19 +473,31 @@ function CompanyCard({
   );
 }
 
+type CrmView = "bucket" | "mine" | "all";
+
 export default function CrmCompaniesClient({
   initialCompanies,
   initialActivities,
+  assignableUsers,
+  currentUserId,
+  currentUserRole,
 }: {
   initialCompanies: CrmCompany[];
   initialActivities: CrmActivity[];
+  assignableUsers: AssignableUser[];
+  currentUserId: string;
+  currentUserRole: Role | null;
 }) {
   const confirm = useConfirm();
+  const isAdminOrExec = currentUserRole === "admin" || currentUserRole === "executive";
+  const nameById = useMemo(() => new Map(assignableUsers.map((u) => [u.id, displayNameForEmail(u.email)])), [assignableUsers]);
   const [companies, setCompanies] = useState(initialCompanies);
   const [activities, setActivities] = useState(initialActivities);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CrmStatus | "all">("all");
+  const [sortBy, setSortBy] = useState<"name" | "city">("name");
+  const [view, setView] = useState<CrmView>("bucket");
 
   const [newCompanyName, setNewCompanyName] = useState("");
   const [addingCompany, setAddingCompany] = useState(false);
@@ -443,19 +518,60 @@ export default function CrmCompaniesClient({
     return map;
   }, [activities]);
 
-  const filteredCompanies = useMemo(() => {
+  function matchesSearchStatus(c: CrmCompany): boolean {
+    if (statusFilter !== "all" && c.crm_status !== statusFilter) return false;
     const q = search.trim().toLowerCase();
-    return companies.filter((c) => {
-      if (statusFilter !== "all" && c.crm_status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        c.name.toLowerCase().includes(q) ||
-        (c.city_state ?? "").toLowerCase().includes(q) ||
-        (c.blue_book_id ?? "").toLowerCase().includes(q) ||
-        (c.primary_contact ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [companies, search, statusFilter]);
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      (c.city_state ?? "").toLowerCase().includes(q) ||
+      (c.blue_book_id ?? "").toLowerCase().includes(q) ||
+      (c.primary_contact ?? "").toLowerCase().includes(q)
+    );
+  }
+
+  function sortCompanies(list: CrmCompany[]): CrmCompany[] {
+    return [...list].sort((a, b) =>
+      sortBy === "city"
+        ? (a.city_state ?? "").localeCompare(b.city_state ?? "") || a.name.localeCompare(b.name)
+        : a.name.localeCompare(b.name),
+    );
+  }
+
+  const bucketCompanies = useMemo(
+    () => companies.filter((c) => c.assigned_to === null),
+    [companies],
+  );
+  const mineCompanies = useMemo(
+    () => companies.filter((c) => c.assigned_to === currentUserId),
+    [companies, currentUserId],
+  );
+
+  const filteredCompanies = useMemo(() => {
+    const source = view === "bucket" ? bucketCompanies : view === "mine" ? mineCompanies : [];
+    return sortCompanies(source.filter(matchesSearchStatus));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucketCompanies, mineCompanies, view, search, statusFilter, sortBy]);
+
+  const allPipelineGroups = useMemo(() => {
+    if (view !== "all") return [];
+    const byUser = new Map<string, CrmCompany[]>();
+    for (const c of companies) {
+      if (!c.assigned_to) continue;
+      const list = byUser.get(c.assigned_to) ?? [];
+      list.push(c);
+      byUser.set(c.assigned_to, list);
+    }
+    return [...byUser.entries()]
+      .map(([userId, list]) => ({
+        userId,
+        name: nameById.get(userId) ?? "Unknown",
+        companies: sortCompanies(list.filter(matchesSearchStatus)),
+      }))
+      .filter((g) => g.companies.length > 0)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companies, view, nameById, search, statusFilter, sortBy]);
 
   const statusCounts = useMemo(() => {
     const counts = new Map<CrmStatus, number>();
@@ -475,6 +591,19 @@ export default function CrmCompaniesClient({
   function handleSave(id: string, patch: Partial<CrmCompany>) {
     setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
     updateCrmCompany(id, patch).catch(() => {});
+  }
+
+  async function handleAssign(id: string, userId: string | null) {
+    const prevCompanies = companies;
+    setCompanies((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, assigned_to: userId, assigned_at: userId ? new Date().toISOString() : null } : c)),
+    );
+    try {
+      await assignCrmCompany(id, userId);
+    } catch (e) {
+      setCompanies(prevCompanies);
+      alert(e instanceof Error ? e.message : "Couldn't update the assignment.");
+    }
   }
 
   async function handleDelete(id: string, name: string) {
@@ -653,6 +782,41 @@ export default function CrmCompaniesClient({
         </button>
       </div>
 
+      <div className="flex flex-wrap gap-1">
+        <button
+          onClick={() => setView("bucket")}
+          className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+            view === "bucket"
+              ? "bg-green-600 text-white"
+              : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+          }`}
+        >
+          General Bucket ({bucketCompanies.length})
+        </button>
+        <button
+          onClick={() => setView("mine")}
+          className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+            view === "mine"
+              ? "bg-green-600 text-white"
+              : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+          }`}
+        >
+          My Pipeline ({mineCompanies.length})
+        </button>
+        {isAdminOrExec && (
+          <button
+            onClick={() => setView("all")}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+              view === "all"
+                ? "bg-green-600 text-white"
+                : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+            }`}
+          >
+            All Pipelines ({companies.length - bucketCompanies.length})
+          </button>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2 rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
         <input
           value={search}
@@ -660,9 +824,14 @@ export default function CrmCompaniesClient({
           placeholder="Search name, city, contact, Blue Book ID..."
           className={`${field} max-w-xs bg-white`}
         />
-        <span className="font-medium text-black/60 dark:text-white/60">
-          {filteredCompanies.length} of {companies.length}
-        </span>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as "name" | "city")}
+          className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black"
+        >
+          <option value="name">Sort: Name</option>
+          <option value="city">Sort: City</option>
+        </select>
         <div className="ml-auto flex flex-wrap gap-1">
           <button
             onClick={() => setStatusFilter("all")}
@@ -690,25 +859,68 @@ export default function CrmCompaniesClient({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredCompanies.map((c) => (
-          <CompanyCard
-            key={c.id}
-            company={c}
-            activities={activitiesByCompany.get(c.id) ?? []}
-            expanded={expandedIds.has(c.id)}
-            onToggle={() => toggle(c.id)}
-            onSave={(patch) => handleSave(c.id, patch)}
-            onDelete={() => handleDelete(c.id, c.name)}
-            onAddActivity={(input) => handleAddActivity(c.id, input)}
-            onUpdateActivity={handleUpdateActivity}
-            onDeleteActivity={handleDeleteActivity}
-          />
-        ))}
-        {filteredCompanies.length === 0 && (
-          <p className="px-1 text-sm text-black/40 dark:text-white/40">No companies match - add one above or adjust your filters.</p>
-        )}
-      </div>
+      {view === "all" ? (
+        <div className="space-y-6">
+          {allPipelineGroups.map((g) => (
+            <div key={g.userId} className="space-y-3">
+              <h2 className="text-lg font-bold text-green-700 dark:text-green-400">
+                {g.name} Pipeline ({g.companies.length})
+              </h2>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {g.companies.map((c) => (
+                  <CompanyCard
+                    key={c.id}
+                    company={c}
+                    activities={activitiesByCompany.get(c.id) ?? []}
+                    expanded={expandedIds.has(c.id)}
+                    onToggle={() => toggle(c.id)}
+                    onSave={(patch) => handleSave(c.id, patch)}
+                    onDelete={() => handleDelete(c.id, c.name)}
+                    onAddActivity={(input) => handleAddActivity(c.id, input)}
+                    onUpdateActivity={handleUpdateActivity}
+                    onDeleteActivity={handleDeleteActivity}
+                    isAdminOrExec={isAdminOrExec}
+                    assignableUsers={assignableUsers}
+                    currentUserId={currentUserId}
+                    assignedUserLabel={c.assigned_to ? (nameById.get(c.assigned_to) ?? null) : null}
+                    onAssign={(userId) => handleAssign(c.id, userId)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+          {allPipelineGroups.length === 0 && (
+            <p className="px-1 text-sm text-black/40 dark:text-white/40">No companies have been assigned to a pipeline yet.</p>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredCompanies.map((c) => (
+            <CompanyCard
+              key={c.id}
+              company={c}
+              activities={activitiesByCompany.get(c.id) ?? []}
+              expanded={expandedIds.has(c.id)}
+              onToggle={() => toggle(c.id)}
+              onSave={(patch) => handleSave(c.id, patch)}
+              onDelete={() => handleDelete(c.id, c.name)}
+              onAddActivity={(input) => handleAddActivity(c.id, input)}
+              onUpdateActivity={handleUpdateActivity}
+              onDeleteActivity={handleDeleteActivity}
+              isAdminOrExec={isAdminOrExec}
+              assignableUsers={assignableUsers}
+              currentUserId={currentUserId}
+              assignedUserLabel={c.assigned_to ? (nameById.get(c.assigned_to) ?? null) : null}
+              onAssign={(userId) => handleAssign(c.id, userId)}
+            />
+          ))}
+          {filteredCompanies.length === 0 && (
+            <p className="px-1 text-sm text-black/40 dark:text-white/40">
+              {view === "mine" ? "Nothing in your pipeline yet - claim one from the General Bucket." : "No companies match - add one above or adjust your filters."}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

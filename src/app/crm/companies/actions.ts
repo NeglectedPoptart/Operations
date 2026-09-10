@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedCrmCompanyRow } from "@/lib/crmCompaniesParse";
+import type { Role } from "@/lib/roles";
 import type { CrmActivityType, CrmOutcome, CrmPriority, CrmStatus } from "@/lib/types";
 
 function revalidateAll() {
@@ -92,6 +93,49 @@ export async function updateCrmCompany(
 ) {
   const supabase = await createClient();
   const { error } = await supabase.from("crm_companies").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// Claims a company from the shared bucket into someone's pipeline, hands it
+// back to the bucket (assignToUserId null), or - Admin/Exec only - moves it
+// straight from one person's pipeline into another's. Enforced here, not
+// just hidden in the UI: a non-Admin/Exec can only ever assign to themselves
+// and can't pull a company out of someone else's pipeline.
+export async function assignCrmCompany(companyId: string, assignToUserId: string | null) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profileError) throw new Error(profileError.message);
+  const isAdminOrExec = (profile.role as Role) === "admin" || (profile.role as Role) === "executive";
+
+  if (!isAdminOrExec) {
+    if (assignToUserId !== null && assignToUserId !== user.id) {
+      throw new Error("You can only assign companies to yourself.");
+    }
+    const { data: company, error: companyError } = await supabase
+      .from("crm_companies")
+      .select("assigned_to")
+      .eq("id", companyId)
+      .single();
+    if (companyError) throw new Error(companyError.message);
+    if (company.assigned_to !== null && company.assigned_to !== user.id) {
+      throw new Error("This company is already assigned to someone else.");
+    }
+  }
+
+  const { error } = await supabase
+    .from("crm_companies")
+    .update({ assigned_to: assignToUserId, assigned_at: assignToUserId ? new Date().toISOString() : null })
+    .eq("id", companyId);
   if (error) throw new Error(error.message);
   revalidateAll();
 }
