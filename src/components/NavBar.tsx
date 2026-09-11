@@ -75,7 +75,14 @@ const NAV: NavCategory[] = [
   {
     label: "CRM",
     tab: "crm",
-    items: [{ href: "/crm/companies", label: "Companies" }],
+    items: [
+      { href: "/crm/companies", label: "Companies" },
+      {
+        href: "/crm/activity",
+        label: "Activity Tracking",
+        excludeRoles: ["sales", "buyer_sales", "operations"],
+      },
+    ],
   },
   {
     label: "Buyers",

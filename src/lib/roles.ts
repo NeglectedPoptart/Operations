@@ -169,3 +169,13 @@ const WAREHOUSE_QC_MEXICO_PATHS = ["/mexico/arrivals", "/mexico/orders"];
 export function warehouseQcMexicoAllowed(pathname: string): boolean {
   return WAREHOUSE_QC_MEXICO_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
+
+// The mirror shape of the exception above: Sales, Buyer/Sales, and
+// Operations all have the "crm" tab, but Activity Tracking (per-salesperson
+// stats) is narrower - Admin/Exec only, same as the Completed and DNS lists
+// it summarizes.
+export const CRM_ACTIVITY_PATH_PREFIX = "/crm/activity";
+
+export function crmActivityAllowed(role: Role | null): boolean {
+  return role === "admin" || role === "executive";
+}

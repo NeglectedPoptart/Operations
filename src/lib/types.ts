@@ -1254,6 +1254,9 @@ export interface CrmCompany {
   // pipeline views into its own Exec/Admin-only DNS list instead.
   dns_at: string | null;
   dns_by: string | null;
+  // Who added this company - powers the Activity Tracking page's
+  // "Customers Added" count. Null for rows created before that page shipped.
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1332,6 +1335,11 @@ export interface CrmActivity {
   next_action: string | null;
   next_follow_up: string | null;
   owner: string | null;
+  // Who actually logged this entry - separate from the free-text Owner
+  // field above (which was never a real user reference). Powers the
+  // Activity Tracking page's "Calls Logged" count. Null for rows created
+  // before that page shipped.
+  logged_by: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -24,6 +24,16 @@ async function requireAdminOrExec(supabase: Awaited<ReturnType<typeof createClie
   return { userId: user.id, isAdminOrExec };
 }
 
+// Just the current user's id, for stamping created_by/logged_by - these
+// don't gate anything, they're purely for the Activity Tracking page's
+// attribution, so no role check needed here.
+async function currentUserId(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
+
 // Paste is the same running Blue Book export re-pasted over time, so a row
 // is skipped if it already exists - matched by Blue Book ID when the sheet
 // has one, falling back to a case-insensitive name match for hand-entered
@@ -31,6 +41,7 @@ async function requireAdminOrExec(supabase: Awaited<ReturnType<typeof createClie
 export async function importCrmCompanies(rows: ParsedCrmCompanyRow[]) {
   const supabase = await createClient();
   if (rows.length === 0) return [];
+  const userId = await currentUserId(supabase);
 
   const { data: existing, error: existingError } = await supabase.from("crm_companies").select("blue_book_id, name");
   if (existingError) throw new Error(existingError.message);
@@ -66,6 +77,7 @@ export async function importCrmCompanies(rows: ParsedCrmCompanyRow[]) {
       primary_contact: row.primaryContact,
       email: row.email,
       notes: row.notes,
+      created_by: userId,
     });
   }
 
@@ -79,7 +91,8 @@ export async function importCrmCompanies(rows: ParsedCrmCompanyRow[]) {
 
 export async function createCrmCompany(name: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("crm_companies").insert({ name }).select().single();
+  const userId = await currentUserId(supabase);
+  const { data, error } = await supabase.from("crm_companies").insert({ name, created_by: userId }).select().single();
   if (error) throw new Error(error.message);
   revalidateAll();
   return data;
@@ -261,9 +274,10 @@ export async function addCrmActivity(
   },
 ) {
   const supabase = await createClient();
+  const userId = await currentUserId(supabase);
   const { data, error } = await supabase
     .from("crm_activities")
-    .insert({ company_id: companyId, ...input })
+    .insert({ company_id: companyId, ...input, logged_by: userId })
     .select()
     .single();
   if (error) throw new Error(error.message);

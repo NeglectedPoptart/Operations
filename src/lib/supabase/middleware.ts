@@ -2,8 +2,10 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
   BROKER_CARRIER_PATH,
+  CRM_ACTIVITY_PATH_PREFIX,
   SUPREME_PATH_PREFIX,
   canAccessTab,
+  crmActivityAllowed,
   isSupremeUser,
   tabForPath,
   warehouseQcMexicoAllowed,
@@ -95,6 +97,14 @@ export async function updateSession(request: NextRequest) {
   // and Orders only, not Growers - so it needs this extra narrowing on top
   // of the generic tab check above, which only knows about whole tabs.
   if (tab === "mexico" && role === "warehouse_qc" && !warehouseQcMexicoAllowed(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
+  // Activity Tracking is Admin/Exec only, even though Sales, Buyer/Sales,
+  // and Operations all otherwise have the "crm" tab.
+  if (tab === "crm" && pathname.startsWith(CRM_ACTIVITY_PATH_PREFIX) && !crmActivityAllowed(role)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
