@@ -93,6 +93,8 @@ function CompanyCard({
   onAssign,
   buckets,
   onSetBucket,
+  selected,
+  onToggleSelect,
 }: {
   company: CrmCompany;
   activities: CrmActivity[];
@@ -109,6 +111,8 @@ function CompanyCard({
   onAssign: (userId: string | null) => void;
   buckets: CrmBucket[];
   onSetBucket: (bucketId: string | null) => void;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const confirm = useConfirm();
   const [draftDate, setDraftDate] = useState(todayISO());
@@ -154,6 +158,13 @@ function CompanyCard({
   return (
     <div className="rounded-lg border border-black/10 px-3 py-2 shadow-sm dark:border-white/10">
       <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 shrink-0"
+        />
         <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           <svg
             viewBox="0 0 24 24"
@@ -499,6 +510,9 @@ export default function CrmCompaniesClient({
   const [activities, setActivities] = useState(initialActivities);
   const [buckets, setBuckets] = useState(initialBuckets);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkTarget, setBulkTarget] = useState("");
+  const [bulkMoving, setBulkMoving] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<CrmStatus | "all">("all");
   const [sortBy, setSortBy] = useState<"name" | "city">("name");
@@ -626,6 +640,52 @@ export default function CrmCompaniesClient({
     updateCrmCompany(id, { bucket_id: bucketId }).catch(() => {});
   }
 
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllVisible(ids: string[]) {
+    setSelectedIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
+      return allSelected ? new Set() : new Set(ids);
+    });
+  }
+
+  // A bucket target both files the company under that bucket and drops any
+  // pipeline claim, so it actually shows up there - a pipeline target is
+  // just the same single-row assign, applied to every selected company.
+  async function handleBulkMove() {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || !bulkTarget) return;
+    setBulkMoving(true);
+    try {
+      if (bulkTarget.startsWith("bucket:")) {
+        const bucketId = bulkTarget.slice("bucket:".length) || null;
+        setCompanies((prev) =>
+          prev.map((c) => (ids.includes(c.id) ? { ...c, bucket_id: bucketId, assigned_to: null, assigned_at: null } : c)),
+        );
+        await Promise.all(ids.flatMap((id) => [updateCrmCompany(id, { bucket_id: bucketId }), assignCrmCompany(id, null)]));
+      } else if (bulkTarget.startsWith("user:")) {
+        const userId = bulkTarget.slice("user:".length);
+        setCompanies((prev) =>
+          prev.map((c) => (ids.includes(c.id) ? { ...c, assigned_to: userId, assigned_at: new Date().toISOString() } : c)),
+        );
+        await Promise.all(ids.map((id) => assignCrmCompany(id, userId)));
+      }
+      setSelectedIds(new Set());
+      setBulkTarget("");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Couldn't move some of the selected companies.");
+    } finally {
+      setBulkMoving(false);
+    }
+  }
+
   async function handleCreateBucket() {
     const name = newBucketName.trim();
     if (!name) return;
@@ -719,6 +779,9 @@ export default function CrmCompaniesClient({
       setImporting(false);
     }
   }
+
+  const visibleIds =
+    view.kind === "all" ? allPipelineGroups.flatMap((g) => g.companies.map((c) => c.id)) : filteredCompanies.map((c) => c.id);
 
   return (
     <div className="space-y-4">
@@ -923,6 +986,15 @@ export default function CrmCompaniesClient({
           <option value="name">Sort: Name</option>
           <option value="city">Sort: City</option>
         </select>
+        <label className="flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
+          <input
+            type="checkbox"
+            checked={visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))}
+            onChange={() => selectAllVisible(visibleIds)}
+            className="h-3.5 w-3.5"
+          />
+          Select all
+        </label>
         <div className="ml-auto flex flex-wrap gap-1">
           <button
             onClick={() => setStatusFilter("all")}
@@ -950,6 +1022,51 @@ export default function CrmCompaniesClient({
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-green-600/40 bg-green-50 px-3 py-2 text-sm dark:border-green-500/30 dark:bg-green-950/20">
+          <span className="font-medium">{selectedIds.size} selected</span>
+          <select
+            value={bulkTarget}
+            onChange={(e) => setBulkTarget(e.target.value)}
+            className="rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black"
+          >
+            <option value="">Move to...</option>
+            <optgroup label="Bucket">
+              <option value="bucket:">General</option>
+              {buckets.map((b) => (
+                <option key={b.id} value={`bucket:${b.id}`}>
+                  {b.name}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="Pipeline">
+              {isAdminOrExec ? (
+                assignableUsers.map((u) => (
+                  <option key={u.id} value={`user:${u.id}`}>
+                    {displayNameForEmail(u.email)}
+                  </option>
+                ))
+              ) : (
+                <option value={`user:${currentUserId}`}>Me</option>
+              )}
+            </optgroup>
+          </select>
+          <button
+            onClick={handleBulkMove}
+            disabled={bulkMoving || !bulkTarget}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            {bulkMoving ? "Moving..." : "Move"}
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs font-medium text-black/60 hover:underline dark:text-white/60"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {view.kind === "all" ? (
         <div className="space-y-6">
           {allPipelineGroups.map((g) => (
@@ -976,6 +1093,8 @@ export default function CrmCompaniesClient({
                     onAssign={(userId) => handleAssign(c.id, userId)}
                     buckets={buckets}
                     onSetBucket={(bucketId) => handleSetBucket(c.id, bucketId)}
+                    selected={selectedIds.has(c.id)}
+                    onToggleSelect={() => toggleSelect(c.id)}
                   />
                 ))}
               </div>
@@ -1005,6 +1124,8 @@ export default function CrmCompaniesClient({
               onAssign={(userId) => handleAssign(c.id, userId)}
               buckets={buckets}
               onSetBucket={(bucketId) => handleSetBucket(c.id, bucketId)}
+              selected={selectedIds.has(c.id)}
+              onToggleSelect={() => toggleSelect(c.id)}
             />
           ))}
           {filteredCompanies.length === 0 && (
