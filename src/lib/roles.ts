@@ -78,7 +78,10 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "shipping_receiving",
     "crm",
   ],
-  // Sees everything except Management.
+  // Sees everything except Management. Gets CRM to browse/manage buckets
+  // and pipelines, but - unlike Sales/Executive/Buyer-Sales - is never
+  // itself a pipeline owner (see the assignable-users role filter in
+  // crm/companies/page.tsx, which deliberately leaves "operations" out).
   operations: [
     "logistics",
     "warehouse",
@@ -90,6 +93,7 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "accounting",
     "meetings",
     "mexico",
+    "crm",
   ],
   // "mexico" here is deliberately narrower than every other role that has
   // it - middleware.ts additionally restricts Warehouse/QC to just

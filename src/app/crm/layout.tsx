@@ -6,6 +6,17 @@ import DailyGoalsBar, { type GoalUser } from "./DailyGoalsBar";
 
 export const dynamic = "force-dynamic";
 
+// These people still show up everywhere else (bucket/pipeline assignment,
+// "All Pipelines") - they're just opted out of the Goals panel itself, per
+// request. A plain email list, not a role filter, since it's specific
+// people rather than a role-wide rule.
+const GOALS_EXCLUDED_EMAILS = new Set([
+  "nhalim@harvestbestinc.com",
+  "jromero@harvestbestinc.com",
+  "tcamph@harvestbestinc.com",
+  "avasquez@harvestbestwest.com",
+]);
+
 export default async function CrmLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const today = todayISO();
@@ -22,11 +33,12 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
 
   const role = (myProfile?.role as Role | undefined) ?? null;
   const isAdminOrExec = role === "admin" || role === "executive";
+  const goalsRoster = (goalUsers ?? []).filter((u) => !GOALS_EXCLUDED_EMAILS.has((u.email ?? "").toLowerCase()));
 
   return (
     <>
       <DailyGoalsBar
-        users={(goalUsers ?? []) as GoalUser[]}
+        users={goalsRoster as GoalUser[]}
         initialGoals={(goals ?? []) as CrmDailyGoal[]}
         todayIso={today}
         currentUserId={user?.id ?? ""}
