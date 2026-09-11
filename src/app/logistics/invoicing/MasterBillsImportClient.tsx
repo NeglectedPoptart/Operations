@@ -42,6 +42,7 @@ export default function MasterBillsImportClient({
 }) {
   const [pasteText, setPasteText] = useState("");
   const [matched, setMatched] = useState<MatchedCarrier[] | null>(null);
+  const [cleanBrokers, setCleanBrokers] = useState<Broker[] | null>(null);
   const [unmatched, setUnmatched] = useState<UnmatchedSection[] | null>(null);
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -87,16 +88,23 @@ export default function MasterBillsImportClient({
       }
     }
 
-    // Only surface carriers where the master PDF actually changes something -
-    // a carrier with nothing to remove/flag/mark-pending is just noise here.
-    const actionable = [...matchedByBrokerId.values()]
-      .filter((m) => {
-        const { removeCount, flagCount, pendingCount } = summarizeDiff(m.posts, m.pendingRows);
-        return removeCount + flagCount + pendingCount > 0;
-      })
-      .sort((a, b) => a.broker.name.localeCompare(b.broker.name));
+    // A carrier with nothing to remove/flag/mark-pending still gets listed
+    // separately (not as a reviewable row - just noise there) so Apply can
+    // still stamp it as checked: running the master import against a carrier
+    // and finding it clean is still a statement check that happened, same as
+    // running Statement Checker on it directly and it coming back clean.
+    const actionable: MatchedCarrier[] = [];
+    const clean: Broker[] = [];
+    for (const m of matchedByBrokerId.values()) {
+      const { removeCount, flagCount, pendingCount } = summarizeDiff(m.posts, m.pendingRows);
+      if (removeCount + flagCount + pendingCount > 0) actionable.push(m);
+      else clean.push(m.broker);
+    }
+    actionable.sort((a, b) => a.broker.name.localeCompare(b.broker.name));
+    clean.sort((a, b) => a.name.localeCompare(b.name));
 
     setMatched(actionable);
+    setCleanBrokers(clean);
     setUnmatched(unmatchedSections.sort((a, b) => b.rowCount - a.rowCount));
     setExcludedIds(new Set());
     setExpandedIds(new Set());
@@ -156,21 +164,32 @@ export default function MasterBillsImportClient({
   }
 
   async function handleApplyAll() {
-    if (!matched) return;
+    if (!matched || !cleanBrokers) return;
     const toApply = matched.filter((m) => !excludedIds.has(m.broker.id));
-    if (toApply.length === 0) return;
+    const toStamp = cleanBrokers.filter((b) => !excludedIds.has(b.id));
+    if (toApply.length === 0 && toStamp.length === 0) return;
     setApplying(true);
     try {
-      await Promise.all(
-        toApply.map((m) => {
+      await Promise.all([
+        ...toApply.map((m) => {
           const removeIds = m.posts.filter((r) => r.action === "remove" && r.matchId).map((r) => r.matchId as string);
           const doneFlagIds = m.posts.filter((r) => r.action === "flag" && r.matchId).map((r) => r.matchId as string);
           const pendingIds = m.pendingRows.map((r) => r.id);
           return applyStatementCheck(m.broker.id, removeIds, doneFlagIds, pendingIds);
         }),
+        // Nothing to remove/flag/mark-pending for these - this call only
+        // exists to stamp last_statement_checked_at, same as it does for the
+        // carriers above.
+        ...toStamp.map((b) => applyStatementCheck(b.id, [], [], [])),
+      ]);
+      const total = toApply.length + toStamp.length;
+      setDoneMessage(
+        toApply.length > 0
+          ? `Reconciled ${toApply.length} carrier${toApply.length === 1 ? "" : "s"}, confirmed ${toStamp.length} more already checked - ${total} marked checked in all.`
+          : `Confirmed all ${total} carrier${total === 1 ? "" : "s"} as checked - nothing needed reconciling.`,
       );
-      setDoneMessage(`Reconciled ${toApply.length} carrier${toApply.length === 1 ? "" : "s"} from the master PDF.`);
       setMatched(null);
+      setCleanBrokers(null);
       setUnmatched(null);
       setPasteText("");
     } finally {
@@ -180,10 +199,13 @@ export default function MasterBillsImportClient({
 
   function handleCancel() {
     setMatched(null);
+    setCleanBrokers(null);
     setUnmatched(null);
   }
 
-  const includedCount = matched?.filter((m) => !excludedIds.has(m.broker.id)).length ?? 0;
+  const includedCount =
+    (matched?.filter((m) => !excludedIds.has(m.broker.id)).length ?? 0) +
+    (cleanBrokers?.filter((b) => !excludedIds.has(b.id)).length ?? 0);
 
   return (
     <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
@@ -225,15 +247,16 @@ export default function MasterBillsImportClient({
         </button>
       </div>
 
-      {matched && unmatched && (
+      {matched && cleanBrokers && unmatched && (
         <div className="space-y-4">
           <p className="text-sm">
-            {matched.length} carrier{matched.length === 1 ? "" : "s"} matched with changes to reconcile, {unmatched.length}{" "}
-            vendor section{unmatched.length === 1 ? "" : "s"} in the PDF weren&apos;t a tracked carrier and were skipped.
+            {matched.length} carrier{matched.length === 1 ? "" : "s"} matched with changes to reconcile, {cleanBrokers.length}{" "}
+            matched but already up to date, {unmatched.length} vendor section{unmatched.length === 1 ? "" : "s"} in the PDF
+            weren&apos;t a tracked carrier and were skipped. All matched carriers get marked checked (green) once applied.
           </p>
 
-          {matched.length === 0 && (
-            <p className="text-sm text-black/40 dark:text-white/40">Nothing to reconcile - every matched carrier is already up to date.</p>
+          {matched.length === 0 && cleanBrokers.length === 0 && (
+            <p className="text-sm text-black/40 dark:text-white/40">No tracked carriers matched anything in this PDF.</p>
           )}
 
           <div className="space-y-2">
@@ -269,6 +292,27 @@ export default function MasterBillsImportClient({
               );
             })}
           </div>
+
+          {cleanBrokers.length > 0 && (
+            <div className="space-y-1 rounded-lg border border-black/10 p-3 dark:border-white/10">
+              <p className="text-xs font-medium text-black/60 dark:text-white/60">
+                Matched, already up to date - just gets marked checked:
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {cleanBrokers.map((b) => (
+                  <label key={b.id} className="flex items-center gap-1.5 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={!excludedIds.has(b.id)}
+                      onChange={() => toggleExcluded(b.id)}
+                      className="h-3.5 w-3.5"
+                    />
+                    {b.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {unmatched.length > 0 && (
             <div className="space-y-2">
