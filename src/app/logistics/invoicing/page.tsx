@@ -3,6 +3,7 @@ import { daysSince } from "@/lib/dates";
 import { OVERDUE_DAYS } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement } from "@/lib/types";
 import StatementCheckerClient from "./StatementCheckerClient";
+import MasterBillsImportClient from "./MasterBillsImportClient";
 import BrokerListClient from "./BrokerListClient";
 import AccountingSummaryClient from "./AccountingSummaryClient";
 
@@ -47,6 +48,8 @@ export default async function InvoicingHomePage() {
       </p>
 
       <AccountingSummaryClient brokers={(brokers ?? []) as Broker[]} statements={rows} />
+
+      <MasterBillsImportClient brokers={(brokers ?? []) as Broker[]} initialStatements={rows} />
 
       <StatementCheckerClient brokers={(brokers ?? []) as Broker[]} />
 

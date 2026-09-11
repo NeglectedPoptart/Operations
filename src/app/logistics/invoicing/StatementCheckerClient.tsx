@@ -1,45 +1,17 @@
 "use client";
 
 import { useState, type ChangeEvent } from "react";
-import { normalizeInvoiceNo, parsePastedStatement, parsePdfStatement, type ParsedStatementLine, type ParseResult } from "@/lib/statementParse";
+import {
+  diffStatementAgainstInvoices,
+  parsePastedStatement,
+  parsePdfStatement,
+  type PendingRow,
+  type PostResultRow,
+  type ParseResult,
+} from "@/lib/statementParse";
 import type { Broker, InvoiceStatement } from "@/lib/types";
 import { applyStatementCheck, extractPdfText, getInvoiceStatementsForBroker } from "./actions";
-
-type PostAction = "remove" | "flag" | "review" | "not-found";
-
-interface PostResultRow extends ParsedStatementLine {
-  action: PostAction;
-  matchId: string | null;
-  note: string | null;
-}
-
-interface PendingRow {
-  id: string;
-  invoice_no: string;
-}
-
-function formatMoney(n: number | null) {
-  return n === null ? "-" : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function actionLabel(action: PostAction) {
-  switch (action) {
-    case "remove":
-      return { text: "Posted & paid - will mark Done & remove", cls: "font-medium text-green-700 dark:text-green-400" };
-    case "flag":
-      return {
-        text: "Posted but has a balance - will mark Done & flag",
-        cls: "font-medium text-red-700 dark:text-red-400",
-      };
-    case "review":
-      return {
-        text: "Pending with a note - needs manual review",
-        cls: "font-medium text-blue-700 dark:text-blue-400",
-      };
-    case "not-found":
-      return { text: "Not on this list", cls: "text-black/40 dark:text-white/40" };
-  }
-}
+import StatementDiffTables, { summarizeDiff } from "./StatementDiffTables";
 
 export default function StatementCheckerClient({ brokers }: { brokers: Broker[] }) {
   const [brokerId, setBrokerId] = useState("");
@@ -69,31 +41,7 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
       return;
     }
     const items: InvoiceStatement[] = await getInvoiceStatementsForBroker(brokerId);
-    const ourMap = new Map(items.map((i) => [normalizeInvoiceNo(i.invoice_no), i]));
-
-    // Anything appearing anywhere in the statement (Post or Open) counts as
-    // "on the bills list" - only rows missing entirely get marked Pending below.
-    const foundKeys = new Set(parsed.rows.map((r) => normalizeInvoiceNo(r.document)));
-
-    const posts: PostResultRow[] = parsed.rows
-      .filter((r) => r.journalStatus === "post")
-      .map((r) => {
-        const match = ourMap.get(normalizeInvoiceNo(r.document));
-        if (!match) return { ...r, action: "not-found", matchId: null, note: null };
-        // A note left on a Pending invoice is a deliberate "don't touch
-        // this one" flag (e.g. a dispute in progress) - the statement
-        // showing it as Posted doesn't override that, it just means a
-        // person needs to look at it instead of it silently flipping.
-        if (match.status === "pending" && match.notes) {
-          return { ...r, action: "review", matchId: match.id, note: match.notes };
-        }
-        if (r.balance === null) return { ...r, action: "remove", matchId: match.id, note: match.notes };
-        return { ...r, action: "flag", matchId: match.id, note: match.notes };
-      });
-
-    const notFound: PendingRow[] = items
-      .filter((i) => !foundKeys.has(normalizeInvoiceNo(i.invoice_no)))
-      .map((i) => ({ id: i.id, invoice_no: i.invoice_no }));
+    const { posts, pendingRows: notFound } = diffStatementAgainstInvoices(parsed.rows, items);
 
     setPostResults(posts);
     setPendingRows(notFound);
@@ -162,11 +110,7 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
     setPendingRows(null);
   }
 
-  const removeCount = postResults?.filter((r) => r.action === "remove").length ?? 0;
-  const flagCount = postResults?.filter((r) => r.action === "flag").length ?? 0;
-  const reviewRows = postResults?.filter((r) => r.action === "review") ?? [];
-  const mainResults = postResults?.filter((r) => r.action !== "review") ?? [];
-  const pendingCount = pendingRows?.length ?? 0;
+  const { removeCount, flagCount, pendingCount } = summarizeDiff(postResults ?? [], pendingRows ?? []);
 
   return (
     <div className="space-y-3 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
@@ -230,93 +174,7 @@ export default function StatementCheckerClient({ brokers }: { brokers: Broker[] 
 
       {postResults && pendingRows && (
         <div className="space-y-4">
-          <p className="text-sm">
-            {postResults.length} Posted row{postResults.length === 1 ? "" : "s"} found: {removeCount} will be
-            removed, {flagCount} will be flagged{reviewRows.length > 0 && `, ${reviewRows.length} held for review`}.{" "}
-            {pendingCount} invoice{pendingCount === 1 ? "" : "s"} on this list not in the statement will be marked
-            Pending.
-          </p>
-
-          <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-            <table className="w-full text-sm">
-              <thead className="bg-black/5 text-left dark:bg-white/5">
-                <tr>
-                  <th className="px-2 py-2">Document</th>
-                  <th className="px-2 py-2">Balance</th>
-                  <th className="px-2 py-2">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mainResults.map((r, i) => {
-                  const label = actionLabel(r.action);
-                  return (
-                    <tr key={i} className="border-t border-black/10 dark:border-white/10">
-                      <td className="px-2 py-1">{r.document}</td>
-                      <td className="px-2 py-1">{formatMoney(r.balance)}</td>
-                      <td className={`px-2 py-1 ${label.cls}`}>{label.text}</td>
-                    </tr>
-                  );
-                })}
-                {mainResults.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-2 py-3 text-center text-black/40 dark:text-white/40">
-                      No Posted rows in the pasted statement.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {reviewRows.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                Needs Manual Review - pending with a note, left alone:
-              </p>
-              <div className="overflow-x-auto rounded-lg border border-blue-200 dark:border-blue-900/40">
-                <table className="w-full text-sm">
-                  <thead className="bg-blue-50 text-left dark:bg-blue-950/20">
-                    <tr>
-                      <th className="px-2 py-2">Document</th>
-                      <th className="px-2 py-2">Balance</th>
-                      <th className="px-2 py-2">Note</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reviewRows.map((r, i) => (
-                      <tr key={i} className="border-t border-blue-100 dark:border-blue-900/30">
-                        <td className="px-2 py-1">{r.document}</td>
-                        <td className="px-2 py-1">{formatMoney(r.balance)}</td>
-                        <td className="px-2 py-1 italic text-black/70 dark:text-white/70">{r.note}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {pendingRows.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Not in the statement - will be marked Pending:</p>
-              <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-                <table className="w-full text-sm">
-                  <thead className="bg-black/5 text-left dark:bg-white/5">
-                    <tr>
-                      <th className="px-2 py-2">Invoice #</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pendingRows.map((r) => (
-                      <tr key={r.id} className="border-t border-black/10 dark:border-white/10">
-                        <td className="px-2 py-1 text-yellow-700 dark:text-yellow-400">{r.invoice_no}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          <StatementDiffTables posts={postResults} pendingRows={pendingRows} />
 
           <div className="flex gap-2">
             <button

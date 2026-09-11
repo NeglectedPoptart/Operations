@@ -1,3 +1,5 @@
+import type { InvoiceStatement } from "./types";
+
 export interface ParsedStatementLine {
   document: string;
   journalStatus: "post" | "open" | null;
@@ -7,6 +9,19 @@ export interface ParsedStatementLine {
 export interface ParseResult {
   rows: ParsedStatementLine[];
   error?: string;
+}
+
+export type PostAction = "remove" | "flag" | "review" | "not-found";
+
+export interface PostResultRow extends ParsedStatementLine {
+  action: PostAction;
+  matchId: string | null;
+  note: string | null;
+}
+
+export interface PendingRow {
+  id: string;
+  invoice_no: string;
 }
 
 // "#" is mapped to "no" before stripping punctuation so a keyword search for
@@ -166,4 +181,72 @@ export function parsePdfStatement(text: string): ParseResult {
     return { rows: [], error: "Couldn't find any bill rows in this PDF - try pasting the text instead." };
   }
   return { rows };
+}
+
+// Shared by the single-carrier Statement Checker and the multi-carrier
+// Master Bills Import - both end up with one carrier's ParsedStatementLine[]
+// plus that carrier's existing invoice_statements rows, and reconcile them
+// identically: any Posted row matched to our list is marked Done (removed
+// if no balance remains, otherwise flagged); a Pending row that already has
+// a note is left alone and called out for manual review instead; anything
+// on our list that never shows up in the statement at all gets marked
+// Pending, since accounting hasn't posted it.
+export function diffStatementAgainstInvoices(
+  parsedRows: ParsedStatementLine[],
+  existing: InvoiceStatement[],
+): { posts: PostResultRow[]; pendingRows: PendingRow[] } {
+  const ourMap = new Map(existing.map((i) => [normalizeInvoiceNo(i.invoice_no), i]));
+  const foundKeys = new Set(parsedRows.map((r) => normalizeInvoiceNo(r.document)));
+
+  const posts: PostResultRow[] = parsedRows
+    .filter((r) => r.journalStatus === "post")
+    .map((r) => {
+      const match = ourMap.get(normalizeInvoiceNo(r.document));
+      if (!match) return { ...r, action: "not-found", matchId: null, note: null };
+      if (match.status === "pending" && match.notes) {
+        return { ...r, action: "review", matchId: match.id, note: match.notes };
+      }
+      if (r.balance === null) return { ...r, action: "remove", matchId: match.id, note: match.notes };
+      return { ...r, action: "flag", matchId: match.id, note: match.notes };
+    });
+
+  const pendingRows: PendingRow[] = existing
+    .filter((i) => !foundKeys.has(normalizeInvoiceNo(i.invoice_no)))
+    .map((i) => ({ id: i.id, invoice_no: i.invoice_no }));
+
+  return { posts, pendingRows };
+}
+
+export interface VendorSection {
+  vendorName: string;
+  vendorCode: string;
+  rows: ParsedStatementLine[];
+}
+
+// The master "Bills" export lists every vendor - produce growers, carriers,
+// insurance, adjustments, all of it - grouped under "Vendor: <name>
+// [<code>]" header lines with a "Total by Vendor: ..." line closing each
+// section. Splitting on those headers lets the multi-carrier import pull
+// out just the sections whose bracketed code matches a tracked carrier,
+// ignoring everything else in the report.
+const VENDOR_HEADER_RE = /^Vendor:\s*(.+?)\s*\[([^\]]*)\]\s*$/;
+
+export function splitVendorSections(text: string): VendorSection[] {
+  const sections: VendorSection[] = [];
+  let current: VendorSection | null = null;
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const headerMatch = rawLine.trim().match(VENDOR_HEADER_RE);
+    if (headerMatch) {
+      if (current) sections.push(current);
+      current = { vendorName: headerMatch[1].trim(), vendorCode: headerMatch[2].trim(), rows: [] };
+      continue;
+    }
+    if (!current) continue;
+    const row = parsePdfBillsLine(rawLine);
+    if (row) current.rows.push(row);
+  }
+  if (current) sections.push(current);
+
+  return sections;
 }
