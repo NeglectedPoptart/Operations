@@ -1249,6 +1249,11 @@ export interface CrmCompany {
   // Admin/Exec can mark it on the pipeline owner's behalf.
   landed_at: string | null;
   landed_by: string | null;
+  // The mirror of landed_at/landed_by for a company the pipeline owner (or
+  // Admin/Exec) decided NOT to pursue - moves it out of the working
+  // pipeline views into its own Exec/Admin-only DNS list instead.
+  dns_at: string | null;
+  dns_by: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -144,23 +144,25 @@ export async function assignCrmCompany(companyId: string, assignToUserId: string
   revalidateAll();
 }
 
+// Shared by markCompanyLanded and markCompanyDns - both are only allowed
+// for the pipeline owner or an Admin/Exec on their behalf.
+async function requireOwnerOrAdminExec(supabase: Awaited<ReturnType<typeof createClient>>, companyId: string, action: string) {
+  const { userId, isAdminOrExec } = await requireAdminOrExec(supabase);
+  const { data: company, error } = await supabase.from("crm_companies").select("assigned_to").eq("id", companyId).single();
+  if (error) throw new Error(error.message);
+  if (!isAdminOrExec && company.assigned_to !== userId) {
+    throw new Error(`Only the pipeline owner or an Admin/Exec can ${action}.`);
+  }
+  return userId;
+}
+
 // Full setup done, PO pulled - moves the company out of the working
-// pipeline views into the Exec/Admin-only Completed list. Only the pipeline
-// owner or an Admin/Exec can mark it; landed_by records who actually did
-// it, which may not be the pipeline owner if an Admin/Exec did it for them.
+// pipeline views into the Exec/Admin-only Completed list. landed_by isn't
+// always assigned_to, since an Admin/Exec can mark it on the pipeline
+// owner's behalf.
 export async function markCompanyLanded(companyId: string) {
   const supabase = await createClient();
-  const { userId, isAdminOrExec } = await requireAdminOrExec(supabase);
-
-  const { data: company, error: companyError } = await supabase
-    .from("crm_companies")
-    .select("assigned_to")
-    .eq("id", companyId)
-    .single();
-  if (companyError) throw new Error(companyError.message);
-  if (!isAdminOrExec && company.assigned_to !== userId) {
-    throw new Error("Only the pipeline owner or an Admin/Exec can mark this landed.");
-  }
+  const userId = await requireOwnerOrAdminExec(supabase, companyId, "mark this landed");
 
   const { error } = await supabase
     .from("crm_companies")
@@ -178,6 +180,32 @@ export async function undoCompanyLanded(companyId: string) {
   if (!isAdminOrExec) throw new Error("Only Admin/Exec can undo a landed company.");
 
   const { error } = await supabase.from("crm_companies").update({ landed_at: null, landed_by: null }).eq("id", companyId);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// "Do Not Sell" - the mirror of markCompanyLanded for a company the
+// pipeline owner (or Admin/Exec) has decided not to pursue.
+export async function markCompanyDns(companyId: string) {
+  const supabase = await createClient();
+  const userId = await requireOwnerOrAdminExec(supabase, companyId, "mark this Do Not Sell");
+
+  const { error } = await supabase
+    .from("crm_companies")
+    .update({ dns_at: new Date().toISOString(), dns_by: userId, crm_status: "do_not_contact" })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// Sends a DNS'd company back to its pipeline - Admin/Exec only, since the
+// DNS list itself is Admin/Exec only.
+export async function undoCompanyDns(companyId: string) {
+  const supabase = await createClient();
+  const { isAdminOrExec } = await requireAdminOrExec(supabase);
+  if (!isAdminOrExec) throw new Error("Only Admin/Exec can undo a Do Not Sell company.");
+
+  const { error } = await supabase.from("crm_companies").update({ dns_at: null, dns_by: null }).eq("id", companyId);
   if (error) throw new Error(error.message);
   revalidateAll();
 }

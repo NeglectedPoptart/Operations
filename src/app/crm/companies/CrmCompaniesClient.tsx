@@ -27,7 +27,9 @@ import {
   deleteCrmBucket,
   deleteCrmCompany,
   importCrmCompanies,
+  markCompanyDns,
   markCompanyLanded,
+  undoCompanyDns,
   undoCompanyLanded,
   updateCrmActivity,
   updateCrmCompany,
@@ -104,6 +106,8 @@ function CompanyCard({
   onToggleSelect,
   onMarkLanded,
   landedInfo,
+  onMarkDns,
+  dnsInfo,
 }: {
   company: CrmCompany;
   activities: CrmActivity[];
@@ -130,6 +134,9 @@ function CompanyCard({
   // controls for a "Landed by X on <date>" line and an Undo button, since
   // Completed is a distinct end state, not another pipeline to reassign.
   landedInfo?: { label: string; onUndo: () => void };
+  // Same shape as the two above, for the "Do Not Sell" mirror state.
+  onMarkDns?: () => void;
+  dnsInfo?: { label: string; onUndo: () => void };
 }) {
   const confirm = useConfirm();
   const [draftDate, setDraftDate] = useState(todayISO());
@@ -175,7 +182,7 @@ function CompanyCard({
   return (
     <div className="rounded-lg border border-black/10 px-3 py-2 shadow-sm dark:border-white/10">
       <div className="flex flex-wrap items-center gap-3">
-        {!landedInfo && (
+        {!landedInfo && !dnsInfo && (
           <input
             type="checkbox"
             checked={selected}
@@ -213,13 +220,20 @@ function CompanyCard({
           )}
         </span>
 
-        {landedInfo ? (
-          <span className="flex shrink-0 items-center gap-2 text-xs">
-            <span className="font-medium text-green-700 dark:text-green-400">{landedInfo.label}</span>
-            <button onClick={landedInfo.onUndo} className="font-medium text-black/50 hover:underline dark:text-white/50">
-              Undo
-            </button>
-          </span>
+        {landedInfo || dnsInfo ? (
+          (() => {
+            const info = (landedInfo ?? dnsInfo) as { label: string; onUndo: () => void };
+            return (
+              <span className="flex shrink-0 items-center gap-2 text-xs">
+                <span className={`font-medium ${landedInfo ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}>
+                  {info.label}
+                </span>
+                <button onClick={info.onUndo} className="font-medium text-black/50 hover:underline dark:text-white/50">
+                  Undo
+                </button>
+              </span>
+            );
+          })()
         ) : (
           <>
             {company.assigned_to === null && (
@@ -516,6 +530,14 @@ function CompanyCard({
                 Mark as Landed - Full Setup, PO Pulled
               </button>
             )}
+            {onMarkDns && (
+              <button
+                onClick={onMarkDns}
+                className="rounded-md border border-red-600 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+              >
+                DNS - Do Not Sell
+              </button>
+            )}
             <button onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline">
               Delete Company
             </button>
@@ -526,7 +548,12 @@ function CompanyCard({
   );
 }
 
-type CrmView = { kind: "bucket"; bucketId: string | null } | { kind: "mine" } | { kind: "all" } | { kind: "completed" };
+type CrmView =
+  | { kind: "bucket"; bucketId: string | null }
+  | { kind: "mine" }
+  | { kind: "all" }
+  | { kind: "completed" }
+  | { kind: "dns" };
 
 export default function CrmCompaniesClient({
   initialCompanies,
@@ -602,27 +629,47 @@ export default function CrmCompaniesClient({
 
   const unassignedCompanies = useMemo(() => companies.filter((c) => c.assigned_to === null), [companies]);
   const mineCompanies = useMemo(
-    () => companies.filter((c) => c.assigned_to === currentUserId && c.landed_at === null),
+    () => companies.filter((c) => c.assigned_to === currentUserId && c.landed_at === null && c.dns_at === null),
     [companies, currentUserId],
   );
   const landedCompanies = useMemo(
     () => [...companies.filter((c) => c.landed_at !== null)].sort((a, b) => (b.landed_at ?? "").localeCompare(a.landed_at ?? "")),
     [companies],
   );
-  const assignedCount = companies.filter((c) => c.assigned_to !== null && c.landed_at === null).length;
+  const dnsCompanies = useMemo(
+    () => [...companies.filter((c) => c.dns_at !== null)].sort((a, b) => (b.dns_at ?? "").localeCompare(a.dns_at ?? "")),
+    [companies],
+  );
+  const assignedCount = companies.filter(
+    (c) => c.assigned_to !== null && c.landed_at === null && c.dns_at === null,
+  ).length;
 
   function bucketCount(bucketId: string | null): number {
     return unassignedCompanies.filter((c) => c.bucket_id === bucketId).length;
   }
 
   function markLandedEligible(c: CrmCompany): boolean {
-    return c.assigned_to !== null && c.landed_at === null && (isAdminOrExec || c.assigned_to === currentUserId);
+    return (
+      c.assigned_to !== null && c.landed_at === null && c.dns_at === null && (isAdminOrExec || c.assigned_to === currentUserId)
+    );
+  }
+
+  function markDnsEligible(c: CrmCompany): boolean {
+    return (
+      c.assigned_to !== null && c.landed_at === null && c.dns_at === null && (isAdminOrExec || c.assigned_to === currentUserId)
+    );
   }
 
   function landedInfoFor(c: CrmCompany): { label: string; onUndo: () => void } | undefined {
     if (!c.landed_at) return undefined;
     const name = c.landed_by ? (nameById.get(c.landed_by) ?? "Someone") : "Someone";
     return { label: `Landed by ${name} on ${formatShortDateTime(c.landed_at)}`, onUndo: () => handleUndoLanded(c.id) };
+  }
+
+  function dnsInfoFor(c: CrmCompany): { label: string; onUndo: () => void } | undefined {
+    if (!c.dns_at) return undefined;
+    const name = c.dns_by ? (nameById.get(c.dns_by) ?? "Someone") : "Someone";
+    return { label: `DNS by ${name} on ${formatShortDateTime(c.dns_at)}`, onUndo: () => handleUndoDns(c.id) };
   }
 
   const filteredCompanies = useMemo(() => {
@@ -633,16 +680,18 @@ export default function CrmCompaniesClient({
           ? mineCompanies
           : view.kind === "completed"
             ? landedCompanies
-            : [];
+            : view.kind === "dns"
+              ? dnsCompanies
+              : [];
     return sortCompanies(source.filter(matchesSearchStatus));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unassignedCompanies, mineCompanies, landedCompanies, view, search, statusFilter, sortBy]);
+  }, [unassignedCompanies, mineCompanies, landedCompanies, dnsCompanies, view, search, statusFilter, sortBy]);
 
   const allPipelineGroups = useMemo(() => {
     if (view.kind !== "all") return [];
     const byUser = new Map<string, CrmCompany[]>();
     for (const c of companies) {
-      if (!c.assigned_to || c.landed_at !== null) continue;
+      if (!c.assigned_to || c.landed_at !== null || c.dns_at !== null) continue;
       const list = byUser.get(c.assigned_to) ?? [];
       list.push(c);
       byUser.set(c.assigned_to, list);
@@ -711,6 +760,32 @@ export default function CrmCompaniesClient({
     setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, landed_at: null, landed_by: null } : c)));
     try {
       await undoCompanyLanded(id);
+    } catch (e) {
+      setCompanies(prevCompanies);
+      alert(e instanceof Error ? e.message : "Couldn't undo this.");
+    }
+  }
+
+  async function handleMarkDns(company: CrmCompany) {
+    if (!(await confirm(`Mark "${company.name}" Do Not Sell? This moves it to the DNS list (Admin/Exec only).`))) return;
+    const prevCompanies = companies;
+    const now = new Date().toISOString();
+    setCompanies((prev) =>
+      prev.map((c) => (c.id === company.id ? { ...c, dns_at: now, dns_by: currentUserId, crm_status: "do_not_contact" } : c)),
+    );
+    try {
+      await markCompanyDns(company.id);
+    } catch (e) {
+      setCompanies(prevCompanies);
+      alert(e instanceof Error ? e.message : "Couldn't mark this company Do Not Sell.");
+    }
+  }
+
+  async function handleUndoDns(id: string) {
+    const prevCompanies = companies;
+    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, dns_at: null, dns_by: null } : c)));
+    try {
+      await undoCompanyDns(id);
     } catch (e) {
       setCompanies(prevCompanies);
       alert(e instanceof Error ? e.message : "Couldn't undo this.");
@@ -1033,6 +1108,18 @@ export default function CrmCompaniesClient({
         )}
         {isAdminOrExec && (
           <button
+            onClick={() => setView({ kind: "dns" })}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+              view.kind === "dns"
+                ? "bg-red-600 text-white"
+                : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+            }`}
+          >
+            DNS ({dnsCompanies.length})
+          </button>
+        )}
+        {isAdminOrExec && (
+          <button
             onClick={() => setShowNewBucket((s) => !s)}
             className="rounded-full border border-dashed border-black/30 px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:border-white/30 dark:text-white/60 dark:hover:bg-white/10"
           >
@@ -1080,7 +1167,7 @@ export default function CrmCompaniesClient({
           <option value="name">Sort: Name</option>
           <option value="city">Sort: City</option>
         </select>
-        {view.kind !== "completed" && (
+        {view.kind !== "completed" && view.kind !== "dns" && (
           <label className="flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
             <input
               type="checkbox"
@@ -1118,7 +1205,7 @@ export default function CrmCompaniesClient({
         </div>
       </div>
 
-      {selectedIds.size > 0 && view.kind !== "completed" && (
+      {selectedIds.size > 0 && view.kind !== "completed" && view.kind !== "dns" && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-green-600/40 bg-green-50 px-3 py-2 text-sm dark:border-green-500/30 dark:bg-green-950/20">
           <span className="font-medium">{selectedIds.size} selected</span>
           <select
@@ -1193,6 +1280,8 @@ export default function CrmCompaniesClient({
                     onToggleSelect={() => toggleSelect(c.id)}
                     onMarkLanded={markLandedEligible(c) ? () => handleMarkLanded(c) : undefined}
                     landedInfo={landedInfoFor(c)}
+                    onMarkDns={markDnsEligible(c) ? () => handleMarkDns(c) : undefined}
+                    dnsInfo={dnsInfoFor(c)}
                   />
                 ))}
               </div>
@@ -1226,6 +1315,8 @@ export default function CrmCompaniesClient({
               onToggleSelect={() => toggleSelect(c.id)}
               onMarkLanded={markLandedEligible(c) ? () => handleMarkLanded(c) : undefined}
               landedInfo={landedInfoFor(c)}
+              onMarkDns={markDnsEligible(c) ? () => handleMarkDns(c) : undefined}
+              dnsInfo={dnsInfoFor(c)}
             />
           ))}
           {filteredCompanies.length === 0 && (
@@ -1234,7 +1325,9 @@ export default function CrmCompaniesClient({
                 ? "Nothing in your pipeline yet - claim one from a bucket."
                 : view.kind === "completed"
                   ? "Nothing landed yet."
-                  : "No companies match - add one above or adjust your filters."}
+                  : view.kind === "dns"
+                    ? "Nothing marked Do Not Sell yet."
+                    : "No companies match - add one above or adjust your filters."}
             </p>
           )}
         </div>
