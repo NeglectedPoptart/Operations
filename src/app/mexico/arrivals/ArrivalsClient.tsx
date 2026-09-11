@@ -71,6 +71,17 @@ function dayInfo(day: MxArrivalDay | null) {
   return MX_ARRIVAL_DAYS.find((d) => d.value === day) ?? null;
 }
 
+// Monday..Sunday, matching MX_ARRIVAL_DAYS' own order - rows with no day set
+// yet sort last rather than jumping to the front.
+const DAY_RANK = new Map(MX_ARRIVAL_DAYS.map((d, i) => [d.value, i]));
+
+function sortByDayThenPosition(rows: MxArrival[]): MxArrival[] {
+  return [...rows].sort((a, b) => {
+    const dayDiff = (a.arrival_day ? DAY_RANK.get(a.arrival_day)! : 99) - (b.arrival_day ? DAY_RANK.get(b.arrival_day)! : 99);
+    return dayDiff !== 0 ? dayDiff : a.position - b.position;
+  });
+}
+
 interface WeekData {
   arrivals: MxArrival[];
 }
@@ -280,10 +291,9 @@ export default function ArrivalsClient({
   async function handleCopyImage() {
     try {
       const blocks: CanvasBlock[] = MX_ARRIVAL_SECTIONS.map((s) => {
-        const rows = week.arrivals
-          .filter((a) => a.section === s.value)
-          .sort((a, b) => a.position - b.position)
-          .map((a) => ({ cells: arrivalRowValues(a, growers, labels, commodities) }));
+        const rows = sortByDayThenPosition(week.arrivals.filter((a) => a.section === s.value)).map((a) => ({
+          cells: arrivalRowValues(a, growers, labels, commodities),
+        }));
         return {
           title: s.label,
           headerColor: SECTION_COLORS[s.value],
@@ -479,9 +489,11 @@ export default function ArrivalsClient({
       </div>
 
       {MX_ARRIVAL_SECTIONS.map((section) => {
-        const sectionRows = week.arrivals
-          .filter((a) => a.section === section.value && (dayFilter.size === 0 || (a.arrival_day && dayFilter.has(a.arrival_day))))
-          .sort((a, b) => a.position - b.position);
+        const sectionRows = sortByDayThenPosition(
+          week.arrivals.filter(
+            (a) => a.section === section.value && (dayFilter.size === 0 || (a.arrival_day && dayFilter.has(a.arrival_day))),
+          ),
+        );
         const aproxLabel = section.value === "peppers_hothouse" ? "Pallets" : "Bx's Aprox";
         return (
           <section key={section.value} className="space-y-2">
