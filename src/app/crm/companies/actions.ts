@@ -144,6 +144,44 @@ export async function assignCrmCompany(companyId: string, assignToUserId: string
   revalidateAll();
 }
 
+// Full setup done, PO pulled - moves the company out of the working
+// pipeline views into the Exec/Admin-only Completed list. Only the pipeline
+// owner or an Admin/Exec can mark it; landed_by records who actually did
+// it, which may not be the pipeline owner if an Admin/Exec did it for them.
+export async function markCompanyLanded(companyId: string) {
+  const supabase = await createClient();
+  const { userId, isAdminOrExec } = await requireAdminOrExec(supabase);
+
+  const { data: company, error: companyError } = await supabase
+    .from("crm_companies")
+    .select("assigned_to")
+    .eq("id", companyId)
+    .single();
+  if (companyError) throw new Error(companyError.message);
+  if (!isAdminOrExec && company.assigned_to !== userId) {
+    throw new Error("Only the pipeline owner or an Admin/Exec can mark this landed.");
+  }
+
+  const { error } = await supabase
+    .from("crm_companies")
+    .update({ landed_at: new Date().toISOString(), landed_by: userId, crm_status: "customer" })
+    .eq("id", companyId);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// Sends a landed company back to its pipeline - Admin/Exec only, since the
+// Completed list itself is Admin/Exec only.
+export async function undoCompanyLanded(companyId: string) {
+  const supabase = await createClient();
+  const { isAdminOrExec } = await requireAdminOrExec(supabase);
+  if (!isAdminOrExec) throw new Error("Only Admin/Exec can undo a landed company.");
+
+  const { error } = await supabase.from("crm_companies").update({ landed_at: null, landed_by: null }).eq("id", companyId);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
 // Bucket structure (creating/removing a segment of the shared pool) is
 // Admin/Exec only - moving a company INTO a bucket is just a normal field
 // on updateCrmCompany above, open to anyone with CRM access.

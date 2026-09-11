@@ -27,6 +27,8 @@ import {
   deleteCrmBucket,
   deleteCrmCompany,
   importCrmCompanies,
+  markCompanyLanded,
+  undoCompanyLanded,
   updateCrmActivity,
   updateCrmCompany,
 } from "./actions";
@@ -73,6 +75,11 @@ function formatShortDate(iso: string | null): string {
   return `${m}/${d}/${y.slice(2)}`;
 }
 
+function formatShortDateTime(iso: string | null): string {
+  if (!iso) return "";
+  return formatShortDate(iso.slice(0, 10));
+}
+
 // One company's expand-in-place detail: editable fields plus its activity
 // log - kept as its own component (rather than inlined in the map, as
 // Growers does) since the add-activity mini-form needs its own draft state
@@ -95,6 +102,8 @@ function CompanyCard({
   onSetBucket,
   selected,
   onToggleSelect,
+  onMarkLanded,
+  landedInfo,
 }: {
   company: CrmCompany;
   activities: CrmActivity[];
@@ -113,6 +122,14 @@ function CompanyCard({
   onSetBucket: (bucketId: string | null) => void;
   selected: boolean;
   onToggleSelect: () => void;
+  // Present only when this card is eligible to be marked landed (assigned,
+  // not already landed, and the viewer is either the pipeline owner or an
+  // Admin/Exec) - undefined elsewhere so the button just doesn't render.
+  onMarkLanded?: () => void;
+  // Present only in the Completed list - swaps the header's bucket/assign
+  // controls for a "Landed by X on <date>" line and an Undo button, since
+  // Completed is a distinct end state, not another pipeline to reassign.
+  landedInfo?: { label: string; onUndo: () => void };
 }) {
   const confirm = useConfirm();
   const [draftDate, setDraftDate] = useState(todayISO());
@@ -158,13 +175,15 @@ function CompanyCard({
   return (
     <div className="rounded-lg border border-black/10 px-3 py-2 shadow-sm dark:border-white/10">
       <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-          onClick={(e) => e.stopPropagation()}
-          className="h-4 w-4 shrink-0"
-        />
+        {!landedInfo && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 shrink-0"
+          />
+        )}
         <button onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-2 text-left">
           <svg
             viewBox="0 0 24 24"
@@ -194,37 +213,48 @@ function CompanyCard({
           )}
         </span>
 
-        {company.assigned_to === null && (
-          <select
-            value={company.bucket_id ?? ""}
-            onChange={(e) => onSetBucket(e.target.value || null)}
-            className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
-          >
-            <option value="">General</option>
-            {buckets.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        )}
+        {landedInfo ? (
+          <span className="flex shrink-0 items-center gap-2 text-xs">
+            <span className="font-medium text-green-700 dark:text-green-400">{landedInfo.label}</span>
+            <button onClick={landedInfo.onUndo} className="font-medium text-black/50 hover:underline dark:text-white/50">
+              Undo
+            </button>
+          </span>
+        ) : (
+          <>
+            {company.assigned_to === null && (
+              <select
+                value={company.bucket_id ?? ""}
+                onChange={(e) => onSetBucket(e.target.value || null)}
+                className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+              >
+                <option value="">General</option>
+                {buckets.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
-        <select
-          value={company.assigned_to ?? ""}
-          onChange={(e) => onAssign(e.target.value || null)}
-          className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
-        >
-          <option value="">Unassigned</option>
-          {isAdminOrExec
-            ? assignableUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {displayNameForEmail(u.email)}
-                </option>
-              ))
-            : (
-                <option value={currentUserId}>Me</option>
-              )}
-        </select>
+            <select
+              value={company.assigned_to ?? ""}
+              onChange={(e) => onAssign(e.target.value || null)}
+              className="shrink-0 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+            >
+              <option value="">Unassigned</option>
+              {isAdminOrExec
+                ? assignableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {displayNameForEmail(u.email)}
+                    </option>
+                  ))
+                : (
+                    <option value={currentUserId}>Me</option>
+                  )}
+            </select>
+          </>
+        )}
       </div>
 
       {expanded && (
@@ -477,16 +507,26 @@ function CompanyCard({
             </button>
           </div>
 
-          <button onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline">
-            Delete Company
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            {onMarkLanded && (
+              <button
+                onClick={onMarkLanded}
+                className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+              >
+                Mark as Landed - Full Setup, PO Pulled
+              </button>
+            )}
+            <button onClick={onDelete} className="text-xs font-medium text-red-600 hover:underline">
+              Delete Company
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-type CrmView = { kind: "bucket"; bucketId: string | null } | { kind: "mine" } | { kind: "all" };
+type CrmView = { kind: "bucket"; bucketId: string | null } | { kind: "mine" } | { kind: "all" } | { kind: "completed" };
 
 export default function CrmCompaniesClient({
   initialCompanies,
@@ -562,13 +602,27 @@ export default function CrmCompaniesClient({
 
   const unassignedCompanies = useMemo(() => companies.filter((c) => c.assigned_to === null), [companies]);
   const mineCompanies = useMemo(
-    () => companies.filter((c) => c.assigned_to === currentUserId),
+    () => companies.filter((c) => c.assigned_to === currentUserId && c.landed_at === null),
     [companies, currentUserId],
   );
-  const assignedCount = companies.length - unassignedCompanies.length;
+  const landedCompanies = useMemo(
+    () => [...companies.filter((c) => c.landed_at !== null)].sort((a, b) => (b.landed_at ?? "").localeCompare(a.landed_at ?? "")),
+    [companies],
+  );
+  const assignedCount = companies.filter((c) => c.assigned_to !== null && c.landed_at === null).length;
 
   function bucketCount(bucketId: string | null): number {
     return unassignedCompanies.filter((c) => c.bucket_id === bucketId).length;
+  }
+
+  function markLandedEligible(c: CrmCompany): boolean {
+    return c.assigned_to !== null && c.landed_at === null && (isAdminOrExec || c.assigned_to === currentUserId);
+  }
+
+  function landedInfoFor(c: CrmCompany): { label: string; onUndo: () => void } | undefined {
+    if (!c.landed_at) return undefined;
+    const name = c.landed_by ? (nameById.get(c.landed_by) ?? "Someone") : "Someone";
+    return { label: `Landed by ${name} on ${formatShortDateTime(c.landed_at)}`, onUndo: () => handleUndoLanded(c.id) };
   }
 
   const filteredCompanies = useMemo(() => {
@@ -577,16 +631,18 @@ export default function CrmCompaniesClient({
         ? unassignedCompanies.filter((c) => c.bucket_id === view.bucketId)
         : view.kind === "mine"
           ? mineCompanies
-          : [];
+          : view.kind === "completed"
+            ? landedCompanies
+            : [];
     return sortCompanies(source.filter(matchesSearchStatus));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [unassignedCompanies, mineCompanies, view, search, statusFilter, sortBy]);
+  }, [unassignedCompanies, mineCompanies, landedCompanies, view, search, statusFilter, sortBy]);
 
   const allPipelineGroups = useMemo(() => {
     if (view.kind !== "all") return [];
     const byUser = new Map<string, CrmCompany[]>();
     for (const c of companies) {
-      if (!c.assigned_to) continue;
+      if (!c.assigned_to || c.landed_at !== null) continue;
       const list = byUser.get(c.assigned_to) ?? [];
       list.push(c);
       byUser.set(c.assigned_to, list);
@@ -632,6 +688,32 @@ export default function CrmCompaniesClient({
     } catch (e) {
       setCompanies(prevCompanies);
       alert(e instanceof Error ? e.message : "Couldn't update the assignment.");
+    }
+  }
+
+  async function handleMarkLanded(company: CrmCompany) {
+    if (!(await confirm(`Mark "${company.name}" as landed? This moves it to the Completed list (Admin/Exec only).`))) return;
+    const prevCompanies = companies;
+    const now = new Date().toISOString();
+    setCompanies((prev) =>
+      prev.map((c) => (c.id === company.id ? { ...c, landed_at: now, landed_by: currentUserId, crm_status: "customer" } : c)),
+    );
+    try {
+      await markCompanyLanded(company.id);
+    } catch (e) {
+      setCompanies(prevCompanies);
+      alert(e instanceof Error ? e.message : "Couldn't mark this company landed.");
+    }
+  }
+
+  async function handleUndoLanded(id: string) {
+    const prevCompanies = companies;
+    setCompanies((prev) => prev.map((c) => (c.id === id ? { ...c, landed_at: null, landed_by: null } : c)));
+    try {
+      await undoCompanyLanded(id);
+    } catch (e) {
+      setCompanies(prevCompanies);
+      alert(e instanceof Error ? e.message : "Couldn't undo this.");
     }
   }
 
@@ -939,6 +1021,18 @@ export default function CrmCompaniesClient({
         )}
         {isAdminOrExec && (
           <button
+            onClick={() => setView({ kind: "completed" })}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium ${
+              view.kind === "completed"
+                ? "bg-green-600 text-white"
+                : "bg-black/10 text-black/60 hover:bg-black/20 dark:bg-white/10 dark:text-white/60 dark:hover:bg-white/20"
+            }`}
+          >
+            Completed ({landedCompanies.length})
+          </button>
+        )}
+        {isAdminOrExec && (
+          <button
             onClick={() => setShowNewBucket((s) => !s)}
             className="rounded-full border border-dashed border-black/30 px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:border-white/30 dark:text-white/60 dark:hover:bg-white/10"
           >
@@ -986,15 +1080,17 @@ export default function CrmCompaniesClient({
           <option value="name">Sort: Name</option>
           <option value="city">Sort: City</option>
         </select>
-        <label className="flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
-          <input
-            type="checkbox"
-            checked={visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))}
-            onChange={() => selectAllVisible(visibleIds)}
-            className="h-3.5 w-3.5"
-          />
-          Select all
-        </label>
+        {view.kind !== "completed" && (
+          <label className="flex items-center gap-1.5 text-xs text-black/60 dark:text-white/60">
+            <input
+              type="checkbox"
+              checked={visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))}
+              onChange={() => selectAllVisible(visibleIds)}
+              className="h-3.5 w-3.5"
+            />
+            Select all
+          </label>
+        )}
         <div className="ml-auto flex flex-wrap gap-1">
           <button
             onClick={() => setStatusFilter("all")}
@@ -1022,7 +1118,7 @@ export default function CrmCompaniesClient({
         </div>
       </div>
 
-      {selectedIds.size > 0 && (
+      {selectedIds.size > 0 && view.kind !== "completed" && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-green-600/40 bg-green-50 px-3 py-2 text-sm dark:border-green-500/30 dark:bg-green-950/20">
           <span className="font-medium">{selectedIds.size} selected</span>
           <select
@@ -1095,6 +1191,8 @@ export default function CrmCompaniesClient({
                     onSetBucket={(bucketId) => handleSetBucket(c.id, bucketId)}
                     selected={selectedIds.has(c.id)}
                     onToggleSelect={() => toggleSelect(c.id)}
+                    onMarkLanded={markLandedEligible(c) ? () => handleMarkLanded(c) : undefined}
+                    landedInfo={landedInfoFor(c)}
                   />
                 ))}
               </div>
@@ -1126,11 +1224,17 @@ export default function CrmCompaniesClient({
               onSetBucket={(bucketId) => handleSetBucket(c.id, bucketId)}
               selected={selectedIds.has(c.id)}
               onToggleSelect={() => toggleSelect(c.id)}
+              onMarkLanded={markLandedEligible(c) ? () => handleMarkLanded(c) : undefined}
+              landedInfo={landedInfoFor(c)}
             />
           ))}
           {filteredCompanies.length === 0 && (
             <p className="px-1 text-sm text-black/40 dark:text-white/40">
-              {view.kind === "mine" ? "Nothing in your pipeline yet - claim one from a bucket." : "No companies match - add one above or adjust your filters."}
+              {view.kind === "mine"
+                ? "Nothing in your pipeline yet - claim one from a bucket."
+                : view.kind === "completed"
+                  ? "Nothing landed yet."
+                  : "No companies match - add one above or adjust your filters."}
             </p>
           )}
         </div>

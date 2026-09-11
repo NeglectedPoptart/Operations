@@ -1243,6 +1243,12 @@ export interface CrmCompany {
   // pipeline.
   assigned_to: string | null;
   assigned_at: string | null;
+  // Set once someone marks this company "landed" - full setup done, a PO
+  // pulled. Moves it out of the working pipeline views into the Exec/Admin-
+  // only Completed list; landed_by isn't always assigned_to, since an
+  // Admin/Exec can mark it on the pipeline owner's behalf.
+  landed_at: string | null;
+  landed_by: string | null;
   created_at: string;
   updated_at: string;
 }
