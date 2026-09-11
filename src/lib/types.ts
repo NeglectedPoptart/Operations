@@ -1256,6 +1256,21 @@ export interface CrmBucket {
   created_at: string;
 }
 
+// CRM: Daily Goals -------
+
+// One person's goal for one calendar day - scoped to goal_date so a new day
+// naturally starts as a blank slate rather than needing an explicit reset.
+export interface CrmDailyGoal {
+  id: string;
+  user_id: string;
+  goal_date: string;
+  goal_text: string;
+  target_count: number;
+  current_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 // CRM: Activities -------
 
 export type CrmActivityType = "call" | "email" | "meeting" | "quote" | "follow_up" | "visit" | "other";
