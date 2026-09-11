@@ -92,20 +92,20 @@ export default function DailyGoalsBar({
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-neutral-900">
+    <div className="fixed right-3 top-24 z-40 max-h-[calc(100vh-7rem)] w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-lg border border-black/10 bg-white p-4 shadow-lg dark:border-white/10 dark:bg-neutral-900">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Today&apos;s Goals</h3>
         <p className="text-xs text-black/40 dark:text-white/40">{formatDate(todayIso)}</p>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-3">
+      <div className="mt-3 space-y-3">
         {orderedUsers.map((u) => {
           const canEdit = isAdminOrExec || u.id === currentUserId;
 
           return (
             <div
               key={u.id}
-              className="min-w-[240px] flex-1 rounded-md border border-black/10 p-2.5 text-sm dark:border-white/10"
+              className="rounded-md border border-black/10 p-2.5 text-sm dark:border-white/10"
             >
               <span className="font-medium">{displayNameForEmail(u.email)}</span>
 

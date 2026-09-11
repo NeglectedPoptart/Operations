@@ -32,7 +32,10 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
         currentUserId={user?.id ?? ""}
         isAdminOrExec={isAdminOrExec}
       />
-      {children}
+      {/* Reserves room for the fixed Goals sidebar on wider screens so it
+          never sits on top of the company list; on narrow screens there's
+          no room to spare, so it just overlays instead. */}
+      <div className="lg:pr-80">{children}</div>
     </>
   );
 }
