@@ -44,10 +44,11 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
         currentUserId={user?.id ?? ""}
         isAdminOrExec={isAdminOrExec}
       />
-      {/* Reserves room for the fixed Goals sidebar on wider screens so it
-          never sits on top of the company list; on narrow screens there's
-          no room to spare, so it just overlays instead. */}
-      <div className="lg:pr-80">{children}</div>
+      {/* Reserves room for the fixed Goals sidebar so it never sits on top
+          of (and hides) the company list/tab row underneath it - the sidebar
+          is always fixed regardless of viewport width, so this padding has
+          to be unconditional too, not just at a wide breakpoint. */}
+      <div className="pr-80">{children}</div>
     </>
   );
 }
