@@ -89,7 +89,7 @@ export default function DailyGoalsBar({
   return (
     <div className="fixed right-0 top-24 z-40 flex items-start">
       {open && (
-        <div className="max-h-[70vh] w-72 overflow-y-auto rounded-l-lg border border-r-0 border-black/10 bg-white p-4 shadow-lg dark:border-white/10 dark:bg-neutral-900">
+        <div className="max-h-[70vh] w-72 max-w-[calc(100vw-3rem)] overflow-y-auto rounded-l-lg border border-r-0 border-black/10 bg-white p-4 shadow-lg dark:border-white/10 dark:bg-neutral-900">
           <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Today&apos;s Goals</h3>
           <p className="text-xs text-black/40 dark:text-white/40">{formatDate(todayIso)}</p>
 
