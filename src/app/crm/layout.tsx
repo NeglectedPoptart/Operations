@@ -25,7 +25,6 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
 
   return (
     <>
-      {children}
       <DailyGoalsBar
         users={(goalUsers ?? []) as GoalUser[]}
         initialGoals={(goals ?? []) as CrmDailyGoal[]}
@@ -33,6 +32,7 @@ export default async function CrmLayout({ children }: { children: React.ReactNod
         currentUserId={user?.id ?? ""}
         isAdminOrExec={isAdminOrExec}
       />
+      {children}
     </>
   );
 }

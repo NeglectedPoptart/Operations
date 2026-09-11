@@ -17,10 +17,10 @@ async function requireSelfOrAdminExec(supabase: Awaited<ReturnType<typeof create
   if (!isAdminOrExec) throw new Error("You can only set your own goal.");
 }
 
-// Upserts today's goal for a person without clobbering their progress so
-// far if one already exists - editing the text/target mid-day shouldn't
-// zero out a count they've already been building up.
-export async function setDailyGoal(userId: string, goalDate: string, goalText: string, targetCount: number) {
+// Upserts one of a person's up-to-3 daily goal slots without clobbering its
+// progress so far if it already exists - editing the text/target mid-day
+// shouldn't zero out a count they've already been building up.
+export async function setDailyGoal(userId: string, goalDate: string, slot: number, goalText: string, targetCount: number) {
   const supabase = await createClient();
   await requireSelfOrAdminExec(supabase, userId);
 
@@ -29,6 +29,7 @@ export async function setDailyGoal(userId: string, goalDate: string, goalText: s
     .select("id")
     .eq("user_id", userId)
     .eq("goal_date", goalDate)
+    .eq("slot", slot)
     .maybeSingle();
   if (existingError) throw new Error(existingError.message);
 
@@ -46,7 +47,7 @@ export async function setDailyGoal(userId: string, goalDate: string, goalText: s
 
   const { data, error } = await supabase
     .from("crm_daily_goals")
-    .insert({ user_id: userId, goal_date: goalDate, goal_text: goalText, target_count: targetCount, current_count: 0 })
+    .insert({ user_id: userId, goal_date: goalDate, slot, goal_text: goalText, target_count: targetCount, current_count: 0 })
     .select()
     .single();
   if (error) throw new Error(error.message);

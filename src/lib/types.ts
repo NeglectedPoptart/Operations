@@ -1264,6 +1264,8 @@ export interface CrmDailyGoal {
   id: string;
   user_id: string;
   goal_date: string;
+  // 1, 2, or 3 - each person can have up to 3 independent goals per day.
+  slot: number;
   goal_text: string;
   target_count: number;
   current_count: number;
