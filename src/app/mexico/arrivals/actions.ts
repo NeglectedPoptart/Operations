@@ -1,11 +1,53 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { sendNotification } from "@/app/supreme/notifications/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedMxArrivalRow } from "@/lib/mxArrivalsParse";
+import type { Role } from "@/lib/roles";
 import type { MxArrivalDay, MxArrivalSection, MxTruckPosition } from "@/lib/types";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+// Every role that actually has the "mexico" tab (see ROLE_TABS in
+// roles.ts) - "everyone" for this notification means everyone who can
+// reach the page it links to, not literally every account in the company.
+const ARRIVALS_NOTIFY_ROLES: Role[] = ["admin", "operations", "warehouse_qc", "executive", "mx"];
+
+// Fired from the "Mark as Up to Date" button on Arrivals (see
+// UpdateStatusButton's onMarked) - fans out one in-app + push notification
+// per Mexico-access role, reusing the existing Notifications infrastructure
+// instead of requiring an Admin to manually hit "Notify" every time. The
+// button itself already stamps page_status/page_status_log with the click's
+// timestamp via markPageUpToDate, and stays clickable for the rest of the
+// day so it can be re-run if the sheet changes again.
+export async function notifyArrivalsUpdated() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  let updatedByEmail: string | null = null;
+  if (user) {
+    const { data: profile } = await supabase.from("profiles").select("email").eq("id", user.id).maybeSingle();
+    updatedByEmail = (profile?.email as string | null) ?? user.email ?? null;
+  }
+
+  const now = new Date().toISOString();
+  for (const role of ARRIVALS_NOTIFY_ROLES) {
+    await sendNotification({
+      tabLabel: "Mexico",
+      subtabLabel: "Arrivals",
+      pagePath: "/mexico/arrivals",
+      message: "The Mexico Arrivals sheet has been updated.",
+      updatedBy: updatedByEmail,
+      lastEditedAt: now,
+      targetType: "role",
+      targetUserId: null,
+      targetRole: role,
+    }).catch(() => {});
+  }
+}
 
 function revalidateAll() {
   revalidatePath("/mexico/arrivals");

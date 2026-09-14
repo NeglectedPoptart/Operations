@@ -13,6 +13,7 @@ export default function UpdateStatusButton({
   pageKey,
   canEdit = true,
   readOnly = false,
+  onMarked,
 }: {
   pageKey: string;
   // Some pages restrict who's allowed to confirm up-to-date (e.g. FOB Pharr
@@ -25,6 +26,10 @@ export default function UpdateStatusButton({
   // display instead of a button, since marking only ever happens on the
   // source page.
   readOnly?: boolean;
+  // Fired (fire-and-forget) right after a successful mark - e.g. Arrivals
+  // uses this to fan out a notification to everyone with Mexico access,
+  // without baking that page-specific behavior into this shared component.
+  onMarked?: () => void;
 }) {
   const [markedAt, setMarkedAt] = useState<string | null>(null);
   const [markedByEmail, setMarkedByEmail] = useState<string | null>(null);
@@ -53,6 +58,7 @@ export default function UpdateStatusButton({
       const result = await markPageUpToDate([pageKey]);
       setMarkedAt(result.markedAt);
       setMarkedByEmail(result.markedByEmail);
+      onMarked?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Couldn't mark this page up to date - try again.");
     } finally {

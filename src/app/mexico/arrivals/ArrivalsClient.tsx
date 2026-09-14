@@ -21,7 +21,7 @@ import {
   type MxGrowerLabel,
   type MxTruckPosition,
 } from "@/lib/types";
-import { addArrivalRow, clearMxArrivals, deleteArrivalRow, importMxArrivals, updateArrivalRow } from "./actions";
+import { addArrivalRow, clearMxArrivals, deleteArrivalRow, importMxArrivals, notifyArrivalsUpdated, updateArrivalRow } from "./actions";
 
 // Compact fields for the dense table view - small enough to sit shoulder to
 // shoulder like the source Excel sheet, instead of one field per line.
@@ -345,7 +345,7 @@ export default function ArrivalsClient({
         </div>
       </div>
 
-      <UpdateStatusButton pageKey="mx-arrivals" />
+      <UpdateStatusButton pageKey="mx-arrivals" onMarked={() => notifyArrivalsUpdated().catch(() => {})} />
 
       {showPaste && (
         <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
