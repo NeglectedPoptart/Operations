@@ -74,6 +74,13 @@ export async function recordEmployeeDocument(input: {
   return data;
 }
 
+export async function updateEmployeeDocument(id: string, fileName: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("employee_documents").update({ file_name: fileName }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
 export async function deleteEmployeeDocument(id: string, storagePath: string) {
   const supabase = await createClient();
   await supabase.storage.from("employee-documents").remove([storagePath]);

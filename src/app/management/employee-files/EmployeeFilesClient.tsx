@@ -26,6 +26,7 @@ import {
   recordEmployeeDocument,
   updateEmployee,
   updateEmployeeDevice,
+  updateEmployeeDocument,
 } from "./actions";
 
 export interface LoginOption {
@@ -262,6 +263,98 @@ function ReturnDeviceModal({
   );
 }
 
+// A hover-triggered preview (signed URL fetched lazily, cached once found -
+// the same private-bucket signed-URL flow as opening the file, just shown
+// inline instead of opened) plus click-to-rename, since the display name
+// is the only thing worth easily fixing later - the storage object itself
+// keeps its random key regardless.
+function DocumentRow({
+  doc,
+  onView,
+  onDelete,
+  onRename,
+}: {
+  doc: EmployeeDocument;
+  onView: (doc: EmployeeDocument) => void;
+  onDelete: (doc: EmployeeDocument) => void;
+  onRename: (doc: EmployeeDocument, newName: string) => void;
+}) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(doc.file_name);
+
+  const isImage = doc.content_type?.startsWith("image/") ?? false;
+  const isPdf = doc.content_type === "application/pdf";
+  const previewable = isImage || isPdf;
+
+  async function handleHover() {
+    if (!previewable || previewUrl) return;
+    const supabase = createClient();
+    const { data } = await supabase.storage.from("employee-documents").createSignedUrl(doc.storage_path, 300);
+    if (data) setPreviewUrl(data.signedUrl);
+  }
+
+  function commitRename() {
+    setRenaming(false);
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== doc.file_name) onRename(doc, trimmed);
+    else setRenameValue(doc.file_name);
+  }
+
+  return (
+    <div className="group relative flex items-center gap-2 text-xs" onMouseEnter={handleHover}>
+      {renaming ? (
+        <input
+          autoFocus
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commitRename();
+            if (e.key === "Escape") {
+              setRenameValue(doc.file_name);
+              setRenaming(false);
+            }
+          }}
+          className="w-full min-w-0 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black"
+        />
+      ) : (
+        <>
+          <button onClick={() => onView(doc)} className="truncate font-medium text-green-700 hover:underline dark:text-green-400">
+            {doc.file_name}
+          </button>
+          <button
+            onClick={() => setRenaming(true)}
+            title="Rename"
+            className="shrink-0 text-black/40 hover:text-black/70 dark:text-white/40 dark:hover:text-white/70"
+          >
+            ✎
+          </button>
+          <button onClick={() => onDelete(doc)} className="ml-auto shrink-0 font-medium text-red-600 hover:underline">
+            Delete
+          </button>
+        </>
+      )}
+
+      {previewable && (
+        <div className="absolute left-0 top-full z-20 mt-1 hidden rounded-md border border-black/10 bg-white p-1 shadow-lg group-hover:block dark:border-white/20 dark:bg-neutral-900">
+          {previewUrl ? (
+            isImage ? (
+              // A short-lived signed URL, not a static asset next/image can optimize.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={previewUrl} alt={doc.file_name} className="max-h-64 max-w-64 object-contain" />
+            ) : (
+              <iframe src={previewUrl} title={doc.file_name} className="h-64 w-64" />
+            )
+          ) : (
+            <div className="flex h-32 w-48 items-center justify-center text-black/40 dark:text-white/40">Loading preview...</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmployeeDetail({
   employee,
   documents,
@@ -273,6 +366,7 @@ function EmployeeDetail({
   onUploadDoc,
   onDeleteDoc,
   onViewDoc,
+  onRenameDoc,
   onAddDevice,
   onReturnDevice,
   onDeleteDevice,
@@ -287,6 +381,7 @@ function EmployeeDetail({
   onUploadDoc: (employeeId: string, category: EmployeeDocumentCategory, file: File) => void;
   onDeleteDoc: (doc: EmployeeDocument) => void;
   onViewDoc: (doc: EmployeeDocument) => void;
+  onRenameDoc: (doc: EmployeeDocument, newName: string) => void;
   onAddDevice: (employeeId: string, input: DeviceCheckoutInput) => Promise<void>;
   onReturnDevice: (id: string, patch: ReturnDeviceInput) => Promise<void>;
   onDeleteDevice: (id: string) => void;
@@ -414,17 +509,7 @@ function EmployeeDetail({
                 {docs.length > 0 ? (
                   <div className="mt-2 space-y-1">
                     {docs.map((doc) => (
-                      <div key={doc.id} className="flex items-center gap-2 text-xs">
-                        <button
-                          onClick={() => onViewDoc(doc)}
-                          className="truncate font-medium text-green-700 hover:underline dark:text-green-400"
-                        >
-                          {doc.file_name}
-                        </button>
-                        <button onClick={() => onDeleteDoc(doc)} className="ml-auto shrink-0 font-medium text-red-600 hover:underline">
-                          Delete
-                        </button>
-                      </div>
+                      <DocumentRow key={doc.id} doc={doc} onView={onViewDoc} onDelete={onDeleteDoc} onRename={onRenameDoc} />
                     ))}
                   </div>
                 ) : (
@@ -635,6 +720,11 @@ export default function EmployeeFilesClient({
     await deleteEmployeeDocument(doc.id, doc.storage_path).catch(() => {});
   }
 
+  function handleRenameDoc(doc: EmployeeDocument, newName: string) {
+    setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, file_name: newName } : d)));
+    updateEmployeeDocument(doc.id, newName).catch(() => {});
+  }
+
   async function handleAddDevice(employeeId: string, input: DeviceCheckoutInput) {
     const created = await createEmployeeDevice({ employeeId, ...input });
     setDevices((prev) => [created, ...prev]);
@@ -747,6 +837,7 @@ export default function EmployeeFilesClient({
                   onUploadDoc={handleUploadDoc}
                   onDeleteDoc={handleDeleteDoc}
                   onViewDoc={handleViewDoc}
+                  onRenameDoc={handleRenameDoc}
                   onAddDevice={handleAddDevice}
                   onReturnDevice={handleReturnDevice}
                   onDeleteDevice={handleDeleteDevice}
