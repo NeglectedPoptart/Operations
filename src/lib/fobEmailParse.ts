@@ -85,6 +85,13 @@ function resolveTargets(category: string, label: string): Target[] {
   if ((cat === "serranos" || cat === "serrano") && lbl === "xl") return [{ group: "Bell Pepper 25lb", variety: "Serrano" }];
   if ((cat === "poblanos" || cat === "poblano") && lbl === "xl") return [{ group: "Bell Pepper 25lb", variety: "Poblano" }];
 
+  if (cat === "cucumber" || cat === "cucumbers") {
+    if (lbl === "supers") return [{ group: "Cucumbers", variety: "Supers" }];
+    if (lbl === "large") return [{ group: "Cucumbers", variety: "Large" }];
+    if (lbl === "selects") return [{ group: "Cucumbers", variety: "Selects" }];
+    if (lbl === "plains") return [{ group: "Cucumbers", variety: "Plains" }];
+  }
+
   if (cat === "celery") {
     if (lbl === "24ct") return [{ group: "Celery - Naked", size: "24s" }];
     if (lbl === "30ct") return [{ group: "Celery - Naked", size: "30s" }];
