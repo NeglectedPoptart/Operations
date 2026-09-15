@@ -1,12 +1,28 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import { parseDsvPdfText, parseGriffithPdfText, parseJearPastedTable } from "@/lib/carrierStatementParse";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import { OVERDUE_DAYS, parsePastedInvoices, type ParsedInvoiceRow } from "@/lib/invoicingParse";
+import { OVERDUE_DAYS, parsePastedInvoices, type ParsedInvoiceRow, type ParseResult } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement, InvoiceStatus } from "@/lib/types";
-import { deleteInvoiceStatement, importInvoices, updateInvoiceStatement } from "./actions";
+import { deleteInvoiceStatement, extractPdfText, importInvoices, updateInvoiceStatement } from "./actions";
+
+// These three carriers' own raw statements (two PDFs, one emailed Excel
+// table) have a fixed, unchanging layout, so they're parsed directly
+// instead of requiring the "consolidate and clean up into a generic
+// tab-separated paste" step every other carrier still needs. Keyed on the
+// broker's exact name (see Broker rows in the brokers table).
+const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
+  ["DSV Logistics LLC", parseDsvPdfText],
+  ["GRIFFITH", parseGriffithPdfText],
+  ["JEAR", parseJearPastedTable],
+]);
+
+// Only DSV and Griffith send an actual PDF - Jear's own format is an
+// emailed Excel table, so there's nothing to upload for it.
+const PDF_CARRIERS = new Set(["DSV Logistics LLC", "GRIFFITH"]);
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -154,8 +170,12 @@ export default function InvoicingClient({
   const [previewRows, setPreviewRows] = useState<PreviewRow[] | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [imageFilter, setImageFilter] = useState<ImageFilter>("all");
+
+  const carrierParser = CARRIER_PARSERS.get(broker.name);
+  const acceptsPdf = PDF_CARRIERS.has(broker.name);
 
   // Server-side fetch already sorts oldest-first, but rows added later
   // (paste-import, Statement Checker) just get appended to local state -
@@ -201,9 +221,9 @@ export default function InvoicingClient({
     await deleteInvoiceStatement(id, broker.id).catch(() => {});
   }
 
-  function handlePreview() {
-    setPreviewError(null);
-    const result = parsePastedInvoices(pasteText);
+  // Shared by the paste flow and the PDF-upload flow below - both end up
+  // with a ParseResult, then build the same preview/already-imported table.
+  function applyParseResult(result: ParseResult) {
     if (result.error) {
       setPreviewError(result.error);
       setPreviewRows(null);
@@ -211,6 +231,32 @@ export default function InvoicingClient({
     }
     const existingKeys = new Set(items.map((i) => matchKey(i.invoice_no)));
     setPreviewRows(result.rows.map((r) => ({ ...r, alreadyImported: existingKeys.has(matchKey(r.invoice_no)) })));
+  }
+
+  function handlePreview() {
+    setPreviewError(null);
+    applyParseResult((carrierParser ?? parsePastedInvoices)(pasteText));
+  }
+
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPreviewError(null);
+    setUploadingPdf(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setPreviewError(`Couldn't read that PDF (${result.error}) - try pasting the text instead.`);
+        return;
+      }
+      setPasteText(result.text);
+      applyParseResult((carrierParser ?? parsePastedInvoices)(result.text));
+    } finally {
+      setUploadingPdf(false);
+    }
   }
 
   async function handleConfirmImport() {
@@ -293,9 +339,11 @@ export default function InvoicingClient({
       {showPaste && (
         <div className="space-y-3">
           <p className="text-sm text-black/60 dark:text-white/60">
-            Paste the statement including its header row - every carrier formats theirs a little differently, but we
-            just need columns for Invoice #, Date, Customer PO, and Amount somewhere in there. Rows already on this
-            list (matched on Invoice #) are skipped automatically.
+            {carrierParser
+              ? acceptsPdf
+                ? `${broker.name} sends its own statement format - upload it as a PDF, or paste its text, and it's read directly. Rows already on this list (matched on Invoice #) are skipped automatically.`
+                : `Paste the emailed table directly, whether or not it keeps its column formatting - ${broker.name}'s layout is read directly. Rows already on this list (matched on Invoice #) are skipped automatically.`
+              : "Paste the statement including its header row - every carrier formats theirs a little differently, but we just need columns for Invoice #, Date, Customer PO, and Amount somewhere in there. Rows already on this list (matched on Invoice #) are skipped automatically."}
           </p>
           <textarea
             value={pasteText}
@@ -305,12 +353,21 @@ export default function InvoicingClient({
             className={field}
           />
           {previewError && <p className="text-sm text-red-600">{previewError}</p>}
-          <button
-            onClick={handlePreview}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
-          >
-            Preview
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handlePreview}
+              disabled={uploadingPdf}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              Preview
+            </button>
+            {acceptsPdf && (
+              <label className="cursor-pointer rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                {uploadingPdf ? "Reading PDF..." : "Or upload a PDF"}
+                <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+              </label>
+            )}
+          </div>
           {previewRows && (
             <PastePreview
               rows={previewRows}
