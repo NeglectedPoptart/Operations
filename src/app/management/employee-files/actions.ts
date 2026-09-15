@@ -1,22 +1,27 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { sendNotification } from "@/app/supreme/notifications/actions";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
 import type { Employee, EmployeeDevice, EmployeeDocumentCategory } from "@/lib/types";
 
-function revalidateAll() {
-  revalidatePath("/management/employee-files");
-  revalidatePath("/supreme/notifications");
-}
+// None of the mutations below call revalidatePath. They used to, but a
+// tile gets several fields filled out in quick succession right after
+// creation (name, title, department, start date, direct manager, status,
+// login), and revalidating on every single one forced the page's client
+// component to refetch and remount mid-edit - wiping out whatever the
+// NEXT field's blur hadn't saved yet. Reported as several employees'
+// details vanishing after being fully filled out. The client's own
+// optimistic setState already reflects every change instantly for the
+// person making it; each row is still written correctly regardless, and
+// the page is already force-dynamic so a later visit fetches fresh data
+// anyway.
 
 export async function createEmployee(name: string): Promise<Employee> {
   const supabase = await createClient();
   const { data, error } = await supabase.from("employees").insert({ name: name.trim() }).select().single();
   if (error) throw new Error(error.message);
-  revalidateAll();
   return data as Employee;
 }
 
@@ -29,14 +34,12 @@ export async function updateEmployee(
   const supabase = await createClient();
   const { error } = await supabase.from("employees").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  revalidateAll();
 }
 
 export async function deleteEmployee(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("employees").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidateAll();
 }
 
 // The file's bytes are already in Storage by the time this runs (uploaded
@@ -70,7 +73,6 @@ export async function recordEmployeeDocument(input: {
     .select()
     .single();
   if (error) throw new Error(error.message);
-  revalidateAll();
   return data;
 }
 
@@ -78,7 +80,6 @@ export async function updateEmployeeDocument(id: string, fileName: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("employee_documents").update({ file_name: fileName }).eq("id", id);
   if (error) throw new Error(error.message);
-  revalidateAll();
 }
 
 export async function deleteEmployeeDocument(id: string, storagePath: string) {
@@ -86,7 +87,6 @@ export async function deleteEmployeeDocument(id: string, storagePath: string) {
   await supabase.storage.from("employee-documents").remove([storagePath]);
   const { error } = await supabase.from("employee_documents").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidateAll();
 }
 
 export async function createEmployeeDevice(input: {
@@ -119,7 +119,6 @@ export async function createEmployeeDevice(input: {
     .select()
     .single();
   if (error) throw new Error(error.message);
-  revalidateAll();
   return data as EmployeeDevice;
 }
 
@@ -130,14 +129,12 @@ export async function updateEmployeeDevice(
   const supabase = await createClient();
   const { error } = await supabase.from("employee_devices").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  revalidateAll();
 }
 
 export async function deleteEmployeeDevice(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("employee_devices").delete().eq("id", id);
   if (error) throw new Error(error.message);
-  revalidateAll();
 }
 
 // Alert recipients (managed from Supreme > Notifications) -----------------------
@@ -160,7 +157,6 @@ export async function setEmployeeAnniversaryRecipient(userId: string, enabled: b
     const { error } = await supabase.from("employee_anniversary_alert_recipients").delete().eq("user_id", userId);
     if (error) throw new Error(error.message);
   }
-  revalidateAll();
 }
 
 // Alerting --------------------------------------------------------------------------
