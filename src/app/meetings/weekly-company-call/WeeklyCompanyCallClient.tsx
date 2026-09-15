@@ -423,37 +423,30 @@ function DirectorOperationsSection({ rows }: { rows: LaneRateRow[] }) {
       {rows.length === 0 ? (
         <p className="text-sm text-black/40 dark:text-white/40">No lanes configured yet - add some on Freight Rates.</p>
       ) : (
+        // A 5-column table doesn't fit a phone screen without horizontal
+        // scrolling, which hides columns during a meeting instead of
+        // scrolling obviously - stacked cards keep every value labeled and
+        // visible at any width, at the cost of the compact table's row
+        // density on desktop.
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {columns.map((col, colIdx) => (
-            <div key={colIdx} className="overflow-x-auto rounded-md border border-black/10 dark:border-white/10">
-              <table className="w-full text-sm">
-                <thead className="bg-black/5 text-left dark:bg-white/5">
-                  <tr>
-                    <th className="px-3 py-1.5">Source</th>
-                    <th className="px-3 py-1.5">Destination</th>
-                    <th className="px-3 py-1.5 text-right">To Truck</th>
-                    <th className="px-3 py-1.5 text-right">To Sales</th>
-                    <th className="px-3 py-1.5 text-right">vs Last Wk</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {col.map((row) => (
-                    <tr key={row.id} className="border-t border-black/10 dark:border-white/10">
-                      <td className="px-3 py-1.5 whitespace-nowrap">{row.fromHub}</td>
-                      <td className="px-3 py-1.5 whitespace-nowrap">→ {row.destination}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-black/40 dark:text-white/40">
-                        {money(row.toTruck)}
-                      </td>
-                      <td className="bg-amber-100 px-3 py-1.5 text-right font-bold tabular-nums text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">
-                        {row.toTruck === null ? "—" : money(row.toTruck + 200)}
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap">
-                        <LaneChangeCell current={row.toTruck} previous={row.lastWeekToTruck} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div key={colIdx} className="space-y-2">
+              {col.map((row) => (
+                <div key={row.id} className="rounded-md border border-black/10 p-2.5 dark:border-white/10">
+                  <p className="text-sm font-medium">
+                    {row.fromHub} → {row.destination}
+                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="tabular-nums text-black/40 dark:text-white/40">Truck: {money(row.toTruck)}</span>
+                    <span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold tabular-nums text-amber-900 dark:bg-amber-900/30 dark:text-amber-300">
+                      Sales: {row.toTruck === null ? "—" : money(row.toTruck + 200)}
+                    </span>
+                    <span className="tabular-nums">
+                      vs Last Wk: <LaneChangeCell current={row.toTruck} previous={row.lastWeekToTruck} />
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
