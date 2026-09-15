@@ -5,12 +5,7 @@ import EmployeeFilesClient, { type LoginOption } from "./EmployeeFilesClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function EmployeeFilesPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
+export default async function EmployeeFilesPage() {
   // Best-effort - a failure here (e.g. no recipients configured yet)
   // shouldn't block the page itself from loading.
   await checkAndSendAnniversaryAlerts().catch(() => {});
@@ -31,10 +26,6 @@ export default async function EmployeeFilesPage({
   const error = employeesError ?? documentsError ?? devicesError ?? loginsError;
   if (error) {
     return <p className="text-red-600">Failed to load Employee Files: {error.message}</p>;
-  }
-
-  if (params.debug === "1") {
-    return <pre style={{ whiteSpace: "pre-wrap" }}>{JSON.stringify(employees?.[0], null, 2)}</pre>;
   }
 
   return (
