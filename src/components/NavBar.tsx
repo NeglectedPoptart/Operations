@@ -102,6 +102,7 @@ const NAV: NavCategory[] = [
       { href: "/management/schedules", label: "Schedules" },
       { href: "/management/order-status-report", label: "Order Status Report" },
       { href: "/management/performance-reviews", label: "Performance Reviews" },
+      { href: "/management/employee-files", label: "Employee Files" },
     ],
   },
   {

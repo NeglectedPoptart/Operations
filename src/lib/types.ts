@@ -1343,3 +1343,70 @@ export interface CrmActivity {
   created_at: string;
   updated_at: string;
 }
+
+// Management: Employee Files ----------------------------------------------------
+
+export type EmployeeStatus = "active" | "resigned" | "terminated";
+
+export const EMPLOYEE_STATUSES: { value: EmployeeStatus; label: string }[] = [
+  { value: "active", label: "Active" },
+  { value: "resigned", label: "Resigned" },
+  { value: "terminated", label: "Terminated" },
+];
+
+export interface Employee {
+  id: string;
+  name: string;
+  title: string | null;
+  department: string | null;
+  start_date: string | null;
+  status: EmployeeStatus;
+  direct_manager: string | null;
+  // Anniversary year number (1, 2, 3...) already alerted for - see
+  // checkAndSendAnniversaryAlerts in employee-files/actions.ts.
+  last_anniversary_alert_year: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EmployeeDocumentCategory = "onboarding" | "offboarding";
+
+export interface EmployeeDocument {
+  id: string;
+  employee_id: string;
+  category: EmployeeDocumentCategory;
+  file_name: string;
+  storage_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export const DEVICE_TYPES = ["Tablet", "Laptop", "Phone", "Other"] as const;
+export const DEVICE_CHECKOUT_CONDITIONS = ["New", "Good", "Fair", "Damaged"] as const;
+export const DEVICE_RETURN_CONDITIONS = ["Good", "Fair", "Damaged"] as const;
+
+// One checkout event, start to finish - a digital version of the paper
+// Employee Device Checkout Form. Employee Name/Title/Employee ID are left
+// off since they already live on the Employee record this belongs to, and
+// Device Brand & Model/Operating System/Login Username-Email/
+// Password/Additional Access Notes are dropped entirely per request.
+export interface EmployeeDevice {
+  id: string;
+  employee_id: string;
+  device_type: string | null;
+  device_type_other: string | null;
+  device_name: string | null;
+  serial_number: string | null;
+  condition_at_checkout: string | null;
+  condition_notes: string | null;
+  device_pin: string | null;
+  date_of_issue: string | null;
+  date_returned: string | null;
+  condition_at_return: string | null;
+  return_notes: string | null;
+  manager_name: string | null;
+  created_at: string;
+  updated_at: string;
+}

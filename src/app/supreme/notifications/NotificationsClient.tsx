@@ -7,6 +7,7 @@ import { NOTIFY_BREAKDOWN } from "@/lib/notificationBreakdown";
 import { ROLES, type Role } from "@/lib/roles";
 import type { PageStatusLogEntry } from "@/app/actions";
 import { setFoodSafetyAlertRecipient } from "@/app/compliance/food-safety/actions";
+import { setEmployeeAnniversaryRecipient } from "@/app/management/employee-files/actions";
 import type { NotificationTargetType, Profile, SentNotification } from "@/lib/types";
 import { sendNotification } from "./actions";
 
@@ -26,6 +27,7 @@ export default function NotificationsClient({
   currentUserEmail,
   pageStatusLog,
   foodSafetyRecipientIds,
+  employeeAnniversaryRecipientIds,
 }: {
   profiles: Profile[];
   lastEditedMap: Record<string, string | null>;
@@ -33,8 +35,12 @@ export default function NotificationsClient({
   currentUserEmail: string | null;
   pageStatusLog: PageStatusLogEntry[];
   foodSafetyRecipientIds: string[];
+  employeeAnniversaryRecipientIds: string[];
 }) {
   const [foodSafetyRecipients, setFoodSafetyRecipients] = useState<Set<string>>(new Set(foodSafetyRecipientIds));
+  const [employeeAnniversaryRecipients, setEmployeeAnniversaryRecipients] = useState<Set<string>>(
+    new Set(employeeAnniversaryRecipientIds),
+  );
   const [composing, setComposing] = useState<Composing | null>(null);
   const [targetType, setTargetType] = useState<NotificationTargetType>("user");
   const [targetUserId, setTargetUserId] = useState("");
@@ -55,6 +61,16 @@ export default function NotificationsClient({
       return next;
     });
     setFoodSafetyAlertRecipient(userId, enabled).catch(() => {});
+  }
+
+  function toggleEmployeeAnniversaryRecipient(userId: string, enabled: boolean) {
+    setEmployeeAnniversaryRecipients((prev) => {
+      const next = new Set(prev);
+      if (enabled) next.add(userId);
+      else next.delete(userId);
+      return next;
+    });
+    setEmployeeAnniversaryRecipient(userId, enabled).catch(() => {});
   }
 
   function openNotify(c: Composing) {
@@ -114,6 +130,27 @@ export default function NotificationsClient({
                 type="checkbox"
                 checked={foodSafetyRecipients.has(p.id)}
                 onChange={(e) => toggleFoodSafetyRecipient(p.id, e.target.checked)}
+              />
+              {p.email ?? p.id}
+            </label>
+          ))}
+          {profiles.length === 0 && <p className="text-sm text-black/40 dark:text-white/40">No users yet.</p>}
+        </div>
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Employee Anniversary Alerts</h2>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Who gets pinged as an active employee&apos;s work anniversary nears - checked every time someone opens
+          Management &gt; Employee Files.
+        </p>
+        <div className="flex flex-wrap gap-3 pt-1">
+          {profiles.map((p) => (
+            <label key={p.id} className="flex items-center gap-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={employeeAnniversaryRecipients.has(p.id)}
+                onChange={(e) => toggleEmployeeAnniversaryRecipient(p.id, e.target.checked)}
               />
               {p.email ?? p.id}
             </label>
