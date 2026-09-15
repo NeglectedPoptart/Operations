@@ -27,11 +27,19 @@ function parseMoney(raw: string): number | null {
 // quirk documented in statementParse.ts's parsePdfBillsLine), verified
 // directly against a real export:
 //   CustPO InvcAmt RcptAmt Balance {0-7} {8-14} {22-28} Later {Credit}{Hold}{Slsprsn...} {15-21}{ShipDate} OrderNo
-// The Slsprsn name can be one or more words, which would make fixed token
-// positions unreliable in the middle of the line - so instead this anchors
-// only on what's unambiguous: the first two tokens (CustPO, InvcAmt) and
-// the last two (a money value glued directly against Ship Date, then Order
-// No. alone) - whatever sits between them is never read.
+// Cust PO is free text and can itself contain spaces - two POs written as
+// "34585 / 34600", a comma-separated pair like "35067, 35064", or even
+// unrelated text like "PU#RICHARD - HARVEST" - so it can't be assumed to
+// be exactly one token the way the fixed numeric/date fields can (a real
+// invoice missing #35722 turned out to have exactly this shape). Instead
+// this anchors on Invc Amt itself: the first token that's a genuine
+// nonzero money value (a zero field always renders as the bare ".00" this
+// report uses for every $0 column, never "0.00", so requiring a leading
+// digit rules those out) - everything before it, however many tokens that
+// takes, is Cust PO. The Slsprsn name can also be one or more words, which
+// is why the end is anchored the same "don't assume a fixed token count"
+// way: the last token alone (Order No.) and a money value glued directly
+// against Ship Date just before it.
 function parseDsvLine(rawLine: string): ParsedInvoiceRow | null {
   const tokens = rawLine.trim().split(/\s+/);
   if (tokens.length < 4) return null;
@@ -43,13 +51,15 @@ function parseDsvLine(rawLine: string): ParsedInvoiceRow | null {
   const dateMatch = dateToken.match(/(\d{1,2}\/\d{1,2}\/\d{4})$/);
   if (!dateMatch) return null;
 
-  const amount = parseMoney(tokens[1]);
+  const amountIdx = tokens.findIndex((t) => /^\d[\d,]*\.\d{2}$/.test(t));
+  if (amountIdx === -1) return null;
+  const amount = parseMoney(tokens[amountIdx]);
   if (amount === null) return null;
 
   return {
     invoice_no: orderNo,
     invoice_date: parseUsDateToIso(dateMatch[1]),
-    customer_po: tokens[0],
+    customer_po: tokens.slice(0, amountIdx).join(" "),
     amount,
   };
 }
