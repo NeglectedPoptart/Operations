@@ -68,10 +68,6 @@ const QC_LABEL_CLASS: Record<string, string> = {
   Fail: "text-red-800 dark:text-red-300",
 };
 
-function isUrgentOrFail(result: string | null): boolean {
-  return result === "Urgent" || result === "Fail";
-}
-
 function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
   const stats = useMemo(() => {
     const totalLoads = items.length;
@@ -80,28 +76,27 @@ function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
       .map((i) => (i.result ? QC_RESULT_SCORE[i.result] : undefined))
       .filter((score): score is number => score !== undefined);
     const avgQuality = scored.length > 0 ? nearestQcResultLabel(scored.reduce((sum, s) => sum + s, 0) / scored.length) : null;
-    const urgentFailCount = items.filter((i) => isUrgentOrFail(i.result)).length;
 
-    const byCommodity = new Map<string, { count: number; scores: number[]; urgentFailCount: number }>();
+    const byCommodity = new Map<string, { count: number; scores: number[]; resultCounts: Partial<Record<string, number>> }>();
     for (const i of items) {
       const commodity = normalizeCommodity(i.product);
-      const entry = byCommodity.get(commodity) ?? { count: 0, scores: [], urgentFailCount: 0 };
+      const entry = byCommodity.get(commodity) ?? { count: 0, scores: [], resultCounts: {} };
       entry.count += 1;
       const score = i.result ? QC_RESULT_SCORE[i.result] : undefined;
       if (score !== undefined) entry.scores.push(score);
-      if (isUrgentOrFail(i.result)) entry.urgentFailCount += 1;
+      if (i.result) entry.resultCounts[i.result] = (entry.resultCounts[i.result] ?? 0) + 1;
       byCommodity.set(commodity, entry);
     }
     const commodityRows = Array.from(byCommodity.entries())
-      .map(([commodity, { count, scores, urgentFailCount }]) => ({
+      .map(([commodity, { count, scores, resultCounts }]) => ({
         commodity,
         count,
-        urgentFailCount,
+        resultCounts,
         avgQuality: scores.length > 0 ? nearestQcResultLabel(scores.reduce((sum, s) => sum + s, 0) / scores.length) : null,
       }))
       .sort((a, b) => b.count - a.count);
 
-    return { totalLoads, avgQuality, urgentFailCount, commodityRows };
+    return { totalLoads, avgQuality, commodityRows };
   }, [items]);
 
   return (
@@ -137,30 +132,38 @@ function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
                   <th className="px-3 py-1.5">Commodity</th>
                   <th className="px-3 py-1.5 text-right">Loads</th>
                   <th className="px-3 py-1.5 text-right">Average Quality</th>
-                  <th className="px-3 py-1.5 text-right">Urgent/Fail</th>
+                  <th className="px-3 py-1.5 text-right">Quality Breakdown</th>
                 </tr>
               </thead>
               <tbody>
-                {stats.commodityRows.map((row) => (
-                  <tr key={row.commodity} className="border-t border-black/10 dark:border-white/10">
-                    <td className="px-3 py-1.5">{row.commodity}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{row.count}</td>
-                    <td
-                      className={`px-3 py-1.5 text-right font-medium tabular-nums ${
-                        row.avgQuality ? QC_LABEL_CLASS[row.avgQuality] : ""
-                      }`}
-                    >
-                      {row.avgQuality ?? "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
-                      {row.urgentFailCount > 0 ? (
-                        <span className="font-semibold text-red-600 dark:text-red-400">{row.urgentFailCount}</span>
-                      ) : (
-                        0
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {stats.commodityRows.map((row) => {
+                  const breakdown = QC_RESULTS.filter((r) => (row.resultCounts[r.label] ?? 0) > 0);
+                  return (
+                    <tr key={row.commodity} className="border-t border-black/10 dark:border-white/10">
+                      <td className="px-3 py-1.5">{row.commodity}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums">{row.count}</td>
+                      <td
+                        className={`px-3 py-1.5 text-right font-medium tabular-nums ${
+                          row.avgQuality ? QC_LABEL_CLASS[row.avgQuality] : ""
+                        }`}
+                      >
+                        {row.avgQuality ?? "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right text-xs tabular-nums">
+                        {breakdown.length === 0
+                          ? "—"
+                          : breakdown.map((r, i) => (
+                              <span key={r.label}>
+                                <span className={`font-medium ${QC_LABEL_CLASS[r.label]}`}>
+                                  {row.resultCounts[r.label]} {r.label}
+                                </span>
+                                {i < breakdown.length - 1 ? ", " : ""}
+                              </span>
+                            ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
