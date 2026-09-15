@@ -5,6 +5,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateSlash, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
+import type { Role } from "@/lib/roles";
 import {
   DEVICE_CHECKOUT_CONDITIONS,
   DEVICE_RETURN_CONDITIONS,
@@ -26,6 +27,12 @@ import {
   updateEmployee,
   updateEmployeeDevice,
 } from "./actions";
+
+export interface LoginOption {
+  id: string;
+  email: string | null;
+  role: Role;
+}
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -259,6 +266,7 @@ function EmployeeDetail({
   employee,
   documents,
   devices,
+  logins,
   uploadingCategory,
   onUpdate,
   onDelete,
@@ -272,6 +280,7 @@ function EmployeeDetail({
   employee: Employee;
   documents: EmployeeDocument[];
   devices: EmployeeDevice[];
+  logins: LoginOption[];
   uploadingCategory: string | null;
   onUpdate: (id: string, patch: Partial<Employee>) => void;
   onDelete: (id: string) => void;
@@ -339,6 +348,21 @@ function EmployeeDetail({
             onBlur={(e) => onUpdate(employee.id, { direct_manager: e.target.value || null })}
             className={`${field} mt-1`}
           />
+        </label>
+        <label className="block text-sm">
+          Login Account
+          <select
+            value={employee.linked_user_id ?? ""}
+            onChange={(e) => onUpdate(employee.id, { linked_user_id: e.target.value || null })}
+            className={`${field} mt-1`}
+          >
+            <option value="">No login / not matched</option>
+            {logins.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.email ?? l.id}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="block text-sm">
           Status
@@ -513,10 +537,12 @@ export default function EmployeeFilesClient({
   initialEmployees,
   initialDocuments,
   initialDevices,
+  logins,
 }: {
   initialEmployees: Employee[];
   initialDocuments: EmployeeDocument[];
   initialDevices: EmployeeDevice[];
+  logins: LoginOption[];
 }) {
   const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees);
@@ -674,6 +700,7 @@ export default function EmployeeFilesClient({
         {filtered.map((employee) => {
           const expanded = expandedId === employee.id;
           const upcoming = employee.start_date ? nextAnniversary(employee.start_date, today) : null;
+          const login = logins.find((l) => l.id === employee.linked_user_id);
           return (
             <div
               key={employee.id}
@@ -696,6 +723,7 @@ export default function EmployeeFilesClient({
                   {employee.direct_manager && (
                     <p className="text-xs text-black/40 dark:text-white/40">Reports to {employee.direct_manager}</p>
                   )}
+                  {login && <p className="text-xs text-black/40 dark:text-white/40">Login: {login.email ?? login.id}</p>}
                   {upcoming && upcoming.daysAway <= 30 && (
                     <p className="mt-1 text-xs font-medium text-teal-700 dark:text-teal-400">
                       🎉 {upcoming.year}-yr anniversary {upcoming.daysAway === 0 ? "today" : `in ${upcoming.daysAway}d`}
@@ -712,6 +740,7 @@ export default function EmployeeFilesClient({
                   employee={employee}
                   documents={documents}
                   devices={devices}
+                  logins={logins}
                   uploadingCategory={uploadingCategory}
                   onUpdate={handleUpdate}
                   onDelete={handleDelete}

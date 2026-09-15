@@ -1365,6 +1365,10 @@ export interface Employee {
   // Anniversary year number (1, 2, 3...) already alerted for - see
   // checkAndSendAnniversaryAlerts in employee-files/actions.ts.
   last_anniversary_alert_year: number | null;
+  // Their system login (profiles.id), if they have one - not every
+  // employee necessarily does. Identity link only, no password: Supabase
+  // Auth never exposes the actual password anywhere, even to this app.
+  linked_user_id: string | null;
   created_at: string;
   updated_at: string;
 }

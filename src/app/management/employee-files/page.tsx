@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Employee, EmployeeDevice, EmployeeDocument } from "@/lib/types";
 import { checkAndSendAnniversaryAlerts } from "./actions";
-import EmployeeFilesClient from "./EmployeeFilesClient";
+import EmployeeFilesClient, { type LoginOption } from "./EmployeeFilesClient";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +15,15 @@ export default async function EmployeeFilesPage() {
     { data: employees, error: employeesError },
     { data: documents, error: documentsError },
     { data: devices, error: devicesError },
+    { data: logins, error: loginsError },
   ] = await Promise.all([
     supabase.from("employees").select("*").order("name", { ascending: true }),
     supabase.from("employee_documents").select("*").order("created_at", { ascending: false }),
     supabase.from("employee_devices").select("*").order("date_of_issue", { ascending: false }),
+    supabase.from("profiles").select("id, email, role").order("email", { ascending: true }),
   ]);
 
-  const error = employeesError ?? documentsError ?? devicesError;
+  const error = employeesError ?? documentsError ?? devicesError ?? loginsError;
   if (error) {
     return <p className="text-red-600">Failed to load Employee Files: {error.message}</p>;
   }
@@ -31,6 +33,7 @@ export default async function EmployeeFilesPage() {
       initialEmployees={(employees ?? []) as Employee[]}
       initialDocuments={(documents ?? []) as EmployeeDocument[]}
       initialDevices={(devices ?? []) as EmployeeDevice[]}
+      logins={(logins ?? []) as LoginOption[]}
     />
   );
 }
