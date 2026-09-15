@@ -2,7 +2,13 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { parseDsvPdfText, parseGriffithPdfText, parseJearPastedTable, parseJeruePdfText } from "@/lib/carrierStatementParse";
+import {
+  parseDsvPdfText,
+  parseGriffithPdfText,
+  parseJearPastedTable,
+  parseJeruePdfText,
+  parsePgtransPastedTable,
+} from "@/lib/carrierStatementParse";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { OVERDUE_DAYS, parsePastedInvoices, type ParsedInvoiceRow, type ParseResult } from "@/lib/invoicingParse";
@@ -19,10 +25,13 @@ const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
   ["GRIFFITH", parseGriffithPdfText],
   ["JEAR", parseJearPastedTable],
   ["JERUE", parseJeruePdfText],
+  ["PGTRANS", parsePgtransPastedTable],
 ]);
 
 // Only DSV, Griffith, and Jerue send an actual PDF - Jear's own format is
-// an emailed Excel table, so there's nothing to upload for it.
+// an emailed Excel table and PGTrans's is a spreadsheet export, so there's
+// nothing to upload for either (paste works the same for a spreadsheet
+// copy as it does for an emailed table).
 const PDF_CARRIERS = new Set(["DSV Logistics LLC", "GRIFFITH", "JERUE"]);
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -343,7 +352,7 @@ export default function InvoicingClient({
             {carrierParser
               ? acceptsPdf
                 ? `${broker.name} sends its own statement format - upload it as a PDF, or paste its text, and it's read directly. Rows already on this list (matched on Invoice #) are skipped automatically.`
-                : `Paste the emailed table directly, whether or not it keeps its column formatting - ${broker.name}'s layout is read directly. Rows already on this list (matched on Invoice #) are skipped automatically.`
+                : `Paste its statement directly, whether or not it keeps its column formatting - ${broker.name}'s layout is read directly. Rows already on this list (matched on Invoice #) are skipped automatically.`
               : "Paste the statement including its header row - every carrier formats theirs a little differently, but we just need columns for Invoice #, Date, Customer PO, and Amount somewhere in there. Rows already on this list (matched on Invoice #) are skipped automatically."}
           </p>
           <textarea

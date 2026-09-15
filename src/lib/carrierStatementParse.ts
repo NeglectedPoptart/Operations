@@ -204,3 +204,46 @@ export function parseJearPastedTable(raw: string): ParseResult {
   }
   return { rows };
 }
+
+// PGTrans's own "Open Invoices" export (a QuickBooks-style report, pasted
+// as tab-separated text - a spreadsheet .xls export copy-pastes the same
+// way, no upload needed). Columns are fixed by position (Date, Type, No.,
+// Customer, Memo, Amount, Status) rather than keyword-matched like
+// parsePastedInvoices, since "No." doesn't contain either of that parser's
+// invoice-number keywords ("inv", "bill") and would otherwise go
+// unrecognized. There's no Customer PO column at all in this format.
+const PGTRANS_COL = { date: 0, invoiceNo: 2, amount: 5 } as const;
+
+export function parsePgtransPastedTable(raw: string): ParseResult {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+$/, ""))
+    .filter((l) => l.trim() !== "");
+
+  if (lines.length === 0) {
+    return { rows: [], error: "Nothing pasted." };
+  }
+
+  const grid = lines.map((l) => l.split("\t"));
+  // Skips the report's own "Type: All transactions Status: Open ..."
+  // parameter line above the real header, wherever it appears.
+  const headerIdx = grid.findIndex((r) => (r[0] ?? "").trim().toLowerCase() === "date");
+  const dataRows = headerIdx >= 0 ? grid.slice(headerIdx + 1) : grid;
+
+  const rows: ParsedInvoiceRow[] = dataRows
+    .filter((r) => (r[PGTRANS_COL.date] ?? "").trim() !== "" && (r[PGTRANS_COL.invoiceNo] ?? "").trim() !== "")
+    .map((r) => ({
+      invoice_no: (r[PGTRANS_COL.invoiceNo] ?? "").trim(),
+      invoice_date: parseUsDateToIso((r[PGTRANS_COL.date] ?? "").trim()),
+      customer_po: "",
+      amount: parseMoney(r[PGTRANS_COL.amount] ?? ""),
+    }));
+
+  if (rows.length === 0) {
+    return {
+      rows: [],
+      error: "Couldn't find any invoice rows - paste the whole export, including its header row.",
+    };
+  }
+  return { rows };
+}
