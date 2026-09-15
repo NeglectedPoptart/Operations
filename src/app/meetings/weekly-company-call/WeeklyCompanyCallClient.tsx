@@ -70,15 +70,20 @@ const QC_LABEL_CLASS: Record<string, string> = {
 
 function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
   const stats = useMemo(() => {
-    const totalLoads = items.length;
+    // A row without both Chat and Report checked hasn't actually been
+    // worked yet - it's a placeholder on the QC Inspections sheet, not a
+    // real quality reading (and usually has no result flag at all yet), so
+    // it's excluded here rather than just left out of the average.
+    const checkedItems = items.filter((i) => i.chat && i.report);
+    const totalLoads = checkedItems.length;
 
-    const scored = items
+    const scored = checkedItems
       .map((i) => (i.result ? QC_RESULT_SCORE[i.result] : undefined))
       .filter((score): score is number => score !== undefined);
     const avgQuality = scored.length > 0 ? nearestQcResultLabel(scored.reduce((sum, s) => sum + s, 0) / scored.length) : null;
 
     const byCommodity = new Map<string, { count: number; scores: number[]; resultCounts: Partial<Record<string, number>> }>();
-    for (const i of items) {
+    for (const i of checkedItems) {
       const commodity = normalizeCommodity(i.product);
       const entry = byCommodity.get(commodity) ?? { count: 0, scores: [], resultCounts: {} };
       entry.count += 1;
