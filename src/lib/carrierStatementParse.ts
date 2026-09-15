@@ -111,6 +111,41 @@ export function parseGriffithPdfText(text: string): ParseResult {
   return { rows };
 }
 
+// Jerue's "Account Statement" PDF - unpdf extracts this one in normal
+// reading order too, one data row per line:
+//   Invoice#  PO#  ShipDate  Inv.Date  DaysOpen  Amount  Paid/Credits  BalanceDue
+// PO# is always a single token here (no embedded spaces like Griffith's),
+// so this can anchor on the fixed token shape directly rather than needing
+// a named end-anchor. Amount (the original invoiced amount) is read, not
+// Balance Due (which nets out payments/credits) - matching what was asked
+// for.
+const JERUE_LINE_RE =
+  /^(\S+)\s+(\S+)\s+\d{1,2}\/\d{1,2}\/\d{4}\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+\d+\s+([\d,]+\.\d{2})\s+[\d,]+\.\d{2}\s+[\d,]+\.\d{2}\s*$/;
+
+function parseJerueLine(rawLine: string): ParsedInvoiceRow | null {
+  const m = rawLine.trim().match(JERUE_LINE_RE);
+  if (!m) return null;
+  const [, invoiceNo, po, invDate, amount] = m;
+  return {
+    invoice_no: invoiceNo,
+    invoice_date: parseUsDateToIso(invDate),
+    customer_po: po,
+    amount: parseMoney(amount),
+  };
+}
+
+export function parseJeruePdfText(text: string): ParseResult {
+  const rows = text
+    .split(/\r?\n/)
+    .map(parseJerueLine)
+    .filter((r): r is ParsedInvoiceRow => r !== null);
+
+  if (rows.length === 0) {
+    return { rows: [], error: "Couldn't find any invoice rows in this Jerue statement - try pasting the text instead." };
+  }
+  return { rows };
+}
+
 // Jear emails an Excel table rather than a PDF - it has no invoice date at
 // all, only a Due Date, so invoice_date is backed into as due date minus 30
 // days (Jear's standard terms). Supports both a real tab-separated paste

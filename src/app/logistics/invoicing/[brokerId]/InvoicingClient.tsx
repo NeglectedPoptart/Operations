@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { parseDsvPdfText, parseGriffithPdfText, parseJearPastedTable } from "@/lib/carrierStatementParse";
+import { parseDsvPdfText, parseGriffithPdfText, parseJearPastedTable, parseJeruePdfText } from "@/lib/carrierStatementParse";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { OVERDUE_DAYS, parsePastedInvoices, type ParsedInvoiceRow, type ParseResult } from "@/lib/invoicingParse";
@@ -18,11 +18,12 @@ const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
   ["DSV Logistics LLC", parseDsvPdfText],
   ["GRIFFITH", parseGriffithPdfText],
   ["JEAR", parseJearPastedTable],
+  ["JERUE", parseJeruePdfText],
 ]);
 
-// Only DSV and Griffith send an actual PDF - Jear's own format is an
-// emailed Excel table, so there's nothing to upload for it.
-const PDF_CARRIERS = new Set(["DSV Logistics LLC", "GRIFFITH"]);
+// Only DSV, Griffith, and Jerue send an actual PDF - Jear's own format is
+// an emailed Excel table, so there's nothing to upload for it.
+const PDF_CARRIERS = new Set(["DSV Logistics LLC", "GRIFFITH", "JERUE"]);
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
