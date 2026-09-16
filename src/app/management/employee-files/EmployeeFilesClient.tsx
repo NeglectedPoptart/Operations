@@ -662,8 +662,7 @@ export default function EmployeeFilesClient({
 
   function handleUpdate(id: string, patch: Partial<Employee>) {
     setEmployees((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
-    // TEMP DEBUG: surfacing the real error instead of swallowing it.
-    updateEmployee(id, patch).catch((err) => alert("updateEmployee failed: " + (err instanceof Error ? err.message : String(err))));
+    updateEmployee(id, patch).catch(() => {});
   }
 
   async function handleDelete(id: string) {
