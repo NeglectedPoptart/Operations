@@ -14,6 +14,10 @@ export interface UpcomingAnniversary {
 export function nextAnniversary(startDateIso: string, todayIso: string): UpcomingAnniversary | null {
   const start = new Date(`${startDateIso}T00:00:00Z`);
   const today = new Date(`${todayIso}T00:00:00Z`);
+  // A malformed start_date (anything not cleanly parseable as a calendar
+  // date) yields an Invalid Date here - bail out rather than let it
+  // propagate into a RangeError from toISOString() below.
+  if (Number.isNaN(start.getTime()) || Number.isNaN(today.getTime())) return null;
   const startYear = start.getUTCFullYear();
   const month = start.getUTCMonth();
   const day = start.getUTCDate();
