@@ -309,3 +309,39 @@ export function parseAmpPdfText(text: string): ParseResult {
   const rows: ParsedInvoiceRow[] = invoiceRows.map((r, i) => ({ ...r, amount: amounts[i] }));
   return { rows };
 }
+
+// Ali-Mat Logistics LLC's own statement PDF - unpdf extracts it in normal
+// reading order, one row per line:
+//   Date  "Invoice #NNNN: Due MM/DD/YYYY."  Amount  Open Amount
+// The invoice number is embedded inside the Description text rather than
+// its own column, and the due date repeated in that same text is dropped -
+// neither is needed on this list. No Customer PO column exists in this
+// format. Amount and Open Amount happen to always match on this statement,
+// but Amount (the original invoiced amount) is read, same choice as
+// Jerue's parser above.
+const ALIMAT_LINE_RE =
+  /^(\d{1,2}\/\d{1,2}\/\d{4})\s+Invoice #(\d+):\s+Due\s+\d{1,2}\/\d{1,2}\/\d{4}\.\s+([\d,]+\.\d{2})\s+[\d,]+\.\d{2}\s*$/;
+
+function parseAlimatLine(rawLine: string): ParsedInvoiceRow | null {
+  const m = rawLine.trim().match(ALIMAT_LINE_RE);
+  if (!m) return null;
+  const [, date, invoiceNo, amount] = m;
+  return {
+    invoice_no: invoiceNo,
+    invoice_date: parseUsDateToIso(date),
+    customer_po: "",
+    amount: parseMoney(amount),
+  };
+}
+
+export function parseAlimatPdfText(text: string): ParseResult {
+  const rows = text
+    .split(/\r?\n/)
+    .map(parseAlimatLine)
+    .filter((r): r is ParsedInvoiceRow => r !== null);
+
+  if (rows.length === 0) {
+    return { rows: [], error: "Couldn't find any invoice rows in this Ali-Mat statement - try pasting the text instead." };
+  }
+  return { rows };
+}
