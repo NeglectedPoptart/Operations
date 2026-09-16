@@ -160,6 +160,7 @@ const NAV: NavCategory[] = [
       { href: "/supreme/meal-plans", label: "Meal Plans" },
       { href: "/supreme/users", label: "User Roles" },
       { href: "/supreme/notifications", label: "Notifications" },
+      { href: "/supreme/devices", label: "Devices" },
       { href: "/supreme/reset", label: "Reset Tools" },
     ],
   },

@@ -6,11 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateSlash, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
 import type { Role } from "@/lib/roles";
+import { updateDevice } from "@/app/supreme/devices/actions";
 import {
   DEVICE_CHECKOUT_CONDITIONS,
   DEVICE_RETURN_CONDITIONS,
   DEVICE_TYPES,
   EMPLOYEE_STATUSES,
+  type Device,
   type Employee,
   type EmployeeDevice,
   type EmployeeDocument,
@@ -359,6 +361,7 @@ function EmployeeDetail({
   employee,
   documents,
   devices,
+  deviceRegistry,
   logins,
   uploadingCategory,
   onUpdate,
@@ -370,10 +373,12 @@ function EmployeeDetail({
   onAddDevice,
   onReturnDevice,
   onDeleteDevice,
+  onAssignDevice,
 }: {
   employee: Employee;
   documents: EmployeeDocument[];
   devices: EmployeeDevice[];
+  deviceRegistry: Device[];
   logins: LoginOption[];
   uploadingCategory: string | null;
   onUpdate: (id: string, patch: Partial<Employee>) => void;
@@ -385,19 +390,28 @@ function EmployeeDetail({
   onAddDevice: (employeeId: string, input: DeviceCheckoutInput) => Promise<void>;
   onReturnDevice: (id: string, patch: ReturnDeviceInput) => Promise<void>;
   onDeleteDevice: (id: string) => void;
+  onAssignDevice: (deviceId: string, employeeId: string | null) => void;
 }) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [returningDevice, setReturningDevice] = useState<EmployeeDevice | null>(null);
   const [savingDevice, setSavingDevice] = useState(false);
+  const [deviceToAssign, setDeviceToAssign] = useState("");
 
   const today = todayISO();
   const upcoming = employee.start_date ? nextAnniversary(employee.start_date, today) : null;
   const employeeDocs = documents.filter((d) => d.employee_id === employee.id);
   const employeeDevices = devices.filter((d) => d.employee_id === employee.id);
+  const assignedToMe = deviceRegistry.filter((d) => d.assigned_to === employee.id);
+  const assignableDevices = deviceRegistry.filter((d) => d.assigned_to !== employee.id);
 
   function deviceLabel(d: EmployeeDevice) {
     const type = d.device_type === "Other" ? d.device_type_other || "Other" : d.device_type;
     return [type, d.device_name].filter(Boolean).join(" - ") || "Device";
+  }
+
+  function registryDeviceLabel(d: Device) {
+    const type = d.device_type === "Other" ? d.device_type_other || "Other" : d.device_type;
+    return [type, d.device_name, d.serial_number ? `(${d.serial_number})` : null].filter(Boolean).join(" - ") || "Device";
   }
 
   return (
@@ -578,6 +592,50 @@ function EmployeeDetail({
         )}
       </div>
 
+      <div>
+        <p className="mb-2 text-sm font-semibold">Assigned Devices</p>
+        <p className="mb-2 text-xs text-black/50 dark:text-white/50">
+          From the company device registry (Supreme &gt; Devices) - assigning a device here takes it away from whoever
+          had it before.
+        </p>
+        {assignedToMe.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {assignedToMe.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 text-xs">
+                <span>{registryDeviceLabel(d)}</span>
+                <button
+                  onClick={() => onAssignDevice(d.id, null)}
+                  className="ml-auto font-medium text-red-600 hover:underline"
+                >
+                  Unassign
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          <select value={deviceToAssign} onChange={(e) => setDeviceToAssign(e.target.value)} className={`${field} max-w-xs`}>
+            <option value="">Select a device...</option>
+            {assignableDevices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {registryDeviceLabel(d)}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => {
+              if (!deviceToAssign) return;
+              onAssignDevice(deviceToAssign, employee.id);
+              setDeviceToAssign("");
+            }}
+            disabled={!deviceToAssign}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            Assign
+          </button>
+        </div>
+      </div>
+
       <button onClick={() => onDelete(employee.id)} className="text-xs font-medium text-red-600 hover:underline">
         Delete Employee
       </button>
@@ -622,15 +680,18 @@ export default function EmployeeFilesClient({
   initialEmployees,
   initialDocuments,
   initialDevices,
+  initialDeviceRegistry,
   logins,
 }: {
   initialEmployees: Employee[];
   initialDocuments: EmployeeDocument[];
   initialDevices: EmployeeDevice[];
+  initialDeviceRegistry: Device[];
   logins: LoginOption[];
 }) {
   const confirm = useConfirm();
   const [employees, setEmployees] = useState(initialEmployees);
+  const [deviceRegistry, setDeviceRegistry] = useState(initialDeviceRegistry);
   const [documents, setDocuments] = useState(initialDocuments);
   const [devices, setDevices] = useState(initialDevices);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -741,6 +802,11 @@ export default function EmployeeFilesClient({
     await deleteEmployeeDevice(id).catch(() => {});
   }
 
+  function handleAssignDevice(deviceId: string, employeeId: string | null) {
+    setDeviceRegistry((prev) => prev.map((d) => (d.id === deviceId ? { ...d, assigned_to: employeeId } : d)));
+    updateDevice(deviceId, { assigned_to: employeeId }).catch(() => {});
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -830,6 +896,7 @@ export default function EmployeeFilesClient({
                   employee={employee}
                   documents={documents}
                   devices={devices}
+                  deviceRegistry={deviceRegistry}
                   logins={logins}
                   uploadingCategory={uploadingCategory}
                   onUpdate={handleUpdate}
@@ -841,6 +908,7 @@ export default function EmployeeFilesClient({
                   onAddDevice={handleAddDevice}
                   onReturnDevice={handleReturnDevice}
                   onDeleteDevice={handleDeleteDevice}
+                  onAssignDevice={handleAssignDevice}
                 />
               )}
             </div>

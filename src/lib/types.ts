@@ -1414,3 +1414,21 @@ export interface EmployeeDevice {
   created_at: string;
   updated_at: string;
 }
+
+// Supreme: Devices ---------------------------------------------------------------
+
+// The master equipment registry - one row per physical device, with
+// whoever currently holds it (nullable - not every device is checked out).
+// Separate from EmployeeDevice above, which is a detailed one-time
+// checkout-form record rather than a "current state" registry entry.
+export interface Device {
+  id: string;
+  device_type: string | null;
+  device_type_other: string | null;
+  device_name: string | null;
+  serial_number: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
