@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { daysSince, formatTimestampSlash, isoDateOf } from "@/lib/dates";
+import { OVERDUE_DAYS } from "@/lib/invoicingParse";
 import type { Broker } from "@/lib/types";
 import FighterJetToggle from "@/components/FighterJetToggle";
 import { toggleRequestStatement, reorderBrokers, setBrokerActive } from "./actions";
@@ -35,13 +36,13 @@ export default function BrokerListClient({
   pendingCounts,
   doneCounts,
   flaggedCounts,
-  overdueBrokerIds,
+  overdueCounts,
 }: {
   brokers: Broker[];
   pendingCounts: Record<string, number>;
   doneCounts: Record<string, number>;
   flaggedCounts: Record<string, number>;
-  overdueBrokerIds: Record<string, boolean>;
+  overdueCounts: Record<string, number>;
 }) {
   // Active brokers stay in their own drag-orderable list (unchanged from
   // before); inactive ones move to a separate, non-reorderable list sorted
@@ -161,6 +162,7 @@ export default function BrokerListClient({
           const pending = pendingCounts[b.id] ?? 0;
           const done = doneCounts[b.id] ?? 0;
           const flagged = flaggedCounts[b.id] ?? 0;
+          const overdue = overdueCounts[b.id] ?? 0;
           const total = pending + done;
           const statementRequested = requested[b.id] ?? false;
           // All caught up (nothing pending, so nothing can be sitting overdue
@@ -168,7 +170,7 @@ export default function BrokerListClient({
           // A clicked statement request always wins over either.
           const tone: "requested" | "green" | "yellow" = statementRequested
             ? "requested"
-            : pending === 0 && !overdueBrokerIds[b.id]
+            : pending === 0 && overdue === 0
               ? "green"
               : "yellow";
           const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${tileToneClasses(tone)}`;
@@ -179,6 +181,11 @@ export default function BrokerListClient({
               <p className="text-sm text-black/60 dark:text-white/60">
                 {pending} pending · {done} done · {total} total
               </p>
+              {overdue > 0 && (
+                <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+                  {overdue} over {OVERDUE_DAYS} days
+                </p>
+              )}
               {flagged > 0 && (
                 <p className="text-xs font-semibold text-red-600 dark:text-red-400">
                   🚩 {flagged} flagged
@@ -257,6 +264,7 @@ export default function BrokerListClient({
             {inactiveBrokers.map((b) => {
               const pending = pendingCounts[b.id] ?? 0;
               const done = doneCounts[b.id] ?? 0;
+              const overdue = overdueCounts[b.id] ?? 0;
               const total = pending + done;
               return (
                 <div
@@ -268,6 +276,11 @@ export default function BrokerListClient({
                     <p className="text-sm text-black/60 dark:text-white/60">
                       {pending} pending · {done} done · {total} total
                     </p>
+                    {overdue > 0 && (
+                      <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+                        {overdue} over {OVERDUE_DAYS} days
+                      </p>
+                    )}
                     <p className="text-xs text-black/40 dark:text-white/40">
                       Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
                     </p>

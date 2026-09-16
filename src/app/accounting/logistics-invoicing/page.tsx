@@ -28,14 +28,14 @@ export default async function InvoicingHomePage() {
   const pendingCounts: Record<string, number> = {};
   const doneCounts: Record<string, number> = {};
   const flaggedCounts: Record<string, number> = {};
-  const overdueBrokerIds: Record<string, boolean> = {};
+  const overdueCounts: Record<string, number> = {};
   for (const r of rows) {
     if (r.status === "done") {
       doneCounts[r.broker_id] = (doneCounts[r.broker_id] ?? 0) + 1;
     } else {
       pendingCounts[r.broker_id] = (pendingCounts[r.broker_id] ?? 0) + 1;
       const age = daysSince(r.invoice_date);
-      if (age !== null && age > OVERDUE_DAYS) overdueBrokerIds[r.broker_id] = true;
+      if (age !== null && age > OVERDUE_DAYS) overdueCounts[r.broker_id] = (overdueCounts[r.broker_id] ?? 0) + 1;
     }
     if (r.flagged) flaggedCounts[r.broker_id] = (flaggedCounts[r.broker_id] ?? 0) + 1;
   }
@@ -58,7 +58,7 @@ export default async function InvoicingHomePage() {
         pendingCounts={pendingCounts}
         doneCounts={doneCounts}
         flaggedCounts={flaggedCounts}
-        overdueBrokerIds={overdueBrokerIds}
+        overdueCounts={overdueCounts}
       />
     </div>
   );
