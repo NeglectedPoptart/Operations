@@ -1435,3 +1435,30 @@ export interface Device {
   created_at: string;
   updated_at: string;
 }
+
+// Logistics: Customer Lumpers -----------------------------------------------------
+
+export interface CustomerLumper {
+  id: string;
+  customer: string | null;
+  description: string | null;
+  price: number | null;
+  notes: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// Management: Costs ----------------------------------------------------------------
+
+// First section on the Costs page - what each repack movement/action
+// costs, and the unit it's billed per (per box, per case, etc.).
+export interface RepackCost {
+  id: string;
+  action: string | null;
+  cost: number | null;
+  unit: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}

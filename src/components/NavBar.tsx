@@ -40,6 +40,7 @@ const NAV: NavCategory[] = [
       { href: "/logistics/freight-calculator", label: "Freight Calculator" },
       { href: "/logistics/weight-calculator", label: "Weight Calculator" },
       { href: "/logistics/invoicing", label: "Invoicing" },
+      { href: "/logistics/customer-lumpers", label: "Customer Lumpers" },
     ],
   },
   {
@@ -103,6 +104,7 @@ const NAV: NavCategory[] = [
       { href: "/management/order-status-report", label: "Order Status Report" },
       { href: "/management/performance-reviews", label: "Performance Reviews" },
       { href: "/management/employee-files", label: "Employee Files" },
+      { href: "/management/costs", label: "Costs" },
     ],
   },
   {
