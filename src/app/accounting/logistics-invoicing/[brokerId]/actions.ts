@@ -22,8 +22,8 @@ export async function extractPdfText(formData: FormData): Promise<{ text: string
 }
 
 function revalidateAll(brokerId: string) {
-  revalidatePath(`/logistics/invoicing/${brokerId}`);
-  revalidatePath("/logistics/invoicing");
+  revalidatePath(`/accounting/logistics-invoicing/${brokerId}`);
+  revalidatePath("/accounting/logistics-invoicing");
 }
 
 function matchKey(invoiceNo: string): string {

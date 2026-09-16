@@ -28,7 +28,6 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
       { label: "Broker Rate Entry", href: "/logistics/broker-rate-entry" },
       { label: "Freight Calculator", href: "/logistics/freight-calculator" },
       { label: "Weight Calculator", href: "/logistics/weight-calculator" },
-      { label: "Invoicing", href: "/logistics/invoicing" },
     ],
   },
   {
@@ -88,6 +87,7 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
       { label: "AR Troubles", href: "/accounting/ar-troubles" },
       { label: "Accounts Payable", href: "/accounting/ap" },
       { label: "Pay Lists", href: "/accounting/pay-lists" },
+      { label: "Logistics Invoicing", href: "/accounting/logistics-invoicing" },
     ],
   },
   {
@@ -224,7 +224,6 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/logistics/broker-rate-entry": brokerRateEntries,
     "/logistics/freight-calculator": null, // calculator only, nothing persisted
     "/logistics/weight-calculator": null,
-    "/logistics/invoicing": invoiceStatements,
     "/warehouse/am-holdovers": amHoldovers,
     "/warehouse/repack-inventory": repackItems,
     "/warehouse/cold-inventory": coldInv,
@@ -246,6 +245,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/accounting/ar-troubles": arInvoices,
     "/accounting/ap": apPayables,
     "/accounting/pay-lists": apPayListItems,
+    "/accounting/logistics-invoicing": invoiceStatements,
     "/marketing/assets": latestOf(marketingFiles, marketingTasks),
   };
 }

@@ -4,7 +4,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { BROKER_CARRIER_PATH, canAccessTab, isSupremeUser, ROLES, type Role, type Tab } from "@/lib/roles";
+import {
+  BROKER_CARRIER_PATH,
+  canAccessTab,
+  hasLogisticsOversight,
+  isSupremeUser,
+  ROLES,
+  type Role,
+  type Tab,
+} from "@/lib/roles";
 
 interface NavItem {
   href: string;
@@ -27,6 +35,11 @@ interface NavCategory {
   supremeOnly?: boolean;
 }
 
+// The Logistics Oversight roles (see roles.ts) only ever have the narrower
+// slice of Logistics, never the full tab, so these items are excluded for
+// them specifically rather than gated by canAccessTab like a normal item.
+const LOGISTICS_OVERSIGHT_ONLY_ROLES: Role[] = ["sales", "buyer_sales", "executive"];
+
 const NAV: NavCategory[] = [
   { label: "Home", href: "/" },
   {
@@ -34,12 +47,23 @@ const NAV: NavCategory[] = [
     tab: "logistics",
     items: [
       { href: "/logistics", label: "Summary" },
-      { href: "/logistics/board", label: "List" },
+      { href: "/logistics/board", label: "List", excludeRoles: LOGISTICS_OVERSIGHT_ONLY_ROLES },
       { href: "/logistics/rates", label: "Freight Rates" },
-      { href: "/logistics/broker-rate-entry", label: "Broker Rate Entry" },
-      { href: "/logistics/freight-calculator", label: "Freight Calculator" },
-      { href: "/logistics/weight-calculator", label: "Weight Calculator" },
-      { href: "/logistics/invoicing", label: "Invoicing" },
+      {
+        href: "/logistics/broker-rate-entry",
+        label: "Broker Rate Entry",
+        excludeRoles: LOGISTICS_OVERSIGHT_ONLY_ROLES,
+      },
+      {
+        href: "/logistics/freight-calculator",
+        label: "Freight Calculator",
+        excludeRoles: LOGISTICS_OVERSIGHT_ONLY_ROLES,
+      },
+      {
+        href: "/logistics/weight-calculator",
+        label: "Weight Calculator",
+        excludeRoles: LOGISTICS_OVERSIGHT_ONLY_ROLES,
+      },
       { href: "/logistics/customer-lumpers", label: "Customer Lumpers" },
     ],
   },
@@ -123,6 +147,7 @@ const NAV: NavCategory[] = [
       { href: "/accounting/ar-troubles", label: "AR Troubles" },
       { href: "/accounting/ap", label: "Accounts Payable" },
       { href: "/accounting/pay-lists", label: "Pay Lists" },
+      { href: "/accounting/logistics-invoicing", label: "Logistics Invoicing" },
     ],
   },
   {
@@ -339,6 +364,7 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
         ? []
         : NAV.filter((category) => {
             if (category.supremeOnly) return isSupremeUser(email);
+            if (category.tab === "logistics") return canAccessTab(role, "logistics") || hasLogisticsOversight(role);
             return !category.tab || canAccessTab(role, category.tab);
           }).map((category) => ({
             ...category,

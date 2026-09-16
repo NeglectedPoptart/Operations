@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import type { InvoiceStatement } from "@/lib/types";
 
 function revalidateAll(brokerId: string) {
-  revalidatePath(`/logistics/invoicing/${brokerId}`);
-  revalidatePath("/logistics/invoicing");
+  revalidatePath(`/accounting/logistics-invoicing/${brokerId}`);
+  revalidatePath("/accounting/logistics-invoicing");
 }
 
 // unpdf wraps pdf.js specifically for serverless/edge runtimes - duplicated
@@ -36,7 +36,7 @@ export async function toggleRequestStatement(brokerId: string, value: boolean) {
   const supabase = await createClient();
   const { error } = await supabase.from("brokers").update({ request_statement: value }).eq("id", brokerId);
   if (error) throw new Error(error.message);
-  revalidatePath("/logistics/invoicing");
+  revalidatePath("/accounting/logistics-invoicing");
 }
 
 // Marks a broker as not-actively-used (or reactivates it) - never deletes
@@ -46,7 +46,7 @@ export async function setBrokerActive(brokerId: string, active: boolean) {
   const supabase = await createClient();
   const { error } = await supabase.from("brokers").update({ active }).eq("id", brokerId);
   if (error) throw new Error(error.message);
-  revalidatePath("/logistics/invoicing");
+  revalidatePath("/accounting/logistics-invoicing");
   revalidatePath("/logistics/board");
 }
 
@@ -60,7 +60,7 @@ export async function reorderBrokers(orderedIds: string[]) {
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) throw new Error(failed.error.message);
-  revalidatePath("/logistics/invoicing");
+  revalidatePath("/accounting/logistics-invoicing");
 }
 
 // Applies the Statement Checker's confirmed results. The statement is the

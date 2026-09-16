@@ -5,9 +5,14 @@ import { useState, type ReactNode } from "react";
 export default function RatesTabs({
   routeAverages,
   brokerTracker,
+  summaryOnly,
 }: {
   routeAverages: ReactNode;
-  brokerTracker: ReactNode;
+  brokerTracker?: ReactNode;
+  // Logistics Oversight (Sales/Buyer-Sales/Executive) gets Rate Summary
+  // only, not the editable Broker Tracker grid - see roles.ts. The tab bar
+  // itself is skipped entirely rather than shown-but-blocked.
+  summaryOnly?: boolean;
 }) {
   const [tab, setTab] = useState<"routes" | "tracker">("routes");
 
@@ -17,6 +22,15 @@ export default function RatesTabs({
         ? "bg-green-600 text-white"
         : "text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
     }`;
+
+  if (summaryOnly) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Freight Rates</h1>
+        {routeAverages}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

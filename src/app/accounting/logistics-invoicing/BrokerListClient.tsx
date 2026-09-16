@@ -230,7 +230,7 @@ export default function BrokerListClient({
 
           return (
             <div key={b.id} className={cardClasses}>
-              <Link href={`/logistics/invoicing/${b.id}`} className="min-w-0 flex-1">
+              <Link href={`/accounting/logistics-invoicing/${b.id}`} className="min-w-0 flex-1">
                 {body}
               </Link>
               <div className="flex shrink-0 flex-col items-end gap-2">
@@ -263,7 +263,7 @@ export default function BrokerListClient({
                   key={b.id}
                   className="relative flex items-center gap-3 rounded-lg border border-black/10 bg-black/[0.03] p-4 opacity-60 grayscale transition hover:opacity-80 dark:border-white/10 dark:bg-white/[0.03]"
                 >
-                  <Link href={`/logistics/invoicing/${b.id}`} className="min-w-0 flex-1">
+                  <Link href={`/accounting/logistics-invoicing/${b.id}`} className="min-w-0 flex-1">
                     <p className="font-medium">{b.name}</p>
                     <p className="text-sm text-black/60 dark:text-white/60">
                       {pending} pending · {done} done · {total} total

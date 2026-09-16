@@ -102,7 +102,9 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   sales: ["sales", "qc", "buyers", "marketing", "meetings", "crm"],
   accounting: ["sales", "compliance", "accounting", "meetings"],
   buyer: ["warehouse", "qc", "sales", "buyers", "meetings"],
-  // Sees everything except Logistics.
+  // Sees everything except the full Logistics tab - gets Logistics
+  // Oversight instead (Summary/Rate Summary/Customer Lumpers only, see
+  // hasLogisticsOversight below), same as Sales and Buyer/Sales.
   executive: [
     "warehouse",
     "qc",
@@ -178,4 +180,28 @@ export const CRM_ACTIVITY_PATH_PREFIX = "/crm/activity";
 
 export function crmActivityAllowed(role: Role | null): boolean {
   return role === "admin" || role === "executive";
+}
+
+// Logistics Oversight: a read-mostly slice of Logistics (Summary, Freight
+// Rates' Rate Summary view, Customer Lumpers) opened up to Sales,
+// Buyer/Sales, and Executive - roles that otherwise have no Logistics
+// access at all. Admin/Operations already see all of this (and everything
+// else in Logistics) via the full "logistics" tab above, so this is
+// additive only for roles that lack that tab, same "narrowing exception
+// alongside the tab system" shape as the two functions above.
+const LOGISTICS_OVERSIGHT_ROLES: Role[] = ["sales", "buyer_sales", "executive"];
+
+export function hasLogisticsOversight(role: Role | null): boolean {
+  return !!role && LOGISTICS_OVERSIGHT_ROLES.includes(role);
+}
+
+// Freight Rates itself is one page (not split by path) with two internal
+// views - Rate Summary and Broker Tracker - so "just rate summary" for
+// Oversight is enforced inside the page/RatesTabs, not here. This only
+// gates which /logistics/* paths Oversight can reach at all.
+export function logisticsOversightPathAllowed(pathname: string): boolean {
+  if (pathname === "/logistics") return true;
+  if (pathname === "/logistics/rates" || pathname.startsWith("/logistics/rates/")) return true;
+  if (pathname === "/logistics/customer-lumpers" || pathname.startsWith("/logistics/customer-lumpers/")) return true;
+  return false;
 }

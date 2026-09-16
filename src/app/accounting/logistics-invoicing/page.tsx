@@ -42,7 +42,7 @@ export default async function InvoicingHomePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Invoicing</h1>
+      <h1 className="text-2xl font-bold">Logistics Invoicing</h1>
       <p className="text-sm text-black/60 dark:text-white/60">
         Pick a broker to see its invoice aging list.
       </p>

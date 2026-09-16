@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { currentWeekStart, prevWeekStart, weekEnd } from "@/lib/dates";
 import { computeBookedStatsByLane } from "@/lib/rateAverages";
+import { hasLogisticsOversight, type Role } from "@/lib/roles";
 import type { Broker, BrokerRateEntry, Lane, RateSubmission } from "@/lib/types";
 import RatesTabs from "./RatesTabs";
 import RouteAveragesTable from "./RouteAveragesTable";
@@ -35,6 +36,15 @@ export default async function RatesPage() {
       .lte("loading_date", currWeekEnd)
       .not("rate", "is", null),
   ]);
+
+  // Logistics Oversight (Sales/Buyer-Sales/Executive) gets Rate Summary
+  // only - the middleware already restricts them to this page and two
+  // others, this is the page-level half of that same restriction (see
+  // roles.ts).
+  const { data: myProfile } = userData.user
+    ? await supabase.from("profiles").select("role").eq("id", userData.user.id).single()
+    : { data: null };
+  const summaryOnly = hasLogisticsOversight((myProfile?.role as Role | undefined) ?? null);
 
   const error = lanesRes.error ?? brokersRes.error ?? entriesRes.error ?? submissionsRes.error ?? loadsRes.error;
   if (error) {
@@ -71,6 +81,7 @@ export default async function RatesPage() {
 
   return (
     <RatesTabs
+      summaryOnly={summaryOnly}
       routeAverages={
         <RouteAveragesTable
           lanes={lanes}
@@ -83,16 +94,18 @@ export default async function RatesPage() {
         />
       }
       brokerTracker={
-        <BrokerTrackerClient
-          lanes={lanes}
-          brokers={brokers}
-          initialWeekStart={currWeek}
-          initialEntries={currentEntries}
-          initialPrevEntries={prevEntries}
-          initialSubmission={currentSubmission}
-          initialPrevSubmission={prevSubmission}
-          currentUserEmail={userData.user?.email ?? "unknown"}
-        />
+        summaryOnly ? undefined : (
+          <BrokerTrackerClient
+            lanes={lanes}
+            brokers={brokers}
+            initialWeekStart={currWeek}
+            initialEntries={currentEntries}
+            initialPrevEntries={prevEntries}
+            initialSubmission={currentSubmission}
+            initialPrevSubmission={prevSubmission}
+            currentUserEmail={userData.user?.email ?? "unknown"}
+          />
+        )
       }
     />
   );

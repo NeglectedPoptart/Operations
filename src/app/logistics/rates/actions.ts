@@ -64,7 +64,7 @@ export async function createBroker(name: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/logistics/rates");
   revalidatePath("/logistics/board");
-  revalidatePath("/logistics/invoicing");
+  revalidatePath("/accounting/logistics-invoicing");
   return data;
 }
 
@@ -86,7 +86,7 @@ export async function deleteBroker(id: string) {
   if (error) throw new Error(error.message);
   revalidatePath("/logistics/rates");
   revalidatePath("/logistics/board");
-  revalidatePath("/logistics/invoicing");
+  revalidatePath("/accounting/logistics-invoicing");
   revalidatePath("/");
 }
 

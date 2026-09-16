@@ -6,7 +6,9 @@ import {
   SUPREME_PATH_PREFIX,
   canAccessTab,
   crmActivityAllowed,
+  hasLogisticsOversight,
   isSupremeUser,
+  logisticsOversightPathAllowed,
   tabForPath,
   warehouseQcMexicoAllowed,
   type Role,
@@ -88,9 +90,15 @@ export async function updateSession(request: NextRequest) {
 
   const tab = tabForPath(pathname);
   if (tab && !canAccessTab(role, tab)) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+    // Logistics Oversight (Sales/Buyer-Sales/Executive): no "logistics" tab,
+    // but still allowed onto a specific handful of Logistics pages - see
+    // roles.ts.
+    const oversightOk = tab === "logistics" && hasLogisticsOversight(role) && logisticsOversightPathAllowed(pathname);
+    if (!oversightOk) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
+      return NextResponse.redirect(url);
+    }
   }
 
   // Warehouse/QC's "mexico" tab grant is deliberately partial - Arrivals
