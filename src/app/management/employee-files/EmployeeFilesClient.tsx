@@ -459,6 +459,30 @@ function EmployeeDetail({
           />
         </label>
         <label className="block text-sm">
+          Personal Number
+          <input
+            defaultValue={employee.personal_number ?? ""}
+            onBlur={(e) => onUpdate(employee.id, { personal_number: e.target.value || null })}
+            className={`${field} mt-1`}
+          />
+        </label>
+        <label className="block text-sm">
+          Work Cell Number
+          <input
+            defaultValue={employee.work_cell_number ?? ""}
+            onBlur={(e) => onUpdate(employee.id, { work_cell_number: e.target.value || null })}
+            className={`${field} mt-1`}
+          />
+        </label>
+        <label className="block text-sm">
+          Office Number
+          <input
+            defaultValue={employee.office_number ?? ""}
+            onBlur={(e) => onUpdate(employee.id, { office_number: e.target.value || null })}
+            className={`${field} mt-1`}
+          />
+        </label>
+        <label className="block text-sm">
           Login Account
           <select
             value={employee.linked_user_id ?? ""}

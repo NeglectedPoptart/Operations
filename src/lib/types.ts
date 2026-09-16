@@ -1362,6 +1362,9 @@ export interface Employee {
   start_date: string | null;
   status: EmployeeStatus;
   direct_manager: string | null;
+  personal_number: string | null;
+  work_cell_number: string | null;
+  office_number: string | null;
   // Anniversary year number (1, 2, 3...) already alerted for - see
   // checkAndSendAnniversaryAlerts in employee-files/actions.ts.
   last_anniversary_alert_year: number | null;

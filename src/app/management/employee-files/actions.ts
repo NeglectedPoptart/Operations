@@ -28,7 +28,19 @@ export async function createEmployee(name: string): Promise<Employee> {
 export async function updateEmployee(
   id: string,
   patch: Partial<
-    Pick<Employee, "name" | "title" | "department" | "start_date" | "status" | "direct_manager" | "linked_user_id">
+    Pick<
+      Employee,
+      | "name"
+      | "title"
+      | "department"
+      | "start_date"
+      | "status"
+      | "direct_manager"
+      | "personal_number"
+      | "work_cell_number"
+      | "office_number"
+      | "linked_user_id"
+    >
   >,
 ) {
   const supabase = await createClient();
