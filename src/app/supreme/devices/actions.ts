@@ -37,7 +37,10 @@ export async function createDevice(input: {
 export async function updateDevice(
   id: string,
   patch: Partial<
-    Pick<Device, "device_type" | "device_type_other" | "device_name" | "serial_number" | "assigned_to" | "notes">
+    Pick<
+      Device,
+      "device_type" | "device_type_other" | "device_name" | "serial_number" | "assigned_to" | "notes" | "has_issue"
+    >
   >,
 ) {
   const supabase = await createClient();

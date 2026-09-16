@@ -1398,7 +1398,7 @@ export interface EmployeePhoneNumber {
   updated_at: string;
 }
 
-export type EmployeeDocumentCategory = "onboarding" | "offboarding";
+export type EmployeeDocumentCategory = "onboarding" | "offboarding" | "photo";
 
 export interface EmployeeDocument {
   id: string;
@@ -1454,6 +1454,7 @@ export interface Device {
   serial_number: string | null;
   assigned_to: string | null;
   notes: string | null;
+  has_issue: boolean;
   created_at: string;
   updated_at: string;
 }

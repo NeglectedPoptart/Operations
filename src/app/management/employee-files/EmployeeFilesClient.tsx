@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import PhoneInput from "@/components/PhoneInput";
 import { createClient } from "@/lib/supabase/client";
@@ -365,6 +365,97 @@ function DocumentRow({
   );
 }
 
+// Collapsed by default - photos are for reference (e.g. ID matching), not
+// something that needs to be visible every time a tile is opened. Signed
+// URLs are only fetched once expanded, not on every render.
+function PhotoSection({
+  employeeId,
+  docs,
+  uploadingCategory,
+  onUploadDoc,
+  onDeleteDoc,
+}: {
+  employeeId: string;
+  docs: EmployeeDocument[];
+  uploadingCategory: string | null;
+  onUploadDoc: (employeeId: string, category: EmployeeDocumentCategory, file: File) => void;
+  onDeleteDoc: (doc: EmployeeDocument) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const key = `${employeeId}:photo`;
+
+  useEffect(() => {
+    if (!open || docs.length === 0) return;
+    let cancelled = false;
+    const supabase = createClient();
+    Promise.all(
+      docs.map(async (d) => {
+        const { data } = await supabase.storage.from("employee-documents").createSignedUrl(d.storage_path, 3600);
+        return [d.id, data?.signedUrl] as const;
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const [id, url] of entries) if (url) next[id] = url;
+      setUrls(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, docs]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">Photo</p>
+        <div className="flex items-center gap-2">
+          <label className="cursor-pointer rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+            {uploadingCategory === key ? "Uploading..." : "+ Add Photo"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploadingCategory === key}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) onUploadDoc(employeeId, "photo", file);
+              }}
+            />
+          </label>
+          <button onClick={() => setOpen((o) => !o)} className="text-xs font-medium text-green-600 hover:underline">
+            {open ? "Hide" : docs.length > 0 ? `Show (${docs.length})` : "Show"}
+          </button>
+        </div>
+      </div>
+      {open &&
+        (docs.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-3">
+            {docs.map((d) => (
+              <div key={d.id} className="flex flex-col items-center gap-1">
+                {urls[d.id] ? (
+                  // A short-lived signed URL, not a static asset next/image can optimize.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={urls[d.id]} alt={d.file_name} className="h-20 w-20 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-md bg-black/5 text-[10px] text-black/40 dark:bg-white/10 dark:text-white/40">
+                    Loading...
+                  </div>
+                )}
+                <button onClick={() => onDeleteDoc(d)} className="text-[10px] font-medium text-red-600 hover:underline">
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-black/40 dark:text-white/40">No photo on file.</p>
+        ))}
+    </div>
+  );
+}
+
 function EmployeeDetail({
   employee,
   documents,
@@ -418,6 +509,7 @@ function EmployeeDetail({
   const isMexicoOffice = employee.office_location === "Guadalajara, MX";
   const employeePhoneNumbers = phoneNumbers.filter((p) => p.employee_id === employee.id);
   const employeeDocs = documents.filter((d) => d.employee_id === employee.id);
+  const employeePhotos = employeeDocs.filter((d) => d.category === "photo");
   const employeeDevices = devices.filter((d) => d.employee_id === employee.id);
   const assignedToMe = deviceRegistry.filter((d) => d.assigned_to === employee.id);
   const assignableDevices = deviceRegistry.filter((d) => d.assigned_to !== employee.id);
@@ -602,6 +694,14 @@ function EmployeeDetail({
           ({formatDate(upcoming.date)})
         </p>
       )}
+
+      <PhotoSection
+        employeeId={employee.id}
+        docs={employeePhotos}
+        uploadingCategory={uploadingCategory}
+        onUploadDoc={onUploadDoc}
+        onDeleteDoc={onDeleteDoc}
+      />
 
       <div>
         <p className="mb-2 text-sm font-semibold">Documents</p>
