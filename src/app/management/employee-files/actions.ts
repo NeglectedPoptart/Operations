@@ -4,7 +4,7 @@ import { sendNotification } from "@/app/supreme/notifications/actions";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
-import type { Employee, EmployeeDevice, EmployeeDocumentCategory } from "@/lib/types";
+import type { Employee, EmployeeDevice, EmployeeDocumentCategory, EmployeePhoneNumber } from "@/lib/types";
 
 // None of the mutations below call revalidatePath. They used to, but a
 // tile gets several fields filled out in quick succession right after
@@ -147,6 +147,34 @@ export async function updateEmployeeDevice(
 export async function deleteEmployeeDevice(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("employee_devices").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// Additional, self-labeled phone numbers -----------------------------------------
+
+export async function createEmployeePhoneNumber(employeeId: string, nextPosition: number): Promise<EmployeePhoneNumber> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("employee_phone_numbers")
+    .insert({ employee_id: employeeId, position: nextPosition })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as EmployeePhoneNumber;
+}
+
+export async function updateEmployeePhoneNumber(
+  id: string,
+  patch: Partial<Pick<EmployeePhoneNumber, "label" | "phone_number">>,
+) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("employee_phone_numbers").update(patch).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteEmployeePhoneNumber(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("employee_phone_numbers").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
 

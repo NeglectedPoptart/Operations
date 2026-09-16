@@ -1386,6 +1386,18 @@ export interface Employee {
   updated_at: string;
 }
 
+// Additional, self-labeled phone numbers - for when Personal/Work
+// Cell/Office aren't enough (e.g. a second work line, a pager).
+export interface EmployeePhoneNumber {
+  id: string;
+  employee_id: string;
+  label: string | null;
+  phone_number: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export type EmployeeDocumentCategory = "onboarding" | "offboarding";
 
 export interface EmployeeDocument {

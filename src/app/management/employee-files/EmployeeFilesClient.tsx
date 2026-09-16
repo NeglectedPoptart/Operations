@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import PhoneInput from "@/components/PhoneInput";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateSlash, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
@@ -20,18 +21,22 @@ import {
   type EmployeeDocument,
   type EmployeeDocumentCategory,
   type EmployeeOfficeLocation,
+  type EmployeePhoneNumber,
   type EmployeeStatus,
 } from "@/lib/types";
 import {
   createEmployee,
   createEmployeeDevice,
+  createEmployeePhoneNumber,
   deleteEmployee,
   deleteEmployeeDevice,
   deleteEmployeeDocument,
+  deleteEmployeePhoneNumber,
   recordEmployeeDocument,
   updateEmployee,
   updateEmployeeDevice,
   updateEmployeeDocument,
+  updateEmployeePhoneNumber,
 } from "./actions";
 
 export interface LoginOption {
@@ -365,6 +370,7 @@ function EmployeeDetail({
   documents,
   devices,
   deviceRegistry,
+  phoneNumbers,
   logins,
   uploadingCategory,
   onUpdate,
@@ -377,11 +383,15 @@ function EmployeeDetail({
   onReturnDevice,
   onDeleteDevice,
   onAssignDevice,
+  onAddPhoneNumber,
+  onUpdatePhoneNumber,
+  onDeletePhoneNumber,
 }: {
   employee: Employee;
   documents: EmployeeDocument[];
   devices: EmployeeDevice[];
   deviceRegistry: Device[];
+  phoneNumbers: EmployeePhoneNumber[];
   logins: LoginOption[];
   uploadingCategory: string | null;
   onUpdate: (id: string, patch: Partial<Employee>) => void;
@@ -394,6 +404,9 @@ function EmployeeDetail({
   onReturnDevice: (id: string, patch: ReturnDeviceInput) => Promise<void>;
   onDeleteDevice: (id: string) => void;
   onAssignDevice: (deviceId: string, employeeId: string | null) => void;
+  onAddPhoneNumber: (employeeId: string) => void;
+  onUpdatePhoneNumber: (id: string, patch: Partial<Pick<EmployeePhoneNumber, "label" | "phone_number">>) => void;
+  onDeletePhoneNumber: (id: string) => void;
 }) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [returningDevice, setReturningDevice] = useState<EmployeeDevice | null>(null);
@@ -403,6 +416,7 @@ function EmployeeDetail({
   const today = todayISO();
   const upcoming = employee.start_date ? nextAnniversary(employee.start_date, today) : null;
   const isMexicoOffice = employee.office_location === "Guadalajara, MX";
+  const employeePhoneNumbers = phoneNumbers.filter((p) => p.employee_id === employee.id);
   const employeeDocs = documents.filter((d) => d.employee_id === employee.id);
   const employeeDevices = devices.filter((d) => d.employee_id === employee.id);
   const assignedToMe = deviceRegistry.filter((d) => d.assigned_to === employee.id);
@@ -479,35 +493,31 @@ function EmployeeDetail({
         </label>
         <label className="block text-sm">
           Personal Number
-          <input
-            key={`personal-${employee.personal_number ?? ""}`}
-            defaultValue={employee.personal_number ?? ""}
-            placeholder={isMexicoOffice ? "xx xxxx xxxx" : "(xxx) xxx-xxxx"}
-            onBlur={(e) => {
-              const formatted = formatPhoneNumber(e.target.value, isMexicoOffice);
-              onUpdate(employee.id, { personal_number: formatted || null });
-            }}
+          <PhoneInput
+            key={employee.id}
+            value={employee.personal_number}
+            isMexico={isMexicoOffice}
+            onSave={(v) => onUpdate(employee.id, { personal_number: v })}
             className={`${field} mt-1`}
           />
         </label>
         <label className="block text-sm">
           Work Cell Number
-          <input
-            key={`work-cell-${employee.work_cell_number ?? ""}`}
-            defaultValue={employee.work_cell_number ?? ""}
-            placeholder={isMexicoOffice ? "xx xxxx xxxx" : "(xxx) xxx-xxxx"}
-            onBlur={(e) => {
-              const formatted = formatPhoneNumber(e.target.value, isMexicoOffice);
-              onUpdate(employee.id, { work_cell_number: formatted || null });
-            }}
+          <PhoneInput
+            key={employee.id}
+            value={employee.work_cell_number}
+            isMexico={isMexicoOffice}
+            onSave={(v) => onUpdate(employee.id, { work_cell_number: v })}
             className={`${field} mt-1`}
           />
         </label>
         <label className="block text-sm">
           Office Number
-          <input
-            defaultValue={employee.office_number ?? ""}
-            onBlur={(e) => onUpdate(employee.id, { office_number: e.target.value || null })}
+          <PhoneInput
+            key={employee.id}
+            value={employee.office_number}
+            isMexico={isMexicoOffice}
+            onSave={(v) => onUpdate(employee.id, { office_number: v })}
             className={`${field} mt-1`}
           />
         </label>
@@ -540,6 +550,50 @@ function EmployeeDetail({
             ))}
           </select>
         </label>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-sm font-semibold">Additional Phone Numbers</p>
+          <button
+            onClick={() => onAddPhoneNumber(employee.id)}
+            className="text-xs font-medium text-green-600 hover:underline"
+          >
+            + Add Number
+          </button>
+        </div>
+        {employeePhoneNumbers.length > 0 && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {employeePhoneNumbers.map((p) => (
+              <div key={p.id} className="flex items-end gap-2">
+                <label className="block flex-1 text-sm">
+                  Name
+                  <input
+                    defaultValue={p.label ?? ""}
+                    onBlur={(e) => onUpdatePhoneNumber(p.id, { label: e.target.value || null })}
+                    className={`${field} mt-1`}
+                  />
+                </label>
+                <label className="block flex-1 text-sm">
+                  Number
+                  <PhoneInput
+                    key={p.id}
+                    value={p.phone_number}
+                    isMexico={isMexicoOffice}
+                    onSave={(v) => onUpdatePhoneNumber(p.id, { phone_number: v })}
+                    className={`${field} mt-1`}
+                  />
+                </label>
+                <button
+                  onClick={() => onDeletePhoneNumber(p.id)}
+                  className="mb-1 text-xs font-medium text-red-600 hover:underline"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {upcoming && upcoming.daysAway <= 30 && (
@@ -734,12 +788,14 @@ export default function EmployeeFilesClient({
   initialDocuments,
   initialDevices,
   initialDeviceRegistry,
+  initialPhoneNumbers,
   logins,
 }: {
   initialEmployees: Employee[];
   initialDocuments: EmployeeDocument[];
   initialDevices: EmployeeDevice[];
   initialDeviceRegistry: Device[];
+  initialPhoneNumbers: EmployeePhoneNumber[];
   logins: LoginOption[];
 }) {
   const confirm = useConfirm();
@@ -747,6 +803,7 @@ export default function EmployeeFilesClient({
   const [deviceRegistry, setDeviceRegistry] = useState(initialDeviceRegistry);
   const [documents, setDocuments] = useState(initialDocuments);
   const [devices, setDevices] = useState(initialDevices);
+  const [phoneNumbers, setPhoneNumbers] = useState(initialPhoneNumbers);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<EmployeeStatus | "all">("active");
   const [newName, setNewName] = useState("");
@@ -860,6 +917,24 @@ export default function EmployeeFilesClient({
     updateDevice(deviceId, { assigned_to: employeeId }).catch(() => {});
   }
 
+  async function handleAddPhoneNumber(employeeId: string) {
+    const existing = phoneNumbers.filter((p) => p.employee_id === employeeId);
+    const nextPosition = existing.length > 0 ? Math.max(...existing.map((p) => p.position)) + 1 : 1;
+    const created = await createEmployeePhoneNumber(employeeId, nextPosition);
+    setPhoneNumbers((prev) => [...prev, created]);
+  }
+
+  function handleUpdatePhoneNumber(id: string, patch: Partial<Pick<EmployeePhoneNumber, "label" | "phone_number">>) {
+    setPhoneNumbers((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    updateEmployeePhoneNumber(id, patch).catch(() => {});
+  }
+
+  async function handleDeletePhoneNumber(id: string) {
+    if (!(await confirm("Delete this phone number?"))) return;
+    setPhoneNumbers((prev) => prev.filter((p) => p.id !== id));
+    await deleteEmployeePhoneNumber(id).catch(() => {});
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -953,6 +1028,7 @@ export default function EmployeeFilesClient({
                   documents={documents}
                   devices={devices}
                   deviceRegistry={deviceRegistry}
+                  phoneNumbers={phoneNumbers}
                   logins={logins}
                   uploadingCategory={uploadingCategory}
                   onUpdate={handleUpdate}
@@ -965,6 +1041,9 @@ export default function EmployeeFilesClient({
                   onReturnDevice={handleReturnDevice}
                   onDeleteDevice={handleDeleteDevice}
                   onAssignDevice={handleAssignDevice}
+                  onAddPhoneNumber={handleAddPhoneNumber}
+                  onUpdatePhoneNumber={handleUpdatePhoneNumber}
+                  onDeletePhoneNumber={handleDeletePhoneNumber}
                 />
               )}
             </div>

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Device, Employee, EmployeeDevice, EmployeeDocument } from "@/lib/types";
+import type { Device, Employee, EmployeeDevice, EmployeeDocument, EmployeePhoneNumber } from "@/lib/types";
 import { checkAndSendAnniversaryAlerts } from "./actions";
 import EmployeeFilesClient, { type LoginOption } from "./EmployeeFilesClient";
 
@@ -17,15 +17,17 @@ export default async function EmployeeFilesPage() {
     { data: devices, error: devicesError },
     { data: logins, error: loginsError },
     { data: deviceRegistry, error: deviceRegistryError },
+    { data: phoneNumbers, error: phoneNumbersError },
   ] = await Promise.all([
     supabase.from("employees").select("*").order("name", { ascending: true }),
     supabase.from("employee_documents").select("*").order("created_at", { ascending: false }),
     supabase.from("employee_devices").select("*").order("date_of_issue", { ascending: false }),
     supabase.from("profiles").select("id, email, role").order("email", { ascending: true }),
     supabase.from("devices").select("*").order("created_at", { ascending: false }),
+    supabase.from("employee_phone_numbers").select("*").order("position", { ascending: true }),
   ]);
 
-  const error = employeesError ?? documentsError ?? devicesError ?? loginsError ?? deviceRegistryError;
+  const error = employeesError ?? documentsError ?? devicesError ?? loginsError ?? deviceRegistryError ?? phoneNumbersError;
   if (error) {
     return <p className="text-red-600">Failed to load Employee Files: {error.message}</p>;
   }
@@ -36,6 +38,7 @@ export default async function EmployeeFilesPage() {
       initialDocuments={(documents ?? []) as EmployeeDocument[]}
       initialDevices={(devices ?? []) as EmployeeDevice[]}
       initialDeviceRegistry={(deviceRegistry ?? []) as Device[]}
+      initialPhoneNumbers={(phoneNumbers ?? []) as EmployeePhoneNumber[]}
       logins={(logins ?? []) as LoginOption[]}
     />
   );
