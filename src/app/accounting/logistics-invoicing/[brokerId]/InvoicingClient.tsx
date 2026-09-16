@@ -185,6 +185,13 @@ export default function InvoicingClient({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newInvoiceNo, setNewInvoiceNo] = useState("");
+  const [newInvoiceDate, setNewInvoiceDate] = useState("");
+  const [newCustomerPo, setNewCustomerPo] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
+  const [savingNew, setSavingNew] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [imageFilter, setImageFilter] = useState<ImageFilter>("all");
 
@@ -290,6 +297,37 @@ export default function InvoicingClient({
     }
   }
 
+  // For a one-off invoice that wasn't in an import - something that came
+  // up on its own, or entered ahead of the next statement so it's already
+  // here to reconcile against when that statement does arrive.
+  async function handleAddManualInvoice() {
+    const invoiceNo = newInvoiceNo.trim();
+    if (!invoiceNo) return;
+    setAddError(null);
+    setSavingNew(true);
+    try {
+      const row: ParsedInvoiceRow = {
+        invoice_no: invoiceNo,
+        invoice_date: newInvoiceDate || null,
+        customer_po: newCustomerPo.trim(),
+        amount: newAmount.trim() === "" ? null : Number(newAmount),
+      };
+      const inserted = await importInvoices(broker.id, [row]);
+      if (inserted.length === 0) {
+        setAddError(`Invoice #${invoiceNo} is already on this list.`);
+        return;
+      }
+      setItems((prev) => [...prev, ...(inserted as InvoiceStatement[])]);
+      setNewInvoiceNo("");
+      setNewInvoiceDate("");
+      setNewCustomerPo("");
+      setNewAmount("");
+      setShowAddForm(false);
+    } finally {
+      setSavingNew(false);
+    }
+  }
+
   async function handleCopyImage() {
     try {
       const filterLabel = IMAGE_FILTERS.find((f) => f.value === imageFilter)?.label ?? "All Items";
@@ -342,6 +380,12 @@ export default function InvoicingClient({
             {imageStatus ?? "Copy as Image"}
           </button>
           <button
+            onClick={() => setShowAddForm((v) => !v)}
+            className="rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showAddForm ? "Hide add invoice" : "+ Add Invoice"}
+          </button>
+          <button
             onClick={() => setShowPaste((v) => !v)}
             className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
           >
@@ -349,6 +393,52 @@ export default function InvoicingClient({
           </button>
         </div>
       </div>
+
+      {showAddForm && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
+          <p className="text-sm text-black/60 dark:text-white/60">
+            For a single invoice that wasn&apos;t in an import - something new that came up on its own, or one you
+            want to enter ahead of the next statement.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-black/60 dark:text-white/60">Invoice #</span>
+              <input value={newInvoiceNo} onChange={(e) => setNewInvoiceNo(e.target.value)} className={`${field} mt-1 w-32`} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-black/60 dark:text-white/60">Date</span>
+              <input
+                type="date"
+                value={newInvoiceDate}
+                onChange={(e) => setNewInvoiceDate(e.target.value)}
+                className={`${field} mt-1`}
+              />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-black/60 dark:text-white/60">Customer PO</span>
+              <input value={newCustomerPo} onChange={(e) => setNewCustomerPo(e.target.value)} className={`${field} mt-1 w-32`} />
+            </label>
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-black/60 dark:text-white/60">Amount</span>
+              <input
+                type="number"
+                step="0.01"
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
+                className={`${field} mt-1 w-28`}
+              />
+            </label>
+            <button
+              onClick={handleAddManualInvoice}
+              disabled={savingNew || newInvoiceNo.trim() === ""}
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+            >
+              {savingNew ? "Adding..." : "Add"}
+            </button>
+          </div>
+          {addError && <p className="text-sm text-red-600">{addError}</p>}
+        </div>
+      )}
 
       {showPaste && (
         <div className="space-y-3">
