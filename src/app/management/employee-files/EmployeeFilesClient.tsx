@@ -868,6 +868,9 @@ export default function EmployeeFilesClient({
           One tile per employee - onboarding/offboarding documents, equipment checkout history, and upcoming work
           anniversaries.
         </p>
+        <p className="mt-1 text-sm font-semibold">
+          Main Line: <span className="font-normal text-black/70 dark:text-white/70">{formatPhoneNumber("2108684628", false)}</span>
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

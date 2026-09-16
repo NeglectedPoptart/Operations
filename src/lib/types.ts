@@ -1461,13 +1461,17 @@ export interface CustomerLumper {
 
 // Management: Costs ----------------------------------------------------------------
 
+export type RepackCostUnit = "Case" | "Pallet";
+
+export const REPACK_COST_UNITS: RepackCostUnit[] = ["Case", "Pallet"];
+
 // First section on the Costs page - what each repack movement/action
-// costs, and the unit it's billed per (per box, per case, etc.).
+// costs, and the unit it's billed per.
 export interface RepackCost {
   id: string;
   action: string | null;
   cost: number | null;
-  unit: string | null;
+  unit: RepackCostUnit | null;
   position: number;
   created_at: string;
   updated_at: string;
