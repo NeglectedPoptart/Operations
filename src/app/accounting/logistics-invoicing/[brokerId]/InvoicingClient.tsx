@@ -3,6 +3,7 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import {
+  parseAmpPdfText,
   parseDsvPdfText,
   parseGriffithPdfText,
   parseJearPastedTable,
@@ -21,6 +22,7 @@ import { deleteInvoiceStatement, extractPdfText, importInvoices, updateInvoiceSt
 // tab-separated paste" step every other carrier still needs. Keyed on the
 // broker's exact name (see Broker rows in the brokers table).
 const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
+  ["AMP", parseAmpPdfText],
   ["DSV Logistics LLC", parseDsvPdfText],
   ["GRIFFITH", parseGriffithPdfText],
   ["JEAR", parseJearPastedTable],
@@ -28,11 +30,11 @@ const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
   ["PGTRANS", parsePgtransPastedTable],
 ]);
 
-// Only DSV, Griffith, and Jerue send an actual PDF - Jear's own format is
-// an emailed Excel table and PGTrans's is a spreadsheet export, so there's
-// nothing to upload for either (paste works the same for a spreadsheet
-// copy as it does for an emailed table).
-const PDF_CARRIERS = new Set(["DSV Logistics LLC", "GRIFFITH", "JERUE"]);
+// Only AMP, DSV, Griffith, and Jerue send an actual PDF - Jear's own format
+// is an emailed Excel table and PGTrans's is a spreadsheet export, so
+// there's nothing to upload for either (paste works the same for a
+// spreadsheet copy as it does for an emailed table).
+const PDF_CARRIERS = new Set(["AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE"]);
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 

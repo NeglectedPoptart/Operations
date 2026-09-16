@@ -257,3 +257,55 @@ export function parsePgtransPastedTable(raw: string): ParseResult {
   }
   return { rows };
 }
+
+// AMP's ("A.M.P. Carriers, LLC") "A/R Aging QuickZoom" PDF - a QuickBooks
+// report wide enough that printing it to PDF splits it across two pages:
+// Type/Date/Num/P.O. #/Name/Aging on page 1, Open Balance alone on page 2,
+// in the same row order. unpdf extracts both pages in normal reading order
+// one after the other (verified directly against a real export - no column
+// scrambling like DSV's PDF), so each invoice row is matched to its amount
+// positionally: the Nth invoice line pairs with the Nth dollar amount after
+// the "Open Balance" header. P.O. # is anchored the same way Griffith's is
+// (against the literal "Harvest Best Inc" customer name) since it can
+// itself contain a space, e.g. "34933 B".
+const AMP_LINE_RE = /^Invoice\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\S+)\s+(.+?)\s+Harvest Best Inc\s+\d+\s*$/;
+
+export function parseAmpPdfText(text: string): ParseResult {
+  const lines = text.split(/\r?\n/).map((l) => l.trim());
+
+  const invoiceRows = lines
+    .map((line) => line.match(AMP_LINE_RE))
+    .filter((m): m is RegExpMatchArray => m !== null)
+    .map((m) => ({
+      invoice_no: m[2],
+      invoice_date: parseUsDateToIso(m[1]),
+      customer_po: m[3].trim(),
+    }));
+
+  if (invoiceRows.length === 0) {
+    return { rows: [], error: "Couldn't find any invoice rows in this AMP statement - try pasting the text instead." };
+  }
+
+  const balanceHeaderIdx = lines.findIndex((l) => l === "Open Balance");
+  if (balanceHeaderIdx === -1) {
+    return {
+      rows: [],
+      error: "Couldn't find the Open Balance column in this AMP statement - try pasting the text instead.",
+    };
+  }
+  const amounts = lines
+    .slice(balanceHeaderIdx + 1)
+    .filter((l) => /^[\d,]+\.\d{2}$/.test(l))
+    .slice(0, invoiceRows.length)
+    .map(parseMoney);
+
+  if (amounts.length !== invoiceRows.length) {
+    return {
+      rows: [],
+      error: "Couldn't match every invoice to an Open Balance amount - try pasting the text instead.",
+    };
+  }
+
+  const rows: ParsedInvoiceRow[] = invoiceRows.map((r, i) => ({ ...r, amount: amounts[i] }));
+  return { rows };
+}
