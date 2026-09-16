@@ -36,6 +36,7 @@ export async function updateEmployee(
       | "start_date"
       | "status"
       | "direct_manager"
+      | "office_location"
       | "personal_number"
       | "work_cell_number"
       | "office_number"

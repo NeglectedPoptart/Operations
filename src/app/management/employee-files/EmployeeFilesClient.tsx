@@ -5,18 +5,21 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateSlash, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
+import { formatPhoneNumber } from "@/lib/phone";
 import type { Role } from "@/lib/roles";
 import { updateDevice } from "@/app/supreme/devices/actions";
 import {
   DEVICE_CHECKOUT_CONDITIONS,
   DEVICE_RETURN_CONDITIONS,
   DEVICE_TYPES,
+  EMPLOYEE_OFFICE_LOCATIONS,
   EMPLOYEE_STATUSES,
   type Device,
   type Employee,
   type EmployeeDevice,
   type EmployeeDocument,
   type EmployeeDocumentCategory,
+  type EmployeeOfficeLocation,
   type EmployeeStatus,
 } from "@/lib/types";
 import {
@@ -399,6 +402,7 @@ function EmployeeDetail({
 
   const today = todayISO();
   const upcoming = employee.start_date ? nextAnniversary(employee.start_date, today) : null;
+  const isMexicoOffice = employee.office_location === "Guadalajara, MX";
   const employeeDocs = documents.filter((d) => d.employee_id === employee.id);
   const employeeDevices = devices.filter((d) => d.employee_id === employee.id);
   const assignedToMe = deviceRegistry.filter((d) => d.assigned_to === employee.id);
@@ -459,18 +463,43 @@ function EmployeeDetail({
           />
         </label>
         <label className="block text-sm">
+          Office Location
+          <select
+            value={employee.office_location ?? ""}
+            onChange={(e) => onUpdate(employee.id, { office_location: (e.target.value || null) as EmployeeOfficeLocation | null })}
+            className={`${field} mt-1`}
+          >
+            <option value="">Not set</option>
+            {EMPLOYEE_OFFICE_LOCATIONS.map((loc) => (
+              <option key={loc} value={loc}>
+                {loc}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
           Personal Number
           <input
+            key={`personal-${employee.personal_number ?? ""}`}
             defaultValue={employee.personal_number ?? ""}
-            onBlur={(e) => onUpdate(employee.id, { personal_number: e.target.value || null })}
+            placeholder={isMexicoOffice ? "xx xxxx xxxx" : "(xxx) xxx-xxxx"}
+            onBlur={(e) => {
+              const formatted = formatPhoneNumber(e.target.value, isMexicoOffice);
+              onUpdate(employee.id, { personal_number: formatted || null });
+            }}
             className={`${field} mt-1`}
           />
         </label>
         <label className="block text-sm">
           Work Cell Number
           <input
+            key={`work-cell-${employee.work_cell_number ?? ""}`}
             defaultValue={employee.work_cell_number ?? ""}
-            onBlur={(e) => onUpdate(employee.id, { work_cell_number: e.target.value || null })}
+            placeholder={isMexicoOffice ? "xx xxxx xxxx" : "(xxx) xxx-xxxx"}
+            onBlur={(e) => {
+              const formatted = formatPhoneNumber(e.target.value, isMexicoOffice);
+              onUpdate(employee.id, { work_cell_number: formatted || null });
+            }}
             className={`${field} mt-1`}
           />
         </label>

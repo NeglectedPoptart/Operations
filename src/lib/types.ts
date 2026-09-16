@@ -1354,6 +1354,15 @@ export const EMPLOYEE_STATUSES: { value: EmployeeStatus; label: string }[] = [
   { value: "terminated", label: "Terminated" },
 ];
 
+export type EmployeeOfficeLocation = "Monterey, CA" | "Pharr, TX" | "Guadalajara, MX" | "San Antonio, TX";
+
+export const EMPLOYEE_OFFICE_LOCATIONS: EmployeeOfficeLocation[] = [
+  "Monterey, CA",
+  "Pharr, TX",
+  "Guadalajara, MX",
+  "San Antonio, TX",
+];
+
 export interface Employee {
   id: string;
   name: string;
@@ -1362,6 +1371,7 @@ export interface Employee {
   start_date: string | null;
   status: EmployeeStatus;
   direct_manager: string | null;
+  office_location: EmployeeOfficeLocation | null;
   personal_number: string | null;
   work_cell_number: string | null;
   office_number: string | null;
