@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import PhoneInput from "@/components/PhoneInput";
+import PhotoCropModal from "@/components/PhotoCropModal";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateSlash, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
@@ -383,6 +384,7 @@ function PhotoSection({
 }) {
   const [open, setOpen] = useState(false);
   const [urls, setUrls] = useState<Record<string, string>>({});
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const key = `${employeeId}:photo`;
 
   useEffect(() => {
@@ -420,7 +422,7 @@ function PhotoSection({
               onChange={(e: ChangeEvent<HTMLInputElement>) => {
                 const file = e.target.files?.[0];
                 e.target.value = "";
-                if (file) onUploadDoc(employeeId, "photo", file);
+                if (file) setPendingFile(file);
               }}
             />
           </label>
@@ -429,6 +431,18 @@ function PhotoSection({
           </button>
         </div>
       </div>
+      {pendingFile && (
+        <PhotoCropModal
+          file={pendingFile}
+          saving={uploadingCategory === key}
+          onCancel={() => setPendingFile(null)}
+          onSave={(cropped) => {
+            onUploadDoc(employeeId, "photo", cropped);
+            setPendingFile(null);
+            setOpen(true);
+          }}
+        />
+      )}
       {open &&
         (docs.length > 0 ? (
           <div className="mt-2 flex flex-wrap gap-3">
