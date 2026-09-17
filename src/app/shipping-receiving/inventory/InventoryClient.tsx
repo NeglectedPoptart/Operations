@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import type { SrInventoryLot, SrItem, SrLotStatus, SrVendor } from "@/lib/types";
+import type { SrInventoryLot, SrItem, SrLotStatus, SrPoLine, SrPurchaseOrder, SrSalesOrder, SrSoLine, SrVendor } from "@/lib/types";
 import {
   addLot,
   createItem,
@@ -14,6 +14,7 @@ import {
   updateLot,
   updateVendor,
 } from "./actions";
+import WarehouseDeskTable from "./WarehouseDeskTable";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -32,10 +33,16 @@ export default function InventoryClient({
   initialItems,
   initialVendors,
   initialLots,
+  purchaseOrders,
+  salesOrders,
 }: {
   initialItems: SrItem[];
   initialVendors: SrVendor[];
   initialLots: SrInventoryLot[];
+  purchaseOrders: SrPurchaseOrder[];
+  poLines: SrPoLine[];
+  salesOrders: SrSalesOrder[];
+  soLines: SrSoLine[];
 }) {
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
@@ -123,8 +130,10 @@ export default function InventoryClient({
   const summary = useMemo(() => {
     const totalOnHand = lots.reduce((s, l) => s + (l.qty_on_hand ?? 0), 0);
     const available = lots.filter((l) => l.status === "available").length;
-    return { totalLots: lots.length, totalOnHand, available };
-  }, [lots]);
+    const openPos = purchaseOrders.filter((po) => po.status === "open" || po.status === "partial").length;
+    const openSos = salesOrders.filter((so) => so.status === "open").length;
+    return { totalLots: lots.length, totalOnHand, available, openPos, openSos };
+  }, [lots, purchaseOrders, salesOrders]);
 
   return (
     <div className="space-y-6">
@@ -146,12 +155,26 @@ export default function InventoryClient({
         <span className="rounded-full bg-black/5 px-3 py-1 text-sm dark:bg-white/10">
           {summary.totalOnHand.toLocaleString()} total qty on hand
         </span>
+        <span className="rounded-full bg-black/5 px-3 py-1 text-sm dark:bg-white/10">
+          Open Purchase Orders = {summary.openPos}
+        </span>
+        <span className="rounded-full bg-black/5 px-3 py-1 text-sm dark:bg-white/10">
+          Open Sales Orders = {summary.openSos}
+        </span>
       </div>
+
+      {/* Warehouse Desk -------------------------------------------------------- */}
+      <section className="space-y-2">
+        <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
+          Warehouse Desk
+        </h2>
+        <WarehouseDeskTable lots={lots} items={items} />
+      </section>
 
       {/* Inventory Lots ------------------------------------------------------ */}
       <section className="space-y-2">
         <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
-          Inventory Lots
+          Manage Lots
         </h2>
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
           <table className="w-full text-sm">
@@ -304,6 +327,9 @@ export default function InventoryClient({
             <thead className="bg-black/5 text-left dark:bg-white/5">
               <tr>
                 <th className="px-2 py-2">Name</th>
+                <th className="px-2 py-2">Commodity</th>
+                <th className="px-2 py-2">Variety</th>
+                <th className="px-2 py-2">Grade</th>
                 <th className="px-2 py-2">Pack Style</th>
                 <th className="px-2 py-2">Size</th>
                 <th className="px-2 py-2">Unit</th>
@@ -317,6 +343,27 @@ export default function InventoryClient({
                 <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
                   <td className="min-w-[8rem] px-1 py-1">
                     <input defaultValue={item.name} onBlur={(e) => handleItemSave(item.id, { name: e.target.value })} className={field} />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1">
+                    <input
+                      defaultValue={item.commodity ?? ""}
+                      onBlur={(e) => handleItemSave(item.id, { commodity: e.target.value || null })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[6rem] px-1 py-1">
+                    <input
+                      defaultValue={item.variety ?? ""}
+                      onBlur={(e) => handleItemSave(item.id, { variety: e.target.value || null })}
+                      className={field}
+                    />
+                  </td>
+                  <td className="min-w-[5rem] px-1 py-1">
+                    <input
+                      defaultValue={item.grade ?? ""}
+                      onBlur={(e) => handleItemSave(item.id, { grade: e.target.value || null })}
+                      className={field}
+                    />
                   </td>
                   <td className="min-w-[6rem] px-1 py-1">
                     <input
@@ -355,7 +402,7 @@ export default function InventoryClient({
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={10} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     No items yet.
                   </td>
                 </tr>

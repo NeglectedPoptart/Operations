@@ -23,7 +23,17 @@ export async function createItem(name: string) {
 
 export async function updateItem(
   id: string,
-  patch: { name?: string; pack_style?: string | null; size?: string | null; unit?: string | null; category?: string | null; active?: boolean },
+  patch: {
+    name?: string;
+    commodity?: string | null;
+    variety?: string | null;
+    grade?: string | null;
+    pack_style?: string | null;
+    size?: string | null;
+    unit?: string | null;
+    category?: string | null;
+    active?: boolean;
+  },
 ) {
   const supabase = await createClient();
   const { error } = await supabase.from("sr_items").update(patch).eq("id", id);

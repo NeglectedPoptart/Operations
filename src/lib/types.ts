@@ -1122,6 +1122,11 @@ export type GrowerGrade = "A" | "B" | "C" | "D" | "F" | "N/A";
 export interface SrItem {
   id: string;
   name: string;
+  // Additive - the Warehouse Desk view groups by these when set, falling
+  // back to name/pack_style/size for items that haven't been split out yet.
+  commodity: string | null;
+  variety: string | null;
+  grade: string | null;
   pack_style: string | null;
   size: string | null;
   unit: string | null;
