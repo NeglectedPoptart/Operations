@@ -1127,8 +1127,14 @@ export interface SrItem {
   commodity: string | null;
   variety: string | null;
   grade: string | null;
+  label: string | null;
+  // One of "Carton" | "Sack" | "Plastic" | "Bin" (DB check constraint), or
+  // null for items not yet classified.
   pack_style: string | null;
   size: string | null;
+  // Manually entered per item - how many cases/units make up a full pallet.
+  // Used for PO/Lot entry math, not derived from anything else.
+  qty_per_pallet: number | null;
   unit: string | null;
   category: string | null;
   active: boolean;

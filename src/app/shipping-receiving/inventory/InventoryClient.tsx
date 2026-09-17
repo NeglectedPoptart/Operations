@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import { daysSince } from "@/lib/dates";
 import type { SrInventoryLot, SrItem, SrLotStatus, SrPoLine, SrPurchaseOrder, SrSalesOrder, SrSoLine, SrVendor } from "@/lib/types";
 import {
   addLot,
@@ -24,6 +25,8 @@ const LOT_STATUSES: { value: SrLotStatus; label: string }[] = [
   { value: "shipped", label: "Shipped" },
   { value: "adjusted", label: "Adjusted" },
 ];
+
+const PACK_STYLES = ["Carton", "Sack", "Plastic", "Bin"];
 
 function itemLabel(item: SrItem): string {
   return [item.name, item.pack_style, item.size].filter(Boolean).join(" - ");
@@ -184,6 +187,7 @@ export default function InventoryClient({
                 <th className="px-2 py-2">Lot #</th>
                 <th className="px-2 py-2">Vendor</th>
                 <th className="px-2 py-2">Received</th>
+                <th className="px-2 py-2">Age</th>
                 <th className="px-2 py-2">Qty Rec.</th>
                 <th className="px-2 py-2">Qty On Hand</th>
                 <th className="px-2 py-2">Unit Cost</th>
@@ -238,6 +242,12 @@ export default function InventoryClient({
                       onBlur={(e) => handleLotSave(lot.id, { received_date: e.target.value || null })}
                       className={field}
                     />
+                  </td>
+                  <td className="px-2 py-1.5 text-black/60 dark:text-white/60">
+                    {(() => {
+                      const days = daysSince(lot.received_date);
+                      return days === null ? "-" : `${days}d`;
+                    })()}
                   </td>
                   <td className="min-w-[5rem] px-1 py-1">
                     <input
@@ -302,7 +312,7 @@ export default function InventoryClient({
               ))}
               {lots.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={12} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     No inventory lots yet.
                   </td>
                 </tr>
@@ -330,8 +340,10 @@ export default function InventoryClient({
                 <th className="px-2 py-2">Commodity</th>
                 <th className="px-2 py-2">Variety</th>
                 <th className="px-2 py-2">Grade</th>
+                <th className="px-2 py-2">Label</th>
                 <th className="px-2 py-2">Pack Style</th>
                 <th className="px-2 py-2">Size</th>
+                <th className="px-2 py-2">Qty/Pallet</th>
                 <th className="px-2 py-2">Unit</th>
                 <th className="px-2 py-2">Category</th>
                 <th className="px-2 py-2">Active</th>
@@ -367,13 +379,36 @@ export default function InventoryClient({
                   </td>
                   <td className="min-w-[6rem] px-1 py-1">
                     <input
-                      defaultValue={item.pack_style ?? ""}
-                      onBlur={(e) => handleItemSave(item.id, { pack_style: e.target.value })}
+                      defaultValue={item.label ?? ""}
+                      onBlur={(e) => handleItemSave(item.id, { label: e.target.value || null })}
                       className={field}
                     />
                   </td>
+                  <td className="min-w-[6rem] px-1 py-1">
+                    <select
+                      value={item.pack_style ?? ""}
+                      onChange={(e) => handleItemSave(item.id, { pack_style: e.target.value || null })}
+                      className={field}
+                    >
+                      <option value="">--</option>
+                      {PACK_STYLES.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td className="min-w-[5rem] px-1 py-1">
                     <input defaultValue={item.size ?? ""} onBlur={(e) => handleItemSave(item.id, { size: e.target.value })} className={field} />
+                  </td>
+                  <td className="min-w-[5rem] px-1 py-1">
+                    <input
+                      type="number"
+                      step="1"
+                      defaultValue={item.qty_per_pallet ?? ""}
+                      onBlur={(e) => handleItemSave(item.id, { qty_per_pallet: e.target.value === "" ? null : Number(e.target.value) })}
+                      className={field}
+                    />
                   </td>
                   <td className="min-w-[5rem] px-1 py-1">
                     <input defaultValue={item.unit ?? ""} onBlur={(e) => handleItemSave(item.id, { unit: e.target.value })} className={field} />
@@ -402,7 +437,7 @@ export default function InventoryClient({
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={12} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     No items yet.
                   </td>
                 </tr>

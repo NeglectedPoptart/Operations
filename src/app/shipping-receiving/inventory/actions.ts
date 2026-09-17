@@ -28,8 +28,10 @@ export async function updateItem(
     commodity?: string | null;
     variety?: string | null;
     grade?: string | null;
+    label?: string | null;
     pack_style?: string | null;
     size?: string | null;
+    qty_per_pallet?: number | null;
     unit?: string | null;
     category?: string | null;
     active?: boolean;
