@@ -345,7 +345,12 @@ export default function ArrivalsClient({
         </div>
       </div>
 
-      <UpdateStatusButton pageKey="mx-arrivals" onMarked={() => notifyArrivalsUpdated().catch(() => {})} />
+      <UpdateStatusButton
+        pageKey="mx-arrivals"
+        idleLabel="Click to Report Updated"
+        activeLabel="Reported Updated"
+        onMarked={() => notifyArrivalsUpdated().catch(() => {})}
+      />
 
       {showPaste && (
         <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">

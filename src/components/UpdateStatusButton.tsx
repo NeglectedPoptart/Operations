@@ -14,6 +14,8 @@ export default function UpdateStatusButton({
   canEdit = true,
   readOnly = false,
   onMarked,
+  idleLabel = "Mark as Up to Date",
+  activeLabel = "Up to Date",
 }: {
   pageKey: string;
   // Some pages restrict who's allowed to confirm up-to-date (e.g. FOB Pharr
@@ -30,6 +32,12 @@ export default function UpdateStatusButton({
   // uses this to fan out a notification to everyone with Mexico access,
   // without baking that page-specific behavior into this shared component.
   onMarked?: () => void;
+  // Overrides the generic "Mark as Up to Date" / "Up to Date" wording for
+  // pages where that phrasing doesn't fit (e.g. Arrivals reads as "report an
+  // update" rather than "confirm nothing changed"). The re-clickable/notify
+  // mechanics are identical either way - this only changes the label.
+  idleLabel?: string;
+  activeLabel?: string;
 }) {
   const [markedAt, setMarkedAt] = useState<string | null>(null);
   const [markedByEmail, setMarkedByEmail] = useState<string | null>(null);
@@ -98,10 +106,10 @@ export default function UpdateStatusButton({
     >
       {isUpToDateToday ? (
         <>
-          ✓ Up to Date{markedByEmail ? ` — ${markedByEmail}` : ""} · {formatTimestamp(markedAt)}
+          ✓ {activeLabel}{markedByEmail ? ` — ${markedByEmail}` : ""} · {formatTimestamp(markedAt)}
         </>
       ) : (
-        <>⚠ Mark as Up to Date</>
+        <>⚠ {idleLabel}</>
       )}
     </button>
   );
