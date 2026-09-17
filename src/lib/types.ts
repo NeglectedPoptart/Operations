@@ -306,11 +306,22 @@ export interface WorkflowTask {
 
 // Management: Schedules ----------------------------------------------------
 
+export type RoleScheduleAssignmentType = "person" | "role";
+
 export interface RoleSchedule {
   id: string;
   department: string;
   role_name: string;
   hours_text: string;
+  assignment_type: RoleScheduleAssignmentType;
+  // Set only when assignment_type is "person".
+  employee_id: string | null;
+  // Replace hours_text going forward. week_a is the default/every-week
+  // pattern; week_b, when filled in, is what alternates in on even-numbered
+  // weeks (see weekNumberOf in lib/dates.ts) - a role tile just never fills
+  // it in, so it reads the same every week.
+  week_a_hours_text: string | null;
+  week_b_hours_text: string | null;
   position: number;
   created_at: string;
   updated_at: string;
