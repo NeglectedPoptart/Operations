@@ -11,7 +11,8 @@ import {
   prevWeekStart,
   weekNumberOf,
 } from "@/lib/dates";
-import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
+import { copyOrDownloadPng } from "@/lib/fobPricing";
+import { renderScheduleImagePng, type ScheduleWeekRow } from "@/lib/scheduleImage";
 import {
   SCHEDULE_DAY_KEYS,
   SCHEDULE_DAY_LABELS,
@@ -98,6 +99,24 @@ function resolveDateHours(
   const exception = findExceptionFor(exceptions, dateIso);
   if (exception) return { text: exception.hours_text ?? "", isException: true };
   return { text: regularHours, isException: false };
+}
+
+// Shared by the on-screen generated calendar and the per-row Copy as Image
+// button, so what you copy is always exactly what's on screen.
+function buildWeekRows(schedule: RoleSchedule, exceptions: ScheduleException[], weeksOut: number): ScheduleWeekRow[] {
+  const start = currentWeekStart();
+  return Array.from({ length: weeksOut }, (_, i) => {
+    const weekStart = addDays(start, i * 7);
+    const isEven = weekNumberOf(weekStart) % 2 === 0;
+    const { days } = resolveDaysForWeek(schedule, isEven);
+    return {
+      label: formatWeekRangeMonToSat(weekStart),
+      days: SCHEDULE_DAY_KEYS.map((d) => {
+        const dateIso = addDays(weekStart, DAY_OFFSET[d]);
+        return resolveDateHours(schedule, exceptions, dateIso, days[d] ?? "");
+      }),
+    };
+  });
 }
 
 // Condenses a day grid into a short line like "Mon-Fri: 8:00 AM - 4:00 PM,
@@ -399,20 +418,19 @@ function AddExceptionForm({ onAdd }: { onAdd: (startDate: string, endDate: strin
 function GeneratedCalendar({
   schedule,
   exceptions,
+  weeksOut,
+  setWeeksOut,
   onAddException,
   onDeleteException,
 }: {
   schedule: RoleSchedule;
   exceptions: ScheduleException[];
+  weeksOut: number;
+  setWeeksOut: (n: number) => void;
   onAddException: (startDate: string, endDate: string, hoursText: string) => void;
   onDeleteException: (id: string) => void;
 }) {
-  const [weeksOut, setWeeksOut] = useState(DEFAULT_WEEKS_OUT);
-
-  const weeks = useMemo(() => {
-    const start = currentWeekStart();
-    return Array.from({ length: weeksOut }, (_, i) => addDays(start, i * 7));
-  }, [weeksOut]);
+  const weeks = useMemo(() => buildWeekRows(schedule, exceptions, weeksOut), [schedule, exceptions, weeksOut]);
 
   return (
     <div className="space-y-4">
@@ -442,30 +460,20 @@ function GeneratedCalendar({
               </tr>
             </thead>
             <tbody>
-              {weeks.map((weekStart) => {
-                const isEven = weekNumberOf(weekStart) % 2 === 0;
-                const { days } = resolveDaysForWeek(schedule, isEven);
-                return (
-                  <tr key={weekStart} className="border-t border-black/10 dark:border-white/10">
-                    <td className="px-2 py-1.5 font-medium text-green-700 dark:text-green-400">
-                      {formatWeekRangeMonToSat(weekStart)}
+              {weeks.map((week) => (
+                <tr key={week.label} className="border-t border-black/10 dark:border-white/10">
+                  <td className="px-2 py-1.5 font-medium text-green-700 dark:text-green-400">{week.label}</td>
+                  {week.days.map((cell, i) => (
+                    <td
+                      key={SCHEDULE_DAY_KEYS[i]}
+                      className={cell.isException ? "px-2 py-1.5 font-semibold text-amber-600 dark:text-amber-400" : "px-2 py-1.5"}
+                      title={cell.isException ? "Exception" : undefined}
+                    >
+                      {cell.text || ""}
                     </td>
-                    {SCHEDULE_DAY_KEYS.map((d) => {
-                      const dateIso = addDays(weekStart, DAY_OFFSET[d]);
-                      const { text, isException } = resolveDateHours(schedule, exceptions, dateIso, days[d] ?? "");
-                      return (
-                        <td
-                          key={d}
-                          className={isException ? "px-2 py-1.5 font-semibold text-amber-600 dark:text-amber-400" : "px-2 py-1.5"}
-                          title={isException ? "Exception" : undefined}
-                        >
-                          {text || ""}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
+                  ))}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -523,6 +531,8 @@ function ScheduleRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [weeksOut, setWeeksOut] = useState(DEFAULT_WEEKS_OUT);
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [state, setState] = useState<ScheduleFormState>(() => scheduleToFormState(schedule));
 
   function startEdit() {
@@ -534,6 +544,30 @@ function ScheduleRow({
     if (!formIsValid(state)) return;
     onSave(schedule.id, inputFromState(state));
     setEditing(false);
+  }
+
+  async function handleCopyImage() {
+    try {
+      const isPersonType = schedule.assignment_type === "person";
+      const employeeName = employees.find((e) => e.id === schedule.employee_id)?.name ?? "Unassigned";
+      const heading = isPersonType ? employeeName : schedule.role_name;
+      const subheading = [isPersonType ? schedule.role_name : null, schedule.department].filter(Boolean).join(" • ");
+      const blob = await renderScheduleImagePng({
+        heading,
+        subheading: subheading || undefined,
+        dayLabels: SCHEDULE_DAY_KEYS.map((d) => SCHEDULE_DAY_LABELS[d]),
+        weeks: isPersonType
+          ? buildWeekRows(schedule, exceptions.filter((e) => e.role_schedule_id === schedule.id), weeksOut)
+          : undefined,
+        staticHours: isPersonType ? undefined : (schedule.week_a_hours_text ?? undefined),
+      });
+      const filename = `${heading.toLowerCase().replace(/\s+/g, "-")}-schedule.png`;
+      const result = await copyOrDownloadPng(blob, filename);
+      setImageStatus(result === "copied" ? "Copied!" : "Downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
   }
 
   if (editing) {
@@ -590,6 +624,12 @@ function ScheduleRow({
           </p>
         </td>
         <td className="whitespace-nowrap px-3 py-2 text-right">
+          <button
+            onClick={handleCopyImage}
+            className="mr-3 text-xs font-medium text-teal-700 hover:underline dark:text-teal-400"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
           {isPerson && (
             <button
               onClick={() => setShowCalendar((v) => !v)}
@@ -609,6 +649,8 @@ function ScheduleRow({
             <GeneratedCalendar
               schedule={schedule}
               exceptions={exceptions.filter((e) => e.role_schedule_id === schedule.id)}
+              weeksOut={weeksOut}
+              setWeeksOut={setWeeksOut}
               onAddException={(startDate, endDate, hoursText) => onAddException(schedule.id, startDate, endDate, hoursText)}
               onDeleteException={onDeleteException}
             />
@@ -687,7 +729,6 @@ export default function SchedulesClient({
   const [showNewDept, setShowNewDept] = useState(false);
   const [newDeptState, setNewDeptState] = useState<ScheduleFormState>(() => emptyForm(""));
   const [weekStart, setWeekStart] = useState(() => currentWeekStart());
-  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const weekNumber = weekNumberOf(weekStart);
   const isEvenWeek = weekNumber % 2 === 0;
@@ -765,49 +806,16 @@ export default function SchedulesClient({
     setShowNewDept(false);
   }
 
-  async function handleCopyImage() {
-    try {
-      const blocks: CanvasBlock[] = departments.map((dept) => ({
-        title: dept,
-        headerColor: "#8DC63F",
-        columnHeaders: ["Name / Role", "Hours"],
-        rows: (byDepartment.get(dept) ?? []).map((s) => {
-          const employee = employees.find((e) => e.id === s.employee_id);
-          const isPerson = s.assignment_type === "person";
-          const name = isPerson ? (employee?.name ?? "Unassigned") : s.role_name;
-          const nameCell = isPerson && s.role_name ? `${name} (${s.role_name})` : name;
-          const { text: hoursText } = scheduleSummaryForWeek(s, isEvenWeek);
-          return { cells: [nameCell, hoursText || "-"] };
-        }),
-      }));
-      const title = `Schedules - Week ${weekNumber} (${formatWeekLabel(weekStart)})`;
-      const blob = await renderPriceSheetPng({ title, message: "", blocks, direction: "column" });
-      const result = await copyOrDownloadPng(blob, `schedules-week-${weekNumber}.png`);
-      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
-      setTimeout(() => setImageStatus(null), 2500);
-    } catch {
-      alert("Could not create the image - try again.");
-    }
-  }
-
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Schedules</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleCopyImage}
-            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
-          >
-            {imageStatus ?? "Copy as Image"}
-          </button>
-          <button
-            onClick={() => setShowNewDept((s) => !s)}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-          >
-            {showNewDept ? "Cancel" : "+ Add Department"}
-          </button>
-        </div>
+        <button
+          onClick={() => setShowNewDept((s) => !s)}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+        >
+          {showNewDept ? "Cancel" : "+ Add Department"}
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
