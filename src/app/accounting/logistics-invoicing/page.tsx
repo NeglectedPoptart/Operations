@@ -34,10 +34,18 @@ export default async function InvoicingHomePage() {
       doneCounts[r.broker_id] = (doneCounts[r.broker_id] ?? 0) + 1;
     } else {
       pendingCounts[r.broker_id] = (pendingCounts[r.broker_id] ?? 0) + 1;
+    }
+    if (r.flagged) flaggedCounts[r.broker_id] = (flaggedCounts[r.broker_id] ?? 0) + 1;
+
+    // Only counts a row as overdue while it still represents money owed -
+    // not yet Done, or Done but flagged (Statement Checker found it still
+    // carrying a balance despite being marked Done). A Done, unflagged row
+    // is fully paid, so its age no longer matters.
+    const stillOwed = r.status !== "done" || r.flagged;
+    if (stillOwed) {
       const age = daysSince(r.invoice_date);
       if (age !== null && age > OVERDUE_DAYS) overdueCounts[r.broker_id] = (overdueCounts[r.broker_id] ?? 0) + 1;
     }
-    if (r.flagged) flaggedCounts[r.broker_id] = (flaggedCounts[r.broker_id] ?? 0) + 1;
   }
 
   return (
