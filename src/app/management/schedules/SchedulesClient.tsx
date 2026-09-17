@@ -20,11 +20,33 @@ import {
   type RoleScheduleAssignmentType,
   type ScheduleDayHours,
   type ScheduleDayKey,
+  type ScheduleException,
 } from "@/lib/types";
-import { createRoleSchedule, deleteRoleSchedule, updateRoleSchedule, type NewRoleScheduleInput } from "./actions";
+import {
+  createRoleSchedule,
+  createScheduleException,
+  deleteRoleSchedule,
+  deleteScheduleException,
+  updateRoleSchedule,
+  type NewRoleScheduleInput,
+} from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 const DEFAULT_WEEKS_OUT = 6;
+
+// Monday = 0 .. Saturday = 5, for turning a day-of-week key into an actual
+// calendar date within a given week.
+const DAY_OFFSET: Record<ScheduleDayKey, number> = { mon: 0, tue: 1, wed: 2, thu: 3, fri: 4, sat: 5 };
+
+function formatOrdinalDate(dateIso: string): string {
+  const d = new Date(`${dateIso}T00:00:00Z`);
+  const month = d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+  const day = d.getUTCDate();
+  const j = day % 10;
+  const k = day % 100;
+  const suffix = j === 1 && k !== 11 ? "st" : j === 2 && k !== 12 ? "nd" : j === 3 && k !== 13 ? "rd" : "th";
+  return `${month} ${day}${suffix}`;
+}
 
 function emptyDayGrid(): Record<ScheduleDayKey, string> {
   return { mon: "", tue: "", wed: "", thu: "", fri: "", sat: "" };
@@ -57,6 +79,25 @@ function resolveHoursForWeek(schedule: RoleSchedule, isEvenWeek: boolean): { tex
 function resolveDaysForWeek(schedule: RoleSchedule, isEvenWeek: boolean): { days: ScheduleDayHours; usingWeekB: boolean } {
   const usingWeekB = isEvenWeek && hasAnyDay(schedule.week_b_days);
   return { days: (usingWeekB ? schedule.week_b_days : schedule.week_a_days) ?? {}, usingWeekB };
+}
+
+// The most recently added exception covering this exact date wins over the
+// regular Week A/B pattern - a blank hours_text means the day is off.
+function findExceptionFor(exceptions: ScheduleException[], dateIso: string): ScheduleException | null {
+  const matches = exceptions.filter((e) => e.start_date <= dateIso && dateIso <= e.end_date);
+  if (matches.length === 0) return null;
+  return matches.reduce((latest, e) => (e.created_at > latest.created_at ? e : latest));
+}
+
+function resolveDateHours(
+  schedule: RoleSchedule,
+  exceptions: ScheduleException[],
+  dateIso: string,
+  regularHours: string,
+): { text: string; isException: boolean } {
+  const exception = findExceptionFor(exceptions, dateIso);
+  if (exception) return { text: exception.hours_text ?? "", isException: true };
+  return { text: regularHours, isException: false };
 }
 
 // Condenses a day grid into a short line like "Mon-Fri: 8:00 AM - 4:00 PM,
@@ -301,10 +342,71 @@ function ScheduleForm({
   );
 }
 
+function AddExceptionForm({ onAdd }: { onAdd: (startDate: string, endDate: string, hoursText: string) => void }) {
+  const [startDate, setStartDate] = useState(currentWeekStart());
+  const [endDate, setEndDate] = useState(currentWeekStart());
+  const [hoursText, setHoursText] = useState("");
+
+  function submit() {
+    if (!startDate || !endDate) return;
+    onAdd(startDate, endDate > startDate ? endDate : startDate, hoursText);
+    setHoursText("");
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2">
+      <label className="text-[11px] font-medium text-black/60 dark:text-white/60">
+        From
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="mt-0.5 block rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+        />
+      </label>
+      <label className="text-[11px] font-medium text-black/60 dark:text-white/60">
+        To
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="mt-0.5 block rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+        />
+      </label>
+      <label className="text-[11px] font-medium text-black/60 dark:text-white/60">
+        Hours (blank = day off)
+        <input
+          value={hoursText}
+          onChange={(e) => setHoursText(e.target.value)}
+          placeholder="e.g. 7am-3pm"
+          className="mt-0.5 block w-32 rounded border border-gray-300 bg-white px-1.5 py-1 text-xs text-black"
+        />
+      </label>
+      <button
+        onClick={submit}
+        className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700"
+      >
+        Add Exception
+      </button>
+    </div>
+  );
+}
+
 // The "generate N weeks out" calendar - one row per week starting this
-// week, columns Monday-Saturday, each cell resolved from Week A/B the same
-// way the collapsed row summary is.
-function GeneratedCalendar({ schedule }: { schedule: RoleSchedule }) {
+// week, columns Monday-Saturday, each cell resolved from Week A/B (or an
+// exception covering that exact date, if one exists) the same way the
+// collapsed row summary is.
+function GeneratedCalendar({
+  schedule,
+  exceptions,
+  onAddException,
+  onDeleteException,
+}: {
+  schedule: RoleSchedule;
+  exceptions: ScheduleException[];
+  onAddException: (startDate: string, endDate: string, hoursText: string) => void;
+  onDeleteException: (id: string) => void;
+}) {
   const [weeksOut, setWeeksOut] = useState(DEFAULT_WEEKS_OUT);
 
   const weeks = useMemo(() => {
@@ -313,50 +415,86 @@ function GeneratedCalendar({ schedule }: { schedule: RoleSchedule }) {
   }, [weeksOut]);
 
   return (
-    <div className="space-y-2">
-      <label className="text-xs font-medium text-black/60 dark:text-white/60">
-        Generate
-        <input
-          type="number"
-          min={1}
-          max={26}
-          value={weeksOut}
-          onChange={(e) => setWeeksOut(Math.max(1, Math.min(26, Number(e.target.value) || 1)))}
-          className="mx-2 w-16 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black"
-        />
-        weeks out
-      </label>
-      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-        <table className="w-full text-xs">
-          <thead className="bg-black/5 text-left dark:bg-white/5">
-            <tr>
-              <th className="px-2 py-1.5" />
-              {SCHEDULE_DAY_KEYS.map((d) => (
-                <th key={d} className="px-2 py-1.5">
-                  {SCHEDULE_DAY_LABELS[d]}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {weeks.map((weekStart) => {
-              const isEven = weekNumberOf(weekStart) % 2 === 0;
-              const { days } = resolveDaysForWeek(schedule, isEven);
-              return (
-                <tr key={weekStart} className="border-t border-black/10 dark:border-white/10">
-                  <td className="px-2 py-1.5 font-medium text-green-700 dark:text-green-400">
-                    {formatWeekRangeMonToSat(weekStart)}
-                  </td>
-                  {SCHEDULE_DAY_KEYS.map((d) => (
-                    <td key={d} className="px-2 py-1.5">
-                      {days[d] || ""}
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-black/60 dark:text-white/60">
+          Generate
+          <input
+            type="number"
+            min={1}
+            max={26}
+            value={weeksOut}
+            onChange={(e) => setWeeksOut(Math.max(1, Math.min(26, Number(e.target.value) || 1)))}
+            className="mx-2 w-16 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black"
+          />
+          weeks out
+        </label>
+        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+          <table className="w-full text-xs">
+            <thead className="bg-black/5 text-left dark:bg-white/5">
+              <tr>
+                <th className="px-2 py-1.5" />
+                {SCHEDULE_DAY_KEYS.map((d) => (
+                  <th key={d} className="px-2 py-1.5">
+                    {SCHEDULE_DAY_LABELS[d]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {weeks.map((weekStart) => {
+                const isEven = weekNumberOf(weekStart) % 2 === 0;
+                const { days } = resolveDaysForWeek(schedule, isEven);
+                return (
+                  <tr key={weekStart} className="border-t border-black/10 dark:border-white/10">
+                    <td className="px-2 py-1.5 font-medium text-green-700 dark:text-green-400">
+                      {formatWeekRangeMonToSat(weekStart)}
                     </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    {SCHEDULE_DAY_KEYS.map((d) => {
+                      const dateIso = addDays(weekStart, DAY_OFFSET[d]);
+                      const { text, isException } = resolveDateHours(schedule, exceptions, dateIso, days[d] ?? "");
+                      return (
+                        <td
+                          key={d}
+                          className={isException ? "px-2 py-1.5 font-semibold text-amber-600 dark:text-amber-400" : "px-2 py-1.5"}
+                          title={isException ? "Exception" : undefined}
+                        >
+                          {text || ""}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-dashed border-black/20 p-3 dark:border-white/20">
+        <p className="text-xs font-semibold text-black/60 dark:text-white/60">Exceptions</p>
+        {exceptions.length > 0 && (
+          <ul className="space-y-1">
+            {exceptions.map((e) => (
+              <li key={e.id} className="flex items-center justify-between gap-2 text-xs">
+                <span>
+                  {e.start_date === e.end_date
+                    ? formatOrdinalDate(e.start_date)
+                    : `${formatOrdinalDate(e.start_date)} - ${formatOrdinalDate(e.end_date)}`}
+                  {": "}
+                  {e.hours_text || <span className="italic text-black/50 dark:text-white/50">off</span>}
+                </span>
+                <button
+                  onClick={() => onDeleteException(e.id)}
+                  className="font-medium text-red-600 hover:underline"
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <AddExceptionForm onAdd={onAddException} />
       </div>
     </div>
   );
@@ -367,15 +505,21 @@ function ScheduleRow({
   employees,
   departments,
   isEvenWeek,
+  exceptions,
   onSave,
   onDelete,
+  onAddException,
+  onDeleteException,
 }: {
   schedule: RoleSchedule;
   employees: Employee[];
   departments: string[];
   isEvenWeek: boolean;
+  exceptions: ScheduleException[];
   onSave: (id: string, patch: NewRoleScheduleInput) => void;
   onDelete: (id: string) => void;
+  onAddException: (roleScheduleId: string, startDate: string, endDate: string, hoursText: string) => void;
+  onDeleteException: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -462,7 +606,12 @@ function ScheduleRow({
       {showCalendar && (
         <tr className="border-t border-black/10 dark:border-white/10">
           <td colSpan={3} className="bg-black/[0.02] p-3 dark:bg-white/[0.02]">
-            <GeneratedCalendar schedule={schedule} />
+            <GeneratedCalendar
+              schedule={schedule}
+              exceptions={exceptions.filter((e) => e.role_schedule_id === schedule.id)}
+              onAddException={(startDate, endDate, hoursText) => onAddException(schedule.id, startDate, endDate, hoursText)}
+              onDeleteException={onDeleteException}
+            />
           </td>
         </tr>
       )}
@@ -526,12 +675,15 @@ function AddRoleForm({
 export default function SchedulesClient({
   initialSchedules,
   employees,
+  initialExceptions,
 }: {
   initialSchedules: RoleSchedule[];
   employees: Employee[];
+  initialExceptions: ScheduleException[];
 }) {
   const confirm = useConfirm();
   const [schedules, setSchedules] = useState(initialSchedules);
+  const [exceptions, setExceptions] = useState(initialExceptions);
   const [showNewDept, setShowNewDept] = useState(false);
   const [newDeptState, setNewDeptState] = useState<ScheduleFormState>(() => emptyForm(""));
   const [weekStart, setWeekStart] = useState(() => currentWeekStart());
@@ -593,6 +745,17 @@ export default function SchedulesClient({
     if (!(await confirm("Delete this schedule tile?"))) return;
     setSchedules((prev) => prev.filter((s) => s.id !== id));
     deleteRoleSchedule(id).catch(() => {});
+  }
+
+  async function handleAddException(roleScheduleId: string, startDate: string, endDate: string, hoursText: string) {
+    const row = await createScheduleException({ roleScheduleId, startDate, endDate, hoursText });
+    if (row) setExceptions((prev) => [...prev, row]);
+  }
+
+  async function handleDeleteException(id: string) {
+    if (!(await confirm("Remove this exception?"))) return;
+    setExceptions((prev) => prev.filter((e) => e.id !== id));
+    deleteScheduleException(id).catch(() => {});
   }
 
   async function handleAddNewDept() {
@@ -713,8 +876,11 @@ export default function SchedulesClient({
                     employees={employees}
                     departments={departments}
                     isEvenWeek={isEvenWeek}
+                    exceptions={exceptions}
                     onSave={handleSave}
                     onDelete={handleDelete}
+                    onAddException={handleAddException}
+                    onDeleteException={handleDeleteException}
                   />
                 ))}
                 {(byDepartment.get(dept) ?? []).length === 0 && (

@@ -349,6 +349,19 @@ export interface RoleSchedule {
   updated_at: string;
 }
 
+// A one-off (or short-range) override on top of a person's regular Week
+// A/B pattern - "off this one Saturday", "in an hour earlier for the next
+// two weeks". A blank hours_text means the day (or every day in the
+// range) is off; a single day just has start_date === end_date.
+export interface ScheduleException {
+  id: string;
+  role_schedule_id: string;
+  start_date: string;
+  end_date: string;
+  hours_text: string | null;
+  created_at: string;
+}
+
 // Management: Call Out Sheet -------------------------------------------------
 
 export type CalloutApproved = "yes" | "no";

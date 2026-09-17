@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { RoleSchedule, RoleScheduleAssignmentType, ScheduleDayHours } from "@/lib/types";
+import type { RoleSchedule, RoleScheduleAssignmentType, ScheduleDayHours, ScheduleException } from "@/lib/types";
 
 // No revalidatePath - see employee-files/actions.ts for why. The page is
 // already force-dynamic, and the client's own optimistic setState already
@@ -74,5 +74,32 @@ export async function updateRoleSchedule(
 export async function deleteRoleSchedule(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("role_schedules").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function createScheduleException(input: {
+  roleScheduleId: string;
+  startDate: string;
+  endDate: string;
+  hoursText: string;
+}): Promise<ScheduleException> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schedule_exceptions")
+    .insert({
+      role_schedule_id: input.roleScheduleId,
+      start_date: input.startDate,
+      end_date: input.endDate,
+      hours_text: input.hoursText || null,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ScheduleException;
+}
+
+export async function deleteScheduleException(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("schedule_exceptions").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
