@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { currentWeekStart, formatWeekLabel, nextWeekStart, prevWeekStart, weekNumberOf } from "@/lib/dates";
+import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import type { Employee, RoleSchedule, RoleScheduleAssignmentType } from "@/lib/types";
 import { createRoleSchedule, deleteRoleSchedule, updateRoleSchedule, type NewRoleScheduleInput } from "./actions";
 
@@ -152,7 +153,7 @@ function ScheduleForm({
   );
 }
 
-function ScheduleTile({
+function ScheduleRow({
   schedule,
   employees,
   departments,
@@ -206,26 +207,30 @@ function ScheduleTile({
 
   if (editing) {
     return (
-      <div className="space-y-2 rounded-lg border-2 border-green-600 p-3 shadow-sm">
-        <ScheduleForm state={state} setState={setState} employees={employees} departments={departments} />
-        <div className="flex gap-2">
-          <button onClick={save} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
-            Save
-          </button>
-          <button
-            onClick={() => setEditing(false)}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => onDelete(schedule.id)}
-            className="ml-auto rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
+      <tr className="border-t border-black/10 dark:border-white/10">
+        <td colSpan={3} className="p-3">
+          <div className="space-y-2 rounded-lg border-2 border-green-600 p-3 shadow-sm">
+            <ScheduleForm state={state} setState={setState} employees={employees} departments={departments} />
+            <div className="flex gap-2">
+              <button onClick={save} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+                Save
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => onDelete(schedule.id)}
+                className="ml-auto rounded-md px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
     );
   }
 
@@ -234,29 +239,29 @@ function ScheduleTile({
   const isPerson = schedule.assignment_type === "person";
 
   return (
-    <div className="space-y-2 rounded-lg border border-black/10 p-3 shadow-sm dark:border-white/10">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="font-bold text-green-700 dark:text-green-400">
-            {isPerson ? (employee?.name ?? "Unassigned") : schedule.role_name}
-          </h3>
-          {isPerson && schedule.role_name && (
-            <p className="text-xs text-black/50 dark:text-white/50">{schedule.role_name}</p>
-          )}
-        </div>
-        <button onClick={startEdit} className="shrink-0 text-xs font-medium text-black/50 hover:underline dark:text-white/50">
+    <tr className="border-t border-black/10 align-top dark:border-white/10">
+      <td className="px-3 py-2">
+        <p className="font-bold text-green-700 dark:text-green-400">
+          {isPerson ? (employee?.name ?? "Unassigned") : schedule.role_name}
+        </p>
+        {isPerson && schedule.role_name && <p className="text-xs text-black/50 dark:text-white/50">{schedule.role_name}</p>}
+      </td>
+      <td className="px-3 py-2">
+        {isPerson && schedule.week_b_hours_text && (
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-black/40 dark:text-white/40">
+            {usingWeekB ? "Week B pattern" : "Week A pattern"}
+          </p>
+        )}
+        <p className="whitespace-pre-wrap text-sm text-black/70 dark:text-white/70">
+          {hoursText || <span className="text-black/40 dark:text-white/40">No hours set yet.</span>}
+        </p>
+      </td>
+      <td className="px-3 py-2 text-right">
+        <button onClick={startEdit} className="text-xs font-medium text-black/50 hover:underline dark:text-white/50">
           Edit
         </button>
-      </div>
-      {isPerson && schedule.week_b_hours_text && (
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-black/40 dark:text-white/40">
-          {usingWeekB ? "Week B pattern" : "Week A pattern"}
-        </p>
-      )}
-      <p className="whitespace-pre-wrap text-sm text-black/70 dark:text-white/70">
-        {hoursText || <span className="text-black/40 dark:text-white/40">No hours set yet.</span>}
-      </p>
-    </div>
+      </td>
+    </tr>
   );
 }
 
@@ -334,6 +339,7 @@ export default function SchedulesClient({
   const [showNewDept, setShowNewDept] = useState(false);
   const [newDeptState, setNewDeptState] = useState<ScheduleFormState>(() => emptyForm(""));
   const [weekStart, setWeekStart] = useState(() => currentWeekStart());
+  const [imageStatus, setImageStatus] = useState<string | null>(null);
 
   const weekNumber = weekNumberOf(weekStart);
   const isEvenWeek = weekNumber % 2 === 0;
@@ -405,16 +411,49 @@ export default function SchedulesClient({
     setShowNewDept(false);
   }
 
+  async function handleCopyImage() {
+    try {
+      const blocks: CanvasBlock[] = departments.map((dept) => ({
+        title: dept,
+        headerColor: "#8DC63F",
+        columnHeaders: ["Name / Role", "Hours"],
+        rows: (byDepartment.get(dept) ?? []).map((s) => {
+          const employee = employees.find((e) => e.id === s.employee_id);
+          const isPerson = s.assignment_type === "person";
+          const name = isPerson ? (employee?.name ?? "Unassigned") : s.role_name;
+          const nameCell = isPerson && s.role_name ? `${name} (${s.role_name})` : name;
+          const { text: hoursText } = resolveHoursForWeek(s, isEvenWeek);
+          return { cells: [nameCell, hoursText || "-"] };
+        }),
+      }));
+      const title = `Schedules - Week ${weekNumber} (${formatWeekLabel(weekStart)})`;
+      const blob = await renderPriceSheetPng({ title, message: "", blocks, direction: "column" });
+      const result = await copyOrDownloadPng(blob, `schedules-week-${weekNumber}.png`);
+      setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
+      setTimeout(() => setImageStatus(null), 2500);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold">Schedules</h1>
-        <button
-          onClick={() => setShowNewDept((s) => !s)}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-        >
-          {showNewDept ? "Cancel" : "+ Add Department"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopyImage}
+            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
+          >
+            {imageStatus ?? "Copy as Image"}
+          </button>
+          <button
+            onClick={() => setShowNewDept((s) => !s)}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showNewDept ? "Cancel" : "+ Add Department"}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -466,18 +505,36 @@ export default function SchedulesClient({
           <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">
             {dept}
           </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {(byDepartment.get(dept) ?? []).map((s) => (
-              <ScheduleTile
-                key={s.id}
-                schedule={s}
-                employees={employees}
-                departments={departments}
-                isEvenWeek={isEvenWeek}
-                onSave={handleSave}
-                onDelete={handleDelete}
-              />
-            ))}
+          <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+            <table className="w-full text-sm">
+              <thead className="bg-black/5 text-left dark:bg-white/5">
+                <tr>
+                  <th className="px-3 py-2">Name / Role</th>
+                  <th className="px-3 py-2">Hours</th>
+                  <th className="w-16 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {(byDepartment.get(dept) ?? []).map((s) => (
+                  <ScheduleRow
+                    key={s.id}
+                    schedule={s}
+                    employees={employees}
+                    departments={departments}
+                    isEvenWeek={isEvenWeek}
+                    onSave={handleSave}
+                    onDelete={handleDelete}
+                  />
+                ))}
+                {(byDepartment.get(dept) ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                      No roles in this department yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
           <AddRoleForm defaultDepartment={dept} employees={employees} departments={departments} onAdd={handleAdd} />
         </section>
