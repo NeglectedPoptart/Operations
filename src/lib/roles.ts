@@ -36,7 +36,8 @@ export type Tab =
   | "meetings"
   | "mexico"
   | "shipping_receiving"
-  | "crm";
+  | "crm"
+  | "documents";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -77,6 +78,7 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "mexico",
     "shipping_receiving",
     "crm",
+    "documents",
   ],
   // Sees everything except Management. Gets CRM to browse/manage buckets
   // and pipelines, but - unlike Sales/Executive/Buyer-Sales - is never
@@ -117,6 +119,7 @@ const ROLE_TABS: Record<Role, Tab[]> = {
     "meetings",
     "mexico",
     "crm",
+    "documents",
   ],
   // No tabs at all - access to BROKER_CARRIER_PATH is a hardcoded exception
   // in middleware.ts, not tab-based like every other role.
@@ -156,6 +159,7 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/mexico")) return "mexico";
   if (pathname.startsWith("/shipping-receiving")) return "shipping_receiving";
   if (pathname.startsWith("/crm")) return "crm";
+  if (pathname.startsWith("/documents")) return "documents";
   return null;
 }
 

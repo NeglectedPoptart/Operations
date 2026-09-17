@@ -131,6 +131,7 @@ const NAV: NavCategory[] = [
       { href: "/management/costs", label: "Costs" },
     ],
   },
+  { label: "Documents", href: "/documents", tab: "documents" },
   {
     label: "Compliance",
     tab: "compliance",
@@ -265,6 +266,14 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
         <svg {...common}>
           <circle cx="12" cy="12" r="2.75" />
           <path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M6.3 17.7l1.6-1.6M16.1 7.9l1.6-1.6" />
+        </svg>
+      );
+    case "Documents":
+      return (
+        <svg {...common}>
+          <path d="M7 3.5h7l3.5 3.5V20a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" />
+          <path d="M14 3.5V7h3.5" />
+          <path d="M8.5 12h7M8.5 15h7M8.5 18h4" />
         </svg>
       );
     case "Compliance":

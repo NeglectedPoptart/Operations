@@ -1489,3 +1489,28 @@ export interface RepackCost {
   created_at: string;
   updated_at: string;
 }
+
+// Documents ------------------------------------------------------------------------
+
+// A header grouping printable company forms - starts with just
+// "Onboarding", but is its own table (not a fixed enum) so more can be
+// added later without a migration.
+export interface DocumentCategory {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyDocument {
+  id: string;
+  category_id: string;
+  file_name: string;
+  storage_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
