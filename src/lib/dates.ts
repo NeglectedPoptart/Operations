@@ -76,6 +76,29 @@ export function formatWeekLabel(weekStart: string): string {
   return `${fmt(start)} - ${fmt(end)}`;
 }
 
+function ordinal(n: number): string {
+  const j = n % 10;
+  const k = n % 100;
+  if (j === 1 && k !== 11) return `${n}st`;
+  if (j === 2 && k !== 12) return `${n}nd`;
+  if (j === 3 && k !== 13) return `${n}rd`;
+  return `${n}th`;
+}
+
+// "Sep 21st - Sep 26th" - Monday through Saturday (not the full Mon-Sun
+// week formatWeekLabel above covers), for the Schedules calendar generator
+// where Sunday is never shown at all.
+export function formatWeekRangeMonToSat(weekStart: string): string {
+  const saturday = addDays(weekStart, 5);
+  const start = new Date(`${weekStart}T00:00:00Z`);
+  const end = new Date(`${saturday}T00:00:00Z`);
+  const fmt = (d: Date) => {
+    const month = d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
+    return `${month} ${ordinal(d.getUTCDate())}`;
+  };
+  return `${fmt(start)} - ${fmt(end)}`;
+}
+
 // Accepts military-style digit entry ("1400", "900") and returns a 12-hour
 // clock string ("2:00 PM", "9:00 AM"). Anything that isn't 3-4 plain digits
 // (already-formatted text like "8:30 AM", partial input, etc.) passes through

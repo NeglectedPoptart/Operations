@@ -2,12 +2,48 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { currentWeekStart, formatWeekLabel, nextWeekStart, prevWeekStart, weekNumberOf } from "@/lib/dates";
+import {
+  addDays,
+  currentWeekStart,
+  formatWeekLabel,
+  formatWeekRangeMonToSat,
+  nextWeekStart,
+  prevWeekStart,
+  weekNumberOf,
+} from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
-import type { Employee, RoleSchedule, RoleScheduleAssignmentType } from "@/lib/types";
+import {
+  SCHEDULE_DAY_KEYS,
+  SCHEDULE_DAY_LABELS,
+  type Employee,
+  type RoleSchedule,
+  type RoleScheduleAssignmentType,
+  type ScheduleDayHours,
+  type ScheduleDayKey,
+} from "@/lib/types";
 import { createRoleSchedule, deleteRoleSchedule, updateRoleSchedule, type NewRoleScheduleInput } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+const DEFAULT_WEEKS_OUT = 6;
+
+function emptyDayGrid(): Record<ScheduleDayKey, string> {
+  return { mon: "", tue: "", wed: "", thu: "", fri: "", sat: "" };
+}
+
+// Drops empty days before saving, so the stored JSON only ever has the days
+// that are actually worked.
+function cleanDays(days: Record<ScheduleDayKey, string>): ScheduleDayHours {
+  const cleaned: ScheduleDayHours = {};
+  for (const day of SCHEDULE_DAY_KEYS) {
+    const value = days[day]?.trim();
+    if (value) cleaned[day] = value;
+  }
+  return cleaned;
+}
+
+function hasAnyDay(days: ScheduleDayHours | null | undefined): boolean {
+  return !!days && SCHEDULE_DAY_KEYS.some((d) => !!days[d]);
+}
 
 // Even-numbered weeks (see weekNumberOf in lib/dates.ts) get Week B's
 // pattern when one is set - odd weeks, or a schedule with no Week B at all,
@@ -18,6 +54,43 @@ function resolveHoursForWeek(schedule: RoleSchedule, isEvenWeek: boolean): { tex
   return { text: (usingWeekB ? schedule.week_b_hours_text : schedule.week_a_hours_text) ?? "", usingWeekB };
 }
 
+function resolveDaysForWeek(schedule: RoleSchedule, isEvenWeek: boolean): { days: ScheduleDayHours; usingWeekB: boolean } {
+  const usingWeekB = isEvenWeek && hasAnyDay(schedule.week_b_days);
+  return { days: (usingWeekB ? schedule.week_b_days : schedule.week_a_days) ?? {}, usingWeekB };
+}
+
+// Condenses a day grid into a short line like "Mon-Fri: 8:00 AM - 4:00 PM,
+// Sat: 8:00 AM - 3:00 PM" - consecutive days with the identical value
+// collapse into one range instead of listing each day separately.
+function summarizeDays(days: ScheduleDayHours): string {
+  const groups: string[] = [];
+  let i = 0;
+  while (i < SCHEDULE_DAY_KEYS.length) {
+    const value = days[SCHEDULE_DAY_KEYS[i]]?.trim();
+    if (!value) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j + 1 < SCHEDULE_DAY_KEYS.length && days[SCHEDULE_DAY_KEYS[j + 1]]?.trim() === value) j++;
+    const startLabel = SCHEDULE_DAY_LABELS[SCHEDULE_DAY_KEYS[i]].slice(0, 3);
+    const endLabel = SCHEDULE_DAY_LABELS[SCHEDULE_DAY_KEYS[j]].slice(0, 3);
+    groups.push(`${i === j ? startLabel : `${startLabel}-${endLabel}`}: ${value}`);
+    i = j + 1;
+  }
+  return groups.join(", ");
+}
+
+// Single line describing whichever week is selected, regardless of
+// assignment type - used by the collapsed row and Copy as Image.
+function scheduleSummaryForWeek(schedule: RoleSchedule, isEvenWeek: boolean): { text: string; usingWeekB: boolean } {
+  if (schedule.assignment_type === "person") {
+    const { days, usingWeekB } = resolveDaysForWeek(schedule, isEvenWeek);
+    return { text: summarizeDays(days), usingWeekB };
+  }
+  return resolveHoursForWeek(schedule, isEvenWeek);
+}
+
 interface ScheduleFormState {
   department: string;
   assignmentType: RoleScheduleAssignmentType;
@@ -25,10 +98,85 @@ interface ScheduleFormState {
   employeeId: string;
   weekAHoursText: string;
   weekBHoursText: string;
+  weekADays: Record<ScheduleDayKey, string>;
+  weekBDays: Record<ScheduleDayKey, string>;
+  hasWeekB: boolean;
 }
 
 function emptyForm(department: string): ScheduleFormState {
-  return { department, assignmentType: "role", roleName: "", employeeId: "", weekAHoursText: "", weekBHoursText: "" };
+  return {
+    department,
+    assignmentType: "role",
+    roleName: "",
+    employeeId: "",
+    weekAHoursText: "",
+    weekBHoursText: "",
+    weekADays: emptyDayGrid(),
+    weekBDays: emptyDayGrid(),
+    hasWeekB: false,
+  };
+}
+
+function scheduleToFormState(schedule: RoleSchedule): ScheduleFormState {
+  return {
+    department: schedule.department,
+    assignmentType: schedule.assignment_type,
+    roleName: schedule.role_name,
+    employeeId: schedule.employee_id ?? "",
+    weekAHoursText: schedule.week_a_hours_text ?? "",
+    weekBHoursText: schedule.week_b_hours_text ?? "",
+    weekADays: { ...emptyDayGrid(), ...(schedule.week_a_days ?? {}) },
+    weekBDays: { ...emptyDayGrid(), ...(schedule.week_b_days ?? {}) },
+    hasWeekB: hasAnyDay(schedule.week_b_days),
+  };
+}
+
+function inputFromState(state: ScheduleFormState): NewRoleScheduleInput {
+  return {
+    department: state.department.trim(),
+    assignmentType: state.assignmentType,
+    roleName: state.roleName.trim(),
+    employeeId: state.assignmentType === "person" ? state.employeeId || null : null,
+    weekAHoursText: state.weekAHoursText,
+    weekBHoursText: state.assignmentType === "person" ? "" : state.weekBHoursText,
+    weekADays: state.assignmentType === "person" ? cleanDays(state.weekADays) : {},
+    weekBDays: state.assignmentType === "person" && state.hasWeekB ? cleanDays(state.weekBDays) : null,
+  };
+}
+
+function formIsValid(state: ScheduleFormState): boolean {
+  if (!state.department.trim()) return false;
+  if (state.assignmentType === "person") return !!state.employeeId;
+  return !!state.roleName.trim();
+}
+
+function DayGridInputs({
+  label,
+  days,
+  onChange,
+}: {
+  label: string;
+  days: Record<ScheduleDayKey, string>;
+  onChange: (day: ScheduleDayKey, value: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-medium text-black/60 dark:text-white/60">{label}</p>
+      <div className="mt-1 grid grid-cols-6 gap-1">
+        {SCHEDULE_DAY_KEYS.map((day) => (
+          <label key={day} className="text-[10px] font-medium text-black/50 dark:text-white/50">
+            {SCHEDULE_DAY_LABELS[day].slice(0, 3)}
+            <input
+              value={days[day] ?? ""}
+              onChange={(e) => onChange(day, e.target.value)}
+              placeholder="off"
+              className="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] text-black"
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ScheduleForm({
@@ -99,26 +247,26 @@ function ScheduleForm({
               className={`${field} mt-0.5`}
             />
           </label>
-          <label className="block text-xs font-medium text-black/60 dark:text-white/60">
-            Week A Hours
-            <textarea
-              value={state.weekAHoursText}
-              onChange={(e) => setState((s) => ({ ...s, weekAHoursText: e.target.value }))}
-              rows={4}
-              placeholder="e.g. Mon-Fri 8:00 AM - 4:00 PM (40 hrs)"
-              className={`${field} mt-0.5 font-mono text-xs`}
+          <DayGridInputs
+            label="Week A"
+            days={state.weekADays}
+            onChange={(day, value) => setState((s) => ({ ...s, weekADays: { ...s.weekADays, [day]: value } }))}
+          />
+          <label className="flex items-center gap-1.5 text-xs font-medium text-black/60 dark:text-white/60">
+            <input
+              type="checkbox"
+              checked={state.hasWeekB}
+              onChange={(e) => setState((s) => ({ ...s, hasWeekB: e.target.checked }))}
             />
+            Alternates with a different pattern every other week
           </label>
-          <label className="block text-xs font-medium text-black/60 dark:text-white/60">
-            Week B Hours (optional - alternates in on even weeks)
-            <textarea
-              value={state.weekBHoursText}
-              onChange={(e) => setState((s) => ({ ...s, weekBHoursText: e.target.value }))}
-              rows={4}
-              placeholder="Leave blank if this person works the same hours every week"
-              className={`${field} mt-0.5 font-mono text-xs`}
+          {state.hasWeekB && (
+            <DayGridInputs
+              label="Week B"
+              days={state.weekBDays}
+              onChange={(day, value) => setState((s) => ({ ...s, weekBDays: { ...s.weekBDays, [day]: value } }))}
             />
-          </label>
+          )}
         </>
       ) : (
         <>
@@ -153,6 +301,67 @@ function ScheduleForm({
   );
 }
 
+// The "generate N weeks out" calendar - one row per week starting this
+// week, columns Monday-Saturday, each cell resolved from Week A/B the same
+// way the collapsed row summary is.
+function GeneratedCalendar({ schedule }: { schedule: RoleSchedule }) {
+  const [weeksOut, setWeeksOut] = useState(DEFAULT_WEEKS_OUT);
+
+  const weeks = useMemo(() => {
+    const start = currentWeekStart();
+    return Array.from({ length: weeksOut }, (_, i) => addDays(start, i * 7));
+  }, [weeksOut]);
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-black/60 dark:text-white/60">
+        Generate
+        <input
+          type="number"
+          min={1}
+          max={26}
+          value={weeksOut}
+          onChange={(e) => setWeeksOut(Math.max(1, Math.min(26, Number(e.target.value) || 1)))}
+          className="mx-2 w-16 rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-black"
+        />
+        weeks out
+      </label>
+      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+        <table className="w-full text-xs">
+          <thead className="bg-black/5 text-left dark:bg-white/5">
+            <tr>
+              <th className="px-2 py-1.5" />
+              {SCHEDULE_DAY_KEYS.map((d) => (
+                <th key={d} className="px-2 py-1.5">
+                  {SCHEDULE_DAY_LABELS[d]}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {weeks.map((weekStart) => {
+              const isEven = weekNumberOf(weekStart) % 2 === 0;
+              const { days } = resolveDaysForWeek(schedule, isEven);
+              return (
+                <tr key={weekStart} className="border-t border-black/10 dark:border-white/10">
+                  <td className="px-2 py-1.5 font-medium text-green-700 dark:text-green-400">
+                    {formatWeekRangeMonToSat(weekStart)}
+                  </td>
+                  {SCHEDULE_DAY_KEYS.map((d) => (
+                    <td key={d} className="px-2 py-1.5">
+                      {days[d] || ""}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ScheduleRow({
   schedule,
   employees,
@@ -169,39 +378,17 @@ function ScheduleRow({
   onDelete: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [state, setState] = useState<ScheduleFormState>(() => ({
-    department: schedule.department,
-    assignmentType: schedule.assignment_type,
-    roleName: schedule.role_name,
-    employeeId: schedule.employee_id ?? "",
-    weekAHoursText: schedule.week_a_hours_text ?? "",
-    weekBHoursText: schedule.week_b_hours_text ?? "",
-  }));
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [state, setState] = useState<ScheduleFormState>(() => scheduleToFormState(schedule));
 
   function startEdit() {
-    setState({
-      department: schedule.department,
-      assignmentType: schedule.assignment_type,
-      roleName: schedule.role_name,
-      employeeId: schedule.employee_id ?? "",
-      weekAHoursText: schedule.week_a_hours_text ?? "",
-      weekBHoursText: schedule.week_b_hours_text ?? "",
-    });
+    setState(scheduleToFormState(schedule));
     setEditing(true);
   }
 
   function save() {
-    if (!state.department.trim()) return;
-    if (state.assignmentType === "person" && !state.employeeId) return;
-    if (state.assignmentType === "role" && !state.roleName.trim()) return;
-    onSave(schedule.id, {
-      department: state.department.trim(),
-      assignmentType: state.assignmentType,
-      roleName: state.roleName.trim(),
-      employeeId: state.assignmentType === "person" ? state.employeeId || null : null,
-      weekAHoursText: state.weekAHoursText,
-      weekBHoursText: state.assignmentType === "person" ? state.weekBHoursText : "",
-    });
+    if (!formIsValid(state)) return;
+    onSave(schedule.id, inputFromState(state));
     setEditing(false);
   }
 
@@ -235,33 +422,51 @@ function ScheduleRow({
   }
 
   const employee = employees.find((e) => e.id === schedule.employee_id);
-  const { text: hoursText, usingWeekB } = resolveHoursForWeek(schedule, isEvenWeek);
+  const { text: hoursText, usingWeekB } = scheduleSummaryForWeek(schedule, isEvenWeek);
   const isPerson = schedule.assignment_type === "person";
+  const isRotating = isPerson ? hasAnyDay(schedule.week_b_days) : !!schedule.week_b_hours_text;
 
   return (
-    <tr className="border-t border-black/10 align-top dark:border-white/10">
-      <td className="px-3 py-2">
-        <p className="font-bold text-green-700 dark:text-green-400">
-          {isPerson ? (employee?.name ?? "Unassigned") : schedule.role_name}
-        </p>
-        {isPerson && schedule.role_name && <p className="text-xs text-black/50 dark:text-white/50">{schedule.role_name}</p>}
-      </td>
-      <td className="px-3 py-2">
-        {isPerson && schedule.week_b_hours_text && (
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-black/40 dark:text-white/40">
-            {usingWeekB ? "Week B pattern" : "Week A pattern"}
+    <>
+      <tr className="border-t border-black/10 align-top dark:border-white/10">
+        <td className="px-3 py-2">
+          <p className="font-bold text-green-700 dark:text-green-400">
+            {isPerson ? (employee?.name ?? "Unassigned") : schedule.role_name}
           </p>
-        )}
-        <p className="whitespace-pre-wrap text-sm text-black/70 dark:text-white/70">
-          {hoursText || <span className="text-black/40 dark:text-white/40">No hours set yet.</span>}
-        </p>
-      </td>
-      <td className="px-3 py-2 text-right">
-        <button onClick={startEdit} className="text-xs font-medium text-black/50 hover:underline dark:text-white/50">
-          Edit
-        </button>
-      </td>
-    </tr>
+          {isPerson && schedule.role_name && <p className="text-xs text-black/50 dark:text-white/50">{schedule.role_name}</p>}
+        </td>
+        <td className="px-3 py-2">
+          {isRotating && (
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-black/40 dark:text-white/40">
+              {usingWeekB ? "Week B pattern" : "Week A pattern"}
+            </p>
+          )}
+          <p className="whitespace-pre-wrap text-sm text-black/70 dark:text-white/70">
+            {hoursText || <span className="text-black/40 dark:text-white/40">No hours set yet.</span>}
+          </p>
+        </td>
+        <td className="whitespace-nowrap px-3 py-2 text-right">
+          {isPerson && (
+            <button
+              onClick={() => setShowCalendar((v) => !v)}
+              className="mr-3 text-xs font-medium text-green-600 hover:underline"
+            >
+              {showCalendar ? "Hide Schedule" : "View Schedule"}
+            </button>
+          )}
+          <button onClick={startEdit} className="text-xs font-medium text-black/50 hover:underline dark:text-white/50">
+            Edit
+          </button>
+        </td>
+      </tr>
+      {showCalendar && (
+        <tr className="border-t border-black/10 dark:border-white/10">
+          <td colSpan={3} className="bg-black/[0.02] p-3 dark:bg-white/[0.02]">
+            <GeneratedCalendar schedule={schedule} />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
@@ -294,17 +499,8 @@ function AddRoleForm({
   }
 
   function submit() {
-    if (!state.department.trim()) return;
-    if (state.assignmentType === "person" && !state.employeeId) return;
-    if (state.assignmentType === "role" && !state.roleName.trim()) return;
-    onAdd({
-      department: state.department.trim(),
-      assignmentType: state.assignmentType,
-      roleName: state.roleName.trim(),
-      employeeId: state.assignmentType === "person" ? state.employeeId : null,
-      weekAHoursText: state.weekAHoursText,
-      weekBHoursText: state.assignmentType === "person" ? state.weekBHoursText : "",
-    });
+    if (!formIsValid(state)) return;
+    onAdd(inputFromState(state));
     setState(emptyForm(defaultDepartment));
     setOpen(false);
   }
@@ -375,6 +571,8 @@ export default function SchedulesClient({
               employee_id: input.employeeId,
               week_a_hours_text: input.weekAHoursText,
               week_b_hours_text: input.weekBHoursText || null,
+              week_a_days: input.weekADays,
+              week_b_days: input.weekBDays,
             }
           : s,
       ),
@@ -386,6 +584,8 @@ export default function SchedulesClient({
       employee_id: input.employeeId,
       week_a_hours_text: input.weekAHoursText,
       week_b_hours_text: input.weekBHoursText || null,
+      week_a_days: input.weekADays,
+      week_b_days: input.weekBDays,
     }).catch(() => {});
   }
 
@@ -396,17 +596,8 @@ export default function SchedulesClient({
   }
 
   async function handleAddNewDept() {
-    if (!newDeptState.department.trim()) return;
-    if (newDeptState.assignmentType === "person" && !newDeptState.employeeId) return;
-    if (newDeptState.assignmentType === "role" && !newDeptState.roleName.trim()) return;
-    await handleAdd({
-      department: newDeptState.department.trim(),
-      assignmentType: newDeptState.assignmentType,
-      roleName: newDeptState.roleName.trim(),
-      employeeId: newDeptState.assignmentType === "person" ? newDeptState.employeeId : null,
-      weekAHoursText: newDeptState.weekAHoursText,
-      weekBHoursText: newDeptState.assignmentType === "person" ? newDeptState.weekBHoursText : "",
-    });
+    if (!formIsValid(newDeptState)) return;
+    await handleAdd(inputFromState(newDeptState));
     setNewDeptState(emptyForm(""));
     setShowNewDept(false);
   }
@@ -422,7 +613,7 @@ export default function SchedulesClient({
           const isPerson = s.assignment_type === "person";
           const name = isPerson ? (employee?.name ?? "Unassigned") : s.role_name;
           const nameCell = isPerson && s.role_name ? `${name} (${s.role_name})` : name;
-          const { text: hoursText } = resolveHoursForWeek(s, isEvenWeek);
+          const { text: hoursText } = scheduleSummaryForWeek(s, isEvenWeek);
           return { cells: [nameCell, hoursText || "-"] };
         }),
       }));

@@ -308,6 +308,24 @@ export interface WorkflowTask {
 
 export type RoleScheduleAssignmentType = "person" | "role";
 
+// Monday-Saturday only - every real schedule example so far (and the
+// calendar mockup this was built from) never shows Sunday at all.
+export type ScheduleDayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
+
+export const SCHEDULE_DAY_KEYS: ScheduleDayKey[] = ["mon", "tue", "wed", "thu", "fri", "sat"];
+
+export const SCHEDULE_DAY_LABELS: Record<ScheduleDayKey, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+};
+
+// A day missing from the object (or an empty string) means "off" that day.
+export type ScheduleDayHours = Partial<Record<ScheduleDayKey, string>>;
+
 export interface RoleSchedule {
   id: string;
   department: string;
@@ -316,12 +334,16 @@ export interface RoleSchedule {
   assignment_type: RoleScheduleAssignmentType;
   // Set only when assignment_type is "person".
   employee_id: string | null;
-  // Replace hours_text going forward. week_a is the default/every-week
-  // pattern; week_b, when filled in, is what alternates in on even-numbered
-  // weeks (see weekNumberOf in lib/dates.ts) - a role tile just never fills
-  // it in, so it reads the same every week.
+  // Role rows (salaried, e.g. "Operations") use these two - a single
+  // free-text block, week_b filled in only if it alternates.
   week_a_hours_text: string | null;
   week_b_hours_text: string | null;
+  // Person rows use these instead - a real per-day grid so a multi-week
+  // calendar can be generated forward. week_a is the default/every-week
+  // pattern; week_b, when set, is what alternates in on even-numbered
+  // weeks (see weekNumberOf in lib/dates.ts).
+  week_a_days: ScheduleDayHours | null;
+  week_b_days: ScheduleDayHours | null;
   position: number;
   created_at: string;
   updated_at: string;

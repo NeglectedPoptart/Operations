@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { RoleSchedule, RoleScheduleAssignmentType } from "@/lib/types";
+import type { RoleSchedule, RoleScheduleAssignmentType, ScheduleDayHours } from "@/lib/types";
 
 // No revalidatePath - see employee-files/actions.ts for why. The page is
 // already force-dynamic, and the client's own optimistic setState already
@@ -12,8 +12,12 @@ export interface NewRoleScheduleInput {
   assignmentType: RoleScheduleAssignmentType;
   roleName: string;
   employeeId: string | null;
+  // Role rows use these two (unstructured).
   weekAHoursText: string;
   weekBHoursText: string;
+  // Person rows use these two instead (day grid).
+  weekADays: ScheduleDayHours;
+  weekBDays: ScheduleDayHours | null;
 }
 
 export async function createRoleSchedule(input: NewRoleScheduleInput): Promise<RoleSchedule> {
@@ -35,6 +39,8 @@ export async function createRoleSchedule(input: NewRoleScheduleInput): Promise<R
       employee_id: input.employeeId,
       week_a_hours_text: input.weekAHoursText,
       week_b_hours_text: input.weekBHoursText || null,
+      week_a_days: input.assignmentType === "person" ? input.weekADays : null,
+      week_b_days: input.assignmentType === "person" ? input.weekBDays : null,
       hours_text: input.weekAHoursText,
       position: nextPosition,
     })
@@ -49,7 +55,14 @@ export async function updateRoleSchedule(
   patch: Partial<
     Pick<
       RoleSchedule,
-      "department" | "assignment_type" | "role_name" | "employee_id" | "week_a_hours_text" | "week_b_hours_text"
+      | "department"
+      | "assignment_type"
+      | "role_name"
+      | "employee_id"
+      | "week_a_hours_text"
+      | "week_b_hours_text"
+      | "week_a_days"
+      | "week_b_days"
     >
   >,
 ) {
