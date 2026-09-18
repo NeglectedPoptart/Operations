@@ -1,6 +1,9 @@
 export interface BarDatum {
   label: string;
   value: number;
+  // Shown as a small line under the bar (e.g. "24 moved") - optional, so
+  // every other chart using this component is unaffected.
+  note?: string;
 }
 
 // Single-hue horizontal bars for comparing magnitude across categories -
@@ -21,17 +24,20 @@ export default function HorizontalBarChart({
   return (
     <div className="space-y-2">
       {data.map((d) => (
-        <div key={d.label} className="flex items-center gap-2">
-          <span className="w-32 shrink-0 truncate text-sm text-black/70 dark:text-white/70" title={d.label}>
-            {d.label}
-          </span>
-          <div className="h-5 flex-1 rounded bg-black/5 dark:bg-white/10">
-            <div
-              className="h-5 rounded bg-green-600"
-              style={{ width: `${Math.max((d.value / max) * 100, 2)}%` }}
-            />
+        <div key={d.label}>
+          <div className="flex items-center gap-2">
+            <span className="w-32 shrink-0 truncate text-sm text-black/70 dark:text-white/70" title={d.label}>
+              {d.label}
+            </span>
+            <div className="h-5 flex-1 rounded bg-black/5 dark:bg-white/10">
+              <div
+                className="h-5 rounded bg-green-600"
+                style={{ width: `${Math.max((d.value / max) * 100, 2)}%` }}
+              />
+            </div>
+            <span className="w-14 shrink-0 text-right text-sm font-medium">{formatValue(d.value)}</span>
           </div>
-          <span className="w-14 shrink-0 text-right text-sm font-medium">{formatValue(d.value)}</span>
+          {d.note && <p className="pl-[8.5rem] text-xs text-black/40 dark:text-white/40">{d.note}</p>}
         </div>
       ))}
     </div>

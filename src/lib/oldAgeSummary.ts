@@ -3,6 +3,7 @@ import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeNextStep } from "@/lib/
 export interface BarDatum {
   label: string;
   value: number;
+  note?: string;
 }
 
 // "Bell Pepper - Orange" / "Bell Pepper - Yellow" -> "Bell Pepper", so
@@ -28,12 +29,17 @@ export function summarizeByNextStep(items: { next_step: OldAgeNextStep | null }[
 
 export function summarizeByCommodity(items: OldAgeItem[]): BarDatum[] {
   const totals = new Map<string, number>();
+  const moved = new Map<string, number>();
   for (const item of items) {
     const key = commodityOf(item.description);
     totals.set(key, (totals.get(key) ?? 0) + (item.qty ?? 0));
+    moved.set(key, (moved.get(key) ?? 0) + (item.qty_moved ?? 0));
   }
 
   return Array.from(totals.entries())
-    .map(([label, value]) => ({ label, value }))
+    .map(([label, value]) => {
+      const movedQty = moved.get(label) ?? 0;
+      return { label, value, note: movedQty > 0 ? `${movedQty.toLocaleString()} moved` : undefined };
+    })
     .sort((a, b) => b.value - a.value);
 }
