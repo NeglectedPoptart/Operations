@@ -102,6 +102,7 @@ const ARRIVAL_HEADERS = [
   "Origin",
   "Label",
   "Commodity",
+  "Grade",
   "Bx's Aprox",
   "Price to Grower",
   "Manifesto",
@@ -120,6 +121,7 @@ function arrivalRowValues(row: MxArrival, growers: MxGrower[], labels: MxGrowerL
     grower?.origin ?? "",
     label?.name ?? "",
     commodityNames.join(" / "),
+    row.grade ?? "",
     row.boxes_approx ?? "",
     row.price_to_grower ?? "",
     row.manifesto ?? "",
@@ -514,6 +516,7 @@ export default function ArrivalsClient({
                       <th className="px-1.5 py-1 font-medium">Origin</th>
                       <th className="px-1.5 py-1 font-medium">Label</th>
                       <th className="px-1.5 py-1 font-medium">Commodity</th>
+                      <th className="px-1.5 py-1 font-medium">Grade</th>
                       <th className="px-1.5 py-1 font-medium">{aproxLabel}</th>
                       <th className="px-1.5 py-1 font-medium">Price to Grower</th>
                       <th className="px-1.5 py-1 font-medium">Manifesto</th>
@@ -593,6 +596,14 @@ export default function ArrivalsClient({
                                 + another
                               </button>
                             )}
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              defaultValue={row.grade ?? ""}
+                              onBlur={(e) => handleRowSave(row.id, { grade: e.target.value || null })}
+                              placeholder="#1"
+                              className={cellFieldSm}
+                            />
                           </td>
                           <td className="px-1.5 py-1">
                             <input

@@ -1030,6 +1030,10 @@ export interface MxArrival {
   commodity_4_id: string | null;
   boxes_approx: string | null;
   price_to_grower: string | null;
+  // Set on the Mexico side (which grade got shipped), independent of which
+  // commodity slot was picked - e.g. Broccoli #1/#2 used to be encoded only
+  // by commodity choice; this is the explicit field.
+  grade: string | null;
   manifesto: string | null;
   arrival_day: MxArrivalDay | null;
   notes: string | null;
@@ -1077,6 +1081,70 @@ export interface MxOrder {
   linked_arrival_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Warehouse: Broccoli Inventory ---------------------------------------------------
+
+// "inbound" comes from Mexico Arrivals (not yet on the floor); "on_floor"
+// comes from either Warehouse Inventory or a promoted inbound lot. Crown/Ice
+// condition only ever apply once something is on_floor.
+export type BroccoliLotStatus = "inbound" | "on_floor";
+
+export type BroccoliLotSource = "warehouse" | "arrivals" | "manual";
+
+export type BroccoliCrownQuality = "pass" | "slight_caution" | "caution" | "urgent" | "fail";
+
+export const BROCCOLI_CROWN_QUALITIES: { value: BroccoliCrownQuality; label: string; badgeClass: string }[] = [
+  { value: "pass", label: "Pass", badgeClass: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  { value: "slight_caution", label: "Slight Caution", badgeClass: "bg-lime-100 text-lime-800 dark:bg-lime-900/40 dark:text-lime-300" },
+  { value: "caution", label: "Caution", badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  { value: "urgent", label: "Urgent", badgeClass: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300" },
+  { value: "fail", label: "Fail", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+];
+
+export type BroccoliIceQuality = "none" | "low" | "med" | "high";
+
+export const BROCCOLI_ICE_QUALITIES: { value: BroccoliIceQuality; label: string; badgeClass: string }[] = [
+  { value: "none", label: "None (0-2lbs)", badgeClass: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  { value: "low", label: "Low (2-3lbs)", badgeClass: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  { value: "med", label: "Med (3-5lbs)", badgeClass: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  { value: "high", label: "High (5lbs+)", badgeClass: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300" },
+];
+
+// A lot is flagged out of the normal Grade/Crown/Ice groups and into the
+// bottom "Issues Flagged" section once its condition needs urgent action.
+export function isBroccoliLotFlagged(lot: Pick<BroccoliLot, "crown_quality" | "ice_quality">): boolean {
+  return lot.crown_quality === "urgent" || lot.crown_quality === "fail" || lot.ice_quality === "none";
+}
+
+export interface BroccoliLot {
+  id: string;
+  status: BroccoliLotStatus;
+  source: BroccoliLotSource;
+  source_lot_id: string | null;
+  source_arrival_id: string | null;
+  lot_number: string | null;
+  received_date: string | null;
+  label: string | null;
+  grade: string | null;
+  qty: number | null;
+  crown_quality: BroccoliCrownQuality | null;
+  ice_quality: BroccoliIceQuality | null;
+  position: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BroccoliOrder {
+  id: string;
+  lot_id: string;
+  source_order_id: string | null;
+  order_number: string | null;
+  qty: number | null;
+  notes: string | null;
+  position: number;
+  created_at: string;
 }
 
 // Compliance: Food Safety --------------------------------------------------------

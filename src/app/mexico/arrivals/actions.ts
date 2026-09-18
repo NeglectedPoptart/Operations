@@ -185,6 +185,7 @@ export async function updateArrivalRow(
     commodity_4_id?: string | null;
     boxes_approx?: string | null;
     price_to_grower?: string | null;
+    grade?: string | null;
     manifesto?: string | null;
     arrival_day?: MxArrivalDay | null;
     notes?: string | null;
