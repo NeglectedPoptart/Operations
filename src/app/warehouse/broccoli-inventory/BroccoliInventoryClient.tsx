@@ -447,11 +447,17 @@ export default function BroccoliInventoryClient({
     setPullingWarehouse(true);
     try {
       const rows = (await pullFromWarehouse()) as BroccoliLot[];
+      if (rows.length === 0) {
+        alert("No Broccoli rows found in Cold Inventory.");
+        return;
+      }
       setLots((prev) => {
         const byId = new Map(prev.map((l) => [l.id, l]));
         for (const r of rows) byId.set(r.id, r);
         return Array.from(byId.values());
       });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Couldn't pull from Warehouse Inventory - try again.");
     } finally {
       setPullingWarehouse(false);
     }
@@ -461,6 +467,10 @@ export default function BroccoliInventoryClient({
     setPullingArrivals(true);
     try {
       const result = (await pullFromArrivals(weekStart)) as { lots: BroccoliLot[]; orders: BroccoliOrder[] };
+      if (result.lots.length === 0) {
+        alert(`No Broccoli arrivals found for Week ${weekNumberOf(weekStart)}.`);
+        return;
+      }
       setLots((prev) => {
         const byId = new Map(prev.map((l) => [l.id, l]));
         for (const r of result.lots) byId.set(r.id, r);
@@ -473,6 +483,8 @@ export default function BroccoliInventoryClient({
           return Array.from(byId.values());
         });
       }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Couldn't pull from Mexico Arrivals - try again.");
     } finally {
       setPullingArrivals(false);
     }

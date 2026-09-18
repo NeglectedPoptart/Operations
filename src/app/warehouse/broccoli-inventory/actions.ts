@@ -18,45 +18,82 @@ function parseQty(text: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// Pulls every lot of any item whose commodity is Broccoli from the
-// Shipping/Receiving Inventory prototype ERP, upserting by source_lot_id so
-// re-running this only refreshes qty/date on lots already pulled in rather
-// than duplicating them (Crown/Ice condition and orders already set here
-// are untouched either way).
+// Cold Inventory's own "commodity" text is a full free-text description
+// like "BROCCOLI FUCHOY GREEN #2" - the trailing "#1"/"#2" is the same Grade
+// convention used everywhere else in this session, so it's worth pulling
+// out; the rest doesn't map cleanly to Label, so it's kept verbatim in notes
+// rather than guessed at.
+function gradeFromCommodityText(commodity: string): string | null {
+  const match = commodity.match(/#(\d+)\s*$/);
+  return match ? `#${match[1]}` : null;
+}
+
+// Pulls every Cold Inventory row whose commodity mentions Broccoli - Cold
+// Inventory (not the Shipping/Receiving prototype ERP) turned out to be the
+// warehouse's actual day-to-day floor tracking. Splits into insert (brand
+// new lots, which also get label/grade/notes seeded) vs update (lots
+// already pulled in before, which only get qty/lot_number refreshed) so a
+// second pull doesn't clobber Crown/Ice condition, or a grade/notes
+// correction the user already made by hand.
 export async function pullFromWarehouse() {
   const supabase = await createClient();
 
-  const { data: items, error: itemsError } = await supabase.from("sr_items").select("id, label").ilike("commodity", "broccoli");
+  const { data: items, error: itemsError } = await supabase.from("cold_inventory_items").select("*").ilike("commodity", "%broccoli%");
   if (itemsError) throw new Error(itemsError.message);
-  const itemIds = (items ?? []).map((i) => i.id as string);
-  if (itemIds.length === 0) return [];
-  const labelByItemId = new Map((items ?? []).map((i) => [i.id as string, i.label as string | null]));
+  if (!items || items.length === 0) return [];
 
-  const { data: lots, error: lotsError } = await supabase.from("sr_inventory_lots").select("*").in("item_id", itemIds);
-  if (lotsError) throw new Error(lotsError.message);
-  if (!lots || lots.length === 0) return [];
+  const { data: existingLots, error: existingError } = await supabase
+    .from("broccoli_lots")
+    .select("id, source_lot_id")
+    .in(
+      "source_lot_id",
+      items.map((i) => i.id as string),
+    );
+  if (existingError) throw new Error(existingError.message);
+  const existingBySourceId = new Map((existingLots ?? []).map((l) => [l.source_lot_id as string, l.id as string]));
 
-  const rows = lots.map((lot) => ({
-    status: "on_floor" as BroccoliLotStatus,
-    source: "warehouse" as const,
-    source_lot_id: lot.id as string,
-    lot_number: lot.lot_number as string | null,
-    received_date: lot.received_date as string | null,
-    label: labelByItemId.get(lot.item_id as string) ?? null,
-    qty: lot.qty_on_hand as number | null,
-  }));
+  const newItems = items.filter((i) => !existingBySourceId.has(i.id as string));
+  const existingItems = items.filter((i) => existingBySourceId.has(i.id as string));
 
-  const { data, error } = await supabase.from("broccoli_lots").upsert(rows, { onConflict: "source_lot_id" }).select();
-  if (error) throw new Error(error.message);
+  const results: unknown[] = [];
+
+  if (newItems.length > 0) {
+    const insertRows = newItems.map((item) => ({
+      status: "on_floor" as BroccoliLotStatus,
+      source: "warehouse" as const,
+      source_lot_id: item.id as string,
+      lot_number: item.manifest as string,
+      qty: item.qty as number,
+      grade: gradeFromCommodityText(item.commodity as string),
+      notes: `Cold Inventory: ${item.commodity} (size ${item.size})`,
+    }));
+    const { data, error } = await supabase.from("broccoli_lots").insert(insertRows).select();
+    if (error) throw new Error(error.message);
+    results.push(...(data ?? []));
+  }
+
+  if (existingItems.length > 0) {
+    const updateRows = existingItems.map((item) => ({
+      source_lot_id: item.id as string,
+      lot_number: item.manifest as string,
+      qty: item.qty as number,
+    }));
+    const { data, error } = await supabase.from("broccoli_lots").upsert(updateRows, { onConflict: "source_lot_id" }).select();
+    if (error) throw new Error(error.message);
+    results.push(...(data ?? []));
+  }
+
   revalidateAll();
-  return data;
+  return results;
 }
 
 // Pulls every Broccoli-section arrival for the given week from Mexico
-// Arrivals, upserting by source_arrival_id (same idempotency reasoning as
-// pullFromWarehouse). Any Mexico Order already linked to that arrival (via
-// its "Send to Arrivals" action) is carried over as a pre-filled order line
-// on the new lot, deduped by source_order_id.
+// Arrivals. Same insert-vs-update split as pullFromWarehouse: a lot already
+// pulled in only gets qty/lot_number/received_date refreshed, not
+// label/grade (in case corrected by hand since). Any Mexico Order already
+// linked to that arrival (via its "Send to Arrivals" action) is carried
+// over as a pre-filled order line on the new lot, deduped by
+// source_order_id.
 export async function pullFromArrivals(weekStartDate: string) {
   const supabase = await createClient();
 
@@ -68,29 +105,56 @@ export async function pullFromArrivals(weekStartDate: string) {
   if (arrivalsError) throw new Error(arrivalsError.message);
   if (!arrivals || arrivals.length === 0) return { lots: [], orders: [] };
 
-  const rows = arrivals.map((a) => {
+  const { data: existingLots, error: existingError } = await supabase
+    .from("broccoli_lots")
+    .select("id, source_arrival_id")
+    .in(
+      "source_arrival_id",
+      arrivals.map((a) => a.id as string),
+    );
+  if (existingError) throw new Error(existingError.message);
+  const existingBySourceId = new Map((existingLots ?? []).map((l) => [l.source_arrival_id as string, l.id as string]));
+
+  function fieldsFor(a: Record<string, unknown>) {
     const dayIndex = a.arrival_day ? DAY_INDEX.get(a.arrival_day as MxArrivalDay) : undefined;
     const receivedDate = dayIndex !== undefined ? addDays(weekStartDate, dayIndex) : null;
-    const growerLabel = (a as { mx_grower_labels: { name: string } | null }).mx_grower_labels;
     return {
-      status: "inbound" as BroccoliLotStatus,
-      source: "arrivals" as const,
-      source_arrival_id: a.id as string,
       lot_number: a.manifesto as string | null,
       received_date: receivedDate,
-      label: growerLabel?.name ?? null,
-      grade: a.grade as string | null,
       qty: parseQty(a.boxes_approx as string | null),
     };
-  });
+  }
 
-  const { data: lots, error: upsertError } = await supabase
-    .from("broccoli_lots")
-    .upsert(rows, { onConflict: "source_arrival_id" })
-    .select();
-  if (upsertError) throw new Error(upsertError.message);
+  const newArrivals = arrivals.filter((a) => !existingBySourceId.has(a.id as string));
+  const existingArrivals = arrivals.filter((a) => existingBySourceId.has(a.id as string));
 
-  const lotIdByArrivalId = new Map((lots ?? []).map((l) => [l.source_arrival_id as string, l.id as string]));
+  const lots: unknown[] = [];
+
+  if (newArrivals.length > 0) {
+    const insertRows = newArrivals.map((a) => {
+      const growerLabel = (a as { mx_grower_labels: { name: string } | null }).mx_grower_labels;
+      return {
+        status: "inbound" as BroccoliLotStatus,
+        source: "arrivals" as const,
+        source_arrival_id: a.id as string,
+        label: growerLabel?.name ?? null,
+        grade: a.grade as string | null,
+        ...fieldsFor(a),
+      };
+    });
+    const { data, error } = await supabase.from("broccoli_lots").insert(insertRows).select();
+    if (error) throw new Error(error.message);
+    lots.push(...(data ?? []));
+  }
+
+  if (existingArrivals.length > 0) {
+    const updateRows = existingArrivals.map((a) => ({ source_arrival_id: a.id as string, ...fieldsFor(a) }));
+    const { data, error } = await supabase.from("broccoli_lots").upsert(updateRows, { onConflict: "source_arrival_id" }).select();
+    if (error) throw new Error(error.message);
+    lots.push(...(data ?? []));
+  }
+
+  const lotIdByArrivalId = new Map((lots as { id: string; source_arrival_id: string | null }[]).map((l) => [l.source_arrival_id as string, l.id]));
   const arrivalIds = arrivals.map((a) => a.id as string);
   const { data: linkedOrders, error: ordersError } = await supabase
     .from("mx_orders")
@@ -121,7 +185,7 @@ export async function pullFromArrivals(weekStartDate: string) {
   }
 
   revalidateAll();
-  return { lots: lots ?? [], orders };
+  return { lots, orders };
 }
 
 export async function moveLotToFloor(id: string) {
