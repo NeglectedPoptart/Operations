@@ -8,6 +8,7 @@ import {
   parseDsvPdfText,
   parseGriffithPdfText,
   parseJearPastedTable,
+  parseJearStatementCsv,
   parseJeruePdfText,
   parsePgtransPastedTable,
 } from "@/lib/carrierStatementParse";
@@ -37,6 +38,13 @@ const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
 // export, so there's nothing to upload for either (paste works the same
 // for a spreadsheet copy as it does for an emailed table).
 const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE"]);
+
+// Jear also sends a separate weekly CSV export ("Weekly SOA") - kept as its
+// own Upload Statement button rather than folded into Paste Statement, so
+// pasting the emailed table keeps working exactly as it always has (see
+// parseJearPastedTable's own due-date offset, unchanged) while this upload
+// path uses the terms the user gave specifically for this file.
+const CSV_CARRIERS = new Map<string, (text: string) => ParseResult>([["JEAR", parseJearStatementCsv]]);
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -185,6 +193,7 @@ export default function InvoicingClient({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
+  const [uploadingCsv, setUploadingCsv] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newInvoiceNo, setNewInvoiceNo] = useState("");
   const [newInvoiceDate, setNewInvoiceDate] = useState("");
@@ -197,6 +206,7 @@ export default function InvoicingClient({
 
   const carrierParser = CARRIER_PARSERS.get(broker.name);
   const acceptsPdf = PDF_CARRIERS.has(broker.name);
+  const csvParser = CSV_CARRIERS.get(broker.name);
 
   // Server-side fetch already sorts oldest-first, but rows added later
   // (paste-import, Statement Checker) just get appended to local state -
@@ -277,6 +287,26 @@ export default function InvoicingClient({
       applyParseResult((carrierParser ?? parsePastedInvoices)(result.text));
     } finally {
       setUploadingPdf(false);
+    }
+  }
+
+  // A plain CSV, unlike the PDF path above - read directly in the browser
+  // (File.text()), no server round-trip to extract text from a binary
+  // format needed. Reuses the same preview/confirm flow as Paste Statement,
+  // just reveals it via this separate button instead of the paste toggle.
+  async function handleCsvUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !csvParser) return;
+    setPreviewError(null);
+    setUploadingCsv(true);
+    try {
+      const text = await file.text();
+      setPasteText(text);
+      setShowPaste(true);
+      applyParseResult(csvParser(text));
+    } finally {
+      setUploadingCsv(false);
     }
   }
 
@@ -391,6 +421,12 @@ export default function InvoicingClient({
           >
             {showPaste ? "Hide paste box" : "Paste Statement"}
           </button>
+          {csvParser && (
+            <label className="cursor-pointer rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+              {uploadingCsv ? "Reading..." : "Upload Statement"}
+              <input type="file" accept=".csv,text/csv" onChange={handleCsvUpload} disabled={uploadingCsv} className="hidden" />
+            </label>
+          )}
         </div>
       </div>
 

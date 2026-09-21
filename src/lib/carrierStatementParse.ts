@@ -165,16 +165,79 @@ export function parseJeruePdfText(text: string): ParseResult {
 // order) - whichever shape the pasted text is actually in.
 const JEAR_COLUMNS = ["customer", "jearpo", "customerpo", "amountdue", "duedate", "dayspastdue"] as const;
 
-function jearRowFromCells(cells: string[]): ParsedInvoiceRow | null {
+function jearRowFromCells(cells: string[], dueDateOffsetDays = -30): ParsedInvoiceRow | null {
   const [, jearPo, customerPo, amountDue, dueDate] = cells;
   if (!jearPo) return null;
   const dueIso = parseUsDateToIso(dueDate ?? "");
   return {
     invoice_no: jearPo.trim(),
-    invoice_date: dueIso ? addDays(dueIso, -30) : null,
+    invoice_date: dueIso ? addDays(dueIso, dueDateOffsetDays) : null,
     customer_po: (customerPo ?? "").trim(),
     amount: parseMoney(amountDue ?? ""),
   };
+}
+
+// Minimal RFC4180-ish CSV line splitter - handles quoted fields (embedded
+// commas, escaped "" quotes), the one thing a plain split(",") can't. Kept
+// separate from parseJearPastedTable's tab/flattened-paste splitting since
+// this is a genuinely different input channel (a file, not a paste).
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cur += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      cells.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  cells.push(cur);
+  return cells.map((c) => c.trim());
+}
+
+// Jear's "Weekly SOA" CSV export (Upload Statement, separate from the Paste
+// Statement flow above) - same six columns, but its own due-date-to-
+// invoice-date offset (21 days, not 30) since the user asked to keep this
+// upload path independent of the paste flow's existing terms rather than
+// changing parseJearPastedTable's behavior.
+export function parseJearStatementCsv(raw: string): ParseResult {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
+  if (lines.length === 0) {
+    return { rows: [], error: "That file looks empty." };
+  }
+
+  const grid = lines.map(splitCsvLine);
+  const startIdx = grid[0][0]?.toLowerCase() === "customer" ? 1 : 0;
+
+  const rows: ParsedInvoiceRow[] = grid
+    .slice(startIdx)
+    .filter((r) => r.some((c) => c !== ""))
+    .map((cells) => jearRowFromCells(cells, -21))
+    .filter((r): r is ParsedInvoiceRow => r !== null);
+
+  if (rows.length === 0) {
+    return { rows: [], error: "Couldn't find any invoice rows - make sure this is Jear's Weekly SOA export." };
+  }
+  return { rows };
 }
 
 export function parseJearPastedTable(raw: string): ParseResult {
@@ -194,7 +257,7 @@ export function parseJearPastedTable(raw: string): ParseResult {
     rows = grid
       .slice(startIdx)
       .filter((r) => r.some((c) => c !== ""))
-      .map(jearRowFromCells)
+      .map((cells) => jearRowFromCells(cells))
       .filter((r): r is ParsedInvoiceRow => r !== null);
   } else {
     const startIdx = lines[0].toLowerCase() === "customer" ? JEAR_COLUMNS.length : 0;
