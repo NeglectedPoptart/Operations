@@ -214,6 +214,10 @@ function SalesOrdersSection({ initialReport }: { initialReport: WeeklySalesOrder
   const [pasteText, setPasteText] = useState(initialReport.rawText ?? "");
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>(() => {
+    if (!initialReport.rawText) return [];
+    return parseSalesOrderText(initialReport.rawText).warnings ?? [];
+  });
   const [rows, setRows] = useState<SalesOrderRow[] | null>(() => {
     if (!initialReport.rawText) return null;
     const result = parseSalesOrderText(initialReport.rawText);
@@ -228,10 +232,12 @@ function SalesOrdersSection({ initialReport }: { initialReport: WeeklySalesOrder
     const result = parseSalesOrderText(text);
     if (result.error) {
       setError(result.error);
+      setWarnings([]);
       setRows(null);
       return;
     }
     setError(null);
+    setWarnings(result.warnings ?? []);
     setRows(result.rows);
     try {
       const saved = await saveWeeklySalesOrdersReport(text);
@@ -301,6 +307,13 @@ function SalesOrdersSection({ initialReport }: { initialReport: WeeklySalesOrder
           className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
         />
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {warnings.length > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+            {warnings.map((w) => (
+              <p key={w}>{w}</p>
+            ))}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => handleAnalyze(pasteText)}

@@ -29,9 +29,25 @@ export interface SalesOrderRow {
 export interface ParseSalesOrderResult {
   rows: SalesOrderRow[];
   error?: string;
+  // Order numbers skipped because their Shipped/Ordered figure came out
+  // implausibly large - see MAX_PLAUSIBLE_QTY below. Non-fatal (the rest of
+  // the report still parses), but worth surfacing since it means that
+  // order's real quantity is missing from every total.
+  warnings?: string[];
 }
 
 const ROW_RE = /^(\d{5,10})\s+(\S+)\s+(.+?)\s+(Delivered|FOB)\s+(.*)$/;
+
+// A real per-order case count on this report has never gone past the low
+// thousands. When Freight or Truck is itself a bare numeric reference code
+// (e.g. "14938426") sitting immediately against a real Shipped/Ordered
+// digit with no separator, the digit-run regex below glues them into one
+// huge bogus number - confirmed against a real export where order 0035177
+// (Shipped 56, Freight "14938426", no separate Truck) extracted as a single
+// "5614938426" token. There's no reliable way to un-glue that after the
+// fact (the split point isn't knowable), so a row producing a number past
+// this ceiling is dropped rather than silently reported as a real quantity.
+const MAX_PLAUSIBLE_QTY = 999_999;
 
 function parseNum(raw: string): number {
   return Number(raw.replace(/,/g, ""));
@@ -44,6 +60,7 @@ export function parseSalesOrderText(raw: string): ParseSalesOrderResult {
     .filter(Boolean);
 
   const rows: SalesOrderRow[] = [];
+  const warnings: string[] = [];
   for (const line of lines) {
     const match = line.match(ROW_RE);
     if (!match) continue;
@@ -84,6 +101,12 @@ export function parseSalesOrderText(raw: string): ParseSalesOrderResult {
     }
 
     if (ordered === null || shipped === null) continue;
+    if (shipped > MAX_PLAUSIBLE_QTY || ordered > MAX_PLAUSIBLE_QTY) {
+      warnings.push(
+        `Order ${orderNo}: skipped - Shipped/Ordered read as an implausibly large number (likely a numeric Freight/Truck reference glued to it).`,
+      );
+      continue;
+    }
     rows.push({
       orderNo,
       status: status.trim(),
@@ -98,7 +121,8 @@ export function parseSalesOrderText(raw: string): ParseSalesOrderResult {
     return {
       rows: [],
       error: "Couldn't find any order rows - make sure this is the ERP's \"Orders Summary\" report.",
+      warnings: warnings.length > 0 ? warnings : undefined,
     };
   }
-  return { rows };
+  return { rows, warnings: warnings.length > 0 ? warnings : undefined };
 }

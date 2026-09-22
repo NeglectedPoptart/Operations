@@ -39,6 +39,7 @@ export default function OrderStatusReportClient() {
   const [pasteText, setPasteText] = useState("");
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [rows, setRows] = useState<SalesOrderRow[] | null>(null);
   // Which statuses are currently counted - reset to "everything found" each
   // time a new report is analyzed, so switching between Confirmed-only,
@@ -50,10 +51,12 @@ export default function OrderStatusReportClient() {
     const result = parseSalesOrderText(text);
     if (result.error) {
       setError(result.error);
+      setWarnings([]);
       setRows(null);
       return;
     }
     setError(null);
+    setWarnings(result.warnings ?? []);
     setRows(result.rows);
     setSelectedStatuses(new Set(result.rows.map((r) => r.status)));
   }
@@ -141,6 +144,13 @@ export default function OrderStatusReportClient() {
           </label>
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {warnings.length > 0 && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+            {warnings.map((w) => (
+              <p key={w}>{w}</p>
+            ))}
+          </div>
+        )}
       </div>
 
       {rows && (
