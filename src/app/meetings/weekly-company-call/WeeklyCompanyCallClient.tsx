@@ -2,10 +2,10 @@
 
 import { useMemo, useState } from "react";
 import HorizontalBarChart, { type BarDatum } from "@/components/HorizontalBarChart";
-import { addDays, formatDate, todayISO } from "@/lib/dates";
+import { addDays, formatDate, formatTimestamp, todayISO } from "@/lib/dates";
 import { parseSalesOrderText, type SalesOrderRow } from "@/lib/salesOrderParse";
 import { QC_RESULT_SCORE, QC_RESULTS, type QcInspection } from "@/lib/types";
-import { extractPdfText } from "./actions";
+import { extractPdfText, saveWeeklySalesOrdersReport, type WeeklySalesOrdersReportInfo } from "./actions";
 
 // QC's "product" field is closer to a SKU than a plain commodity name (pack
 // codes, grades, sizes tacked on: "BROCCOLI FCR/FCG", "CELERY NKD 30 & 24"),
@@ -205,16 +205,26 @@ function summarizeSalesOrders(rows: SalesOrderRow[]): SalesRepStats[] {
   return Array.from(byRep.values());
 }
 
-// Not persisted anywhere - this is a per-meeting, paste-in-fresh-each-week
-// tool (the user re-uploads the prior Tuesday-to-Tuesday report each time),
-// so there's nothing to sync against and no history to keep.
-function SalesOrdersSection() {
-  const [pasteText, setPasteText] = useState("");
+// Persisted as a single current snapshot (see migration_112 and
+// saveWeeklySalesOrdersReport) - the Operations Coordinator runs Analyze
+// once, and everyone else opening this page since gets the same
+// already-analyzed report instead of a blank paste box, until the next
+// Tuesday-to-Tuesday report replaces it.
+function SalesOrdersSection({ initialReport }: { initialReport: WeeklySalesOrdersReportInfo }) {
+  const [pasteText, setPasteText] = useState(initialReport.rawText ?? "");
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<SalesOrderRow[] | null>(null);
+  const [rows, setRows] = useState<SalesOrderRow[] | null>(() => {
+    if (!initialReport.rawText) return null;
+    const result = parseSalesOrderText(initialReport.rawText);
+    return result.error ? null : result.rows;
+  });
+  const [lastUpdated, setLastUpdated] = useState({
+    email: initialReport.updatedByEmail,
+    at: initialReport.updatedAt,
+  });
 
-  function handleAnalyze(text: string) {
+  async function handleAnalyze(text: string) {
     const result = parseSalesOrderText(text);
     if (result.error) {
       setError(result.error);
@@ -223,6 +233,14 @@ function SalesOrdersSection() {
     }
     setError(null);
     setRows(result.rows);
+    try {
+      const saved = await saveWeeklySalesOrdersReport(text);
+      setLastUpdated({ email: saved.updatedByEmail, at: saved.updatedAt });
+    } catch {
+      // Analysis itself already succeeded and is shown locally - a failed
+      // save just means it won't be there for everyone else yet, not worth
+      // blocking or alerting over.
+    }
   }
 
   async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -240,7 +258,7 @@ function SalesOrdersSection() {
         return;
       }
       setPasteText(result.text);
-      handleAnalyze(result.text);
+      await handleAnalyze(result.text);
     } finally {
       setUploadingPdf(false);
     }
@@ -265,8 +283,14 @@ function SalesOrdersSection() {
       <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Operations Coordinator</h2>
       <p className="text-sm text-black/60 dark:text-white/60">
         Upload (or paste) the ERP&apos;s &quot;Orders Summary&quot; report for the prior Tuesday-to-Tuesday to see
-        orders, cases sold, and terms broken down by salesperson.
+        orders, cases sold, and terms broken down by salesperson. Running Analyze saves it here for everyone -
+        no need to re-run it yourself if someone already has this week.
       </p>
+      {lastUpdated.at && (
+        <p className="text-xs text-black/40 dark:text-white/40">
+          Last run{lastUpdated.email ? ` by ${lastUpdated.email}` : ""} · {formatTimestamp(lastUpdated.at)}
+        </p>
+      )}
 
       <div className="space-y-2">
         <textarea
@@ -468,9 +492,11 @@ function DirectorOperationsSection({ rows }: { rows: LaneRateRow[] }) {
 export default function WeeklyCompanyCallClient({
   qcInspections,
   laneRates,
+  initialSalesOrdersReport,
 }: {
   qcInspections: QcInspection[];
   laneRates: LaneRateRow[];
+  initialSalesOrdersReport: WeeklySalesOrdersReportInfo;
 }) {
   const [startDate, setStartDate] = useState(() => addDays(todayISO(), -6));
   const [endDate, setEndDate] = useState(() => todayISO());
@@ -514,7 +540,7 @@ export default function WeeklyCompanyCallClient({
 
       <LeadQualityControlSection items={itemsInRange} />
 
-      <SalesOrdersSection />
+      <SalesOrdersSection initialReport={initialSalesOrdersReport} />
 
       <DirectorOperationsSection rows={laneRates} />
     </div>
