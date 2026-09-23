@@ -11,6 +11,7 @@ import {
   parseJearStatementCsv,
   parseJeruePdfText,
   parsePgtransPastedTable,
+  parseProfreightPdfText,
 } from "@/lib/carrierStatementParse";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
@@ -31,13 +32,14 @@ const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
   ["JEAR", parseJearPastedTable],
   ["JERUE", parseJeruePdfText],
   ["PGTRANS", parsePgtransPastedTable],
+  ["PROFREIGHT", parseProfreightPdfText],
 ]);
 
-// Only AliMat, AMP, DSV, Griffith, and Jerue send an actual PDF - Jear's
+// Only AliMat, AMP, DSV, Griffith, Jerue, and Profreight send an actual PDF - Jear's
 // own format is an emailed Excel table and PGTrans's is a spreadsheet
 // export, so there's nothing to upload for either (paste works the same
 // for a spreadsheet copy as it does for an emailed table).
-const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE"]);
+const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT"]);
 
 // Jear also sends a separate weekly CSV export ("Weekly SOA") - kept as its
 // own Upload Statement button rather than folded into Paste Statement, so

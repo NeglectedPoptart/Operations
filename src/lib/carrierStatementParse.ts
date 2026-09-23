@@ -156,6 +156,43 @@ export function parseJeruePdfText(text: string): ParseResult {
   return { rows };
 }
 
+// Profreight's QuickBooks "Customer Open Balance" PDF - unpdf extracts this
+// one in normal reading order, one data row per line:
+//   Type  Date  Num  Memo  DueDate  OpenBalance
+// Memo (Customer PO) is free text that can contain spaces ("59624 (15222)")
+// or be blank, so it's everything between Num and the Due Date anchor. Num
+// keeps its "P-" prefix as printed. Only "Invoice" rows are read - the
+// header, customer name, and Total lines never match.
+const PROFREIGHT_LINE_RE =
+  /^Invoice\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\S+)\s+(?:(.*?)\s+)?\d{1,2}\/\d{1,2}\/\d{4}\s+(-?[\d,]+\.\d{2})\s*$/;
+
+function parseProfreightLine(rawLine: string): ParsedInvoiceRow | null {
+  const m = rawLine.trim().match(PROFREIGHT_LINE_RE);
+  if (!m) return null;
+  const [, invDate, num, memo, openBalance] = m;
+  return {
+    invoice_no: num,
+    invoice_date: parseUsDateToIso(invDate),
+    customer_po: (memo ?? "").trim(),
+    amount: parseMoney(openBalance),
+  };
+}
+
+export function parseProfreightPdfText(text: string): ParseResult {
+  const rows = text
+    .split(/\r?\n/)
+    .map(parseProfreightLine)
+    .filter((r): r is ParsedInvoiceRow => r !== null);
+
+  if (rows.length === 0) {
+    return {
+      rows: [],
+      error: "Couldn't find any invoice rows in this Profreight statement - try pasting the text instead.",
+    };
+  }
+  return { rows };
+}
+
 // Jear emails an Excel table rather than a PDF - it has no invoice date at
 // all, only a Due Date, so invoice_date is backed into as due date minus 30
 // days (Jear's standard terms). Supports both a real tab-separated paste
