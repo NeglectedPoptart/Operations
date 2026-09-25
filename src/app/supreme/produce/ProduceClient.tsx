@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { createCommodity, deleteCommodity, updateCommodityCartonType } from "@/app/mexico/growers/actions";
+import { createCommodity, deleteCommodity, updateCommodityCartonType, updateCommodityName } from "@/app/mexico/growers/actions";
 import type { CartonType, MxCommodity } from "@/lib/types";
 import { addCartonType, deleteCartonType } from "./actions";
 
@@ -91,12 +91,14 @@ function ProductsPanel({
   onAdd,
   onDelete,
   onCartonTypeChange,
+  onNameChange,
 }: {
   items: MxCommodity[];
   cartonTypes: CartonType[];
   onAdd: (name: string) => Promise<void>;
   onDelete: (id: string) => void;
   onCartonTypeChange: (id: string, cartonTypeId: string | null) => void;
+  onNameChange: (id: string, name: string) => void;
 }) {
   const confirm = useConfirm();
   const [newName, setNewName] = useState("");
@@ -140,7 +142,17 @@ function ProductsPanel({
           <tbody>
             {items.map((p) => (
               <tr key={p.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="px-2 py-1.5">{p.name}</td>
+                <td className="min-w-[10rem] px-1 py-1">
+                  <input
+                    defaultValue={p.name}
+                    onBlur={(e) => {
+                      const name = e.target.value.trim();
+                      if (name && name !== p.name) onNameChange(p.id, name);
+                      else e.target.value = p.name;
+                    }}
+                    className={field}
+                  />
+                </td>
                 <td className="min-w-[10rem] px-1 py-1">
                   <select
                     value={p.carton_type_id ?? ""}
@@ -228,6 +240,11 @@ export default function ProduceClient({
     updateCommodityCartonType(id, cartonTypeId).catch(() => {});
   }
 
+  function handleProductNameChange(id: string, name: string) {
+    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)).sort((a, b) => a.name.localeCompare(b.name)));
+    updateCommodityName(id, name).catch(() => {});
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -243,6 +260,7 @@ export default function ProduceClient({
         onAdd={handleAddProduct}
         onDelete={handleDeleteProduct}
         onCartonTypeChange={handleCartonTypeChange}
+        onNameChange={handleProductNameChange}
       />
     </div>
   );
