@@ -216,6 +216,38 @@ export default function GrowersClient({
                       ))}
                     </select>
                   </label>
+                  <label className="text-xs font-medium sm:col-span-2">
+                    Address
+                    <input
+                      defaultValue={g.address ?? ""}
+                      onBlur={(e) => handleGrowerSave(g.id, { address: e.target.value || null })}
+                      placeholder="Not shown on Carton Inventory - city/state only"
+                      className={`${field} mt-1`}
+                    />
+                  </label>
+                  <label className="text-xs font-medium">
+                    City
+                    <input
+                      defaultValue={g.city ?? ""}
+                      onBlur={(e) => handleGrowerSave(g.id, { city: e.target.value || null })}
+                      className={`${field} mt-1`}
+                    />
+                  </label>
+                  <label className="text-xs font-medium">
+                    State
+                    <select
+                      value={g.state ?? ""}
+                      onChange={(e) => handleGrowerSave(g.id, { state: e.target.value || null })}
+                      className={`${field} mt-1`}
+                    >
+                      <option value="">--</option>
+                      {MX_STATES.map((s) => (
+                        <option key={s.code} value={s.code}>
+                          {s.code} - {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="text-xs font-medium">
                     Best Contact
                     <input

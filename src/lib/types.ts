@@ -959,6 +959,11 @@ export interface MxGrower {
   accounting_contact: string | null;
   logistics_contact: string | null;
   notes: string | null;
+  // Address is on file but deliberately left off Carton Inventory's
+  // display - only city/state show there.
+  address: string | null;
+  city: string | null;
+  state: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -968,9 +973,13 @@ export interface MxGrowerLabel {
   name: string;
 }
 
+// Doubles as "Products" on Supreme > Produce - same table, just managed
+// from a different page and now carrying which carton type that product
+// ships in.
 export interface MxCommodity {
   id: string;
   name: string;
+  carton_type_id: string | null;
 }
 
 // Mexico: Arrivals --------------------------------------------------------------
@@ -1080,6 +1089,56 @@ export interface MxOrder {
   // twice.
   linked_arrival_id: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+// Mexico: Carton Inventory -------------------------------------------------------
+
+// Every place cartons can sit - the one Homebase (PCA, Texas) plus one row
+// per grower, kept in sync automatically whenever a grower is added (see
+// the mx_growers_create_carton_location trigger).
+export type CartonLocationKind = "homebase" | "grower";
+
+export interface CartonLocation {
+  id: string;
+  kind: CartonLocationKind;
+  grower_id: string | null;
+  name: string | null;
+  created_at: string;
+}
+
+export interface CartonType {
+  id: string;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
+export type CartonTransactionSource = "manual" | "transfer" | "arrival";
+
+// Signed ledger row (+ in, - out). A transfer is two rows sharing
+// related_transaction_id.
+export interface CartonTransaction {
+  id: string;
+  carton_type_id: string;
+  location_id: string;
+  qty: number;
+  entry_date: string;
+  related_transaction_id: string | null;
+  source: CartonTransactionSource;
+  source_arrival_id: string | null;
+  source_arrival_slot: number | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+// Running total per (carton_type, location), kept in sync from
+// carton_transactions by a trigger - the app never writes this directly.
+export interface CartonBalance {
+  carton_type_id: string;
+  location_id: string;
+  qty: number;
   updated_at: string;
 }
 

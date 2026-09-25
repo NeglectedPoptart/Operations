@@ -27,6 +27,9 @@ export async function updateGrower(
     accounting_contact?: string | null;
     logistics_contact?: string | null;
     notes?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
   },
 ) {
   const supabase = await createClient();
@@ -74,4 +77,15 @@ export async function deleteCommodity(id: string) {
   const { error } = await supabase.from("mx_commodities").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
+}
+
+// Which carton type a product/commodity ships in - set from Supreme >
+// Produce, read back on Arrivals (and eventually used to drive carton
+// deduction there).
+export async function updateCommodityCartonType(id: string, cartonTypeId: string | null) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("mx_commodities").update({ carton_type_id: cartonTypeId }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  revalidatePath("/supreme/produce");
 }

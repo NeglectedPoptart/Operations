@@ -169,6 +169,7 @@ const NAV: NavCategory[] = [
       { href: "/mexico/arrivals", label: "Arrivals" },
       { href: "/mexico/orders", label: "Orders" },
       { href: "/mexico/growers", label: "Growers", excludeRoles: ["warehouse_qc"] },
+      { href: "/mexico/carton-inventory", label: "Carton Inventory", excludeRoles: ["warehouse_qc"] },
     ],
   },
   {
@@ -190,6 +191,7 @@ const NAV: NavCategory[] = [
       { href: "/supreme/users", label: "User Roles" },
       { href: "/supreme/notifications", label: "Notifications" },
       { href: "/supreme/devices", label: "Devices" },
+      { href: "/supreme/produce", label: "Produce" },
       { href: "/supreme/reset", label: "Reset Tools" },
     ],
   },
