@@ -183,6 +183,7 @@ export interface LocalInbound {
   eta: string | null;
   notes: string | null;
   status: LocalInboundStatus;
+  quality_checked: boolean;
   created_at: string;
   updated_at: string;
 }

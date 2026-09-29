@@ -90,6 +90,7 @@ function InboundSection({
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/5">
             <tr>
+              <th className="w-10 px-2 py-2">QC</th>
               <th className="px-2 py-2">PO</th>
               <th className="px-2 py-2">PU</th>
               <th className="px-2 py-2">Vendor</th>
@@ -102,7 +103,21 @@ function InboundSection({
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
+              <tr
+                key={item.id}
+                className={`border-t border-black/10 dark:border-white/10 ${
+                  item.quality_checked ? "bg-green-100 dark:bg-green-900/30" : ""
+                }`}
+              >
+                <td className="px-2 py-1.5 text-center">
+                  <input
+                    type="checkbox"
+                    checked={item.quality_checked}
+                    onChange={(e) => onFieldSave(item.id, { quality_checked: e.target.checked })}
+                    className="h-4 w-4 accent-green-600"
+                    title="Quality inspected"
+                  />
+                </td>
                 <td className="min-w-[6rem] px-1 py-1">
                   <input
                     defaultValue={item.po ?? ""}
@@ -164,7 +179,7 @@ function InboundSection({
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={6 + extraCols} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                <td colSpan={7 + extraCols} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                   Nothing here yet.
                 </td>
               </tr>
