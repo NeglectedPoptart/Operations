@@ -1,14 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { parseBuyersListPaste, type ParsedBuyersItem } from "@/lib/buyersListParse";
+import { parseBuyersListPdfText, type ParsedBuyersItem } from "@/lib/buyersListParse";
 import { buildMonospaceTable, copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import type { BuyersListItem } from "@/lib/types";
 import {
   addBuyersListItem,
   clearBuyersList,
   deleteBuyersListItem,
+  extractPdfText,
   importBuyersListItems,
   updateBuyersListNotes,
   updateBuyersListQty,
@@ -32,9 +33,9 @@ function buyersListRowValues(item: BuyersListItem): string[] {
 export default function BuyersListClient({ initialItems }: { initialItems: BuyersListItem[] }) {
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
-  const [showPaste, setShowPaste] = useState(initialItems.length === 0);
+  const [showUpload, setShowUpload] = useState(initialItems.length === 0);
   const [showAddLine, setShowAddLine] = useState(false);
-  const [pasteText, setPasteText] = useState("");
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [previewItems, setPreviewItems] = useState<ParsedBuyersItem[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -44,15 +45,30 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
-  function handlePreview() {
-    const result = parseBuyersListPaste(pasteText);
-    if (result.error) {
-      setParseError(result.error);
-      setPreviewItems(null);
-      return;
-    }
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPdf(true);
     setParseError(null);
-    setPreviewItems(result.items);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setParseError(`Couldn't read that PDF (${result.error}).`);
+        return;
+      }
+      const parsed = parseBuyersListPdfText(result.text);
+      if (parsed.error) {
+        setParseError(parsed.error);
+        setPreviewItems(null);
+        return;
+      }
+      setPreviewItems(parsed.items);
+    } finally {
+      setUploadingPdf(false);
+    }
   }
 
   async function handleConfirmImport() {
@@ -62,8 +78,7 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
       const result = await importBuyersListItems(previewItems);
       setItems(result);
       setPreviewItems(null);
-      setPasteText("");
-      setShowPaste(false);
+      setShowUpload(false);
     } finally {
       setImporting(false);
     }
@@ -232,10 +247,10 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
             {imageStatus ?? "Copy as Image"}
           </button>
           <button
-            onClick={() => setShowPaste((s) => !s)}
+            onClick={() => setShowUpload((s) => !s)}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
           >
-            {showPaste ? "Hide paste box" : "Paste from Excel"}
+            {showUpload ? "Hide upload" : "Upload PDF"}
           </button>
           <button
             onClick={() => setShowAddLine((s) => !s)}
@@ -253,34 +268,20 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
         </div>
       </div>
 
-      {showPaste && (
+      {showUpload && (
         <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
           <p className="text-sm text-black/60 dark:text-white/60">
-            Copy the inventory report from Excel (including the header row) and paste below. Any row
-            with a negative Avl gets added below - an item already on the list just gets its quantity
+            Upload the &quot;Warehouse Desk group by Whse, Comm, Var&quot; PDF report. Any row with a
+            negative Avl gets added below - an item already on the list just gets its quantity
             refreshed, nothing is removed automatically.
           </p>
-          <textarea
-            value={pasteText}
-            onChange={(e) => {
-              setPasteText(e.target.value);
-              setPreviewItems(null);
-              setParseError(null);
-            }}
-            rows={6}
-            placeholder="Paste tab-separated rows from Excel here..."
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
-          />
           {parseError && <p className="text-sm text-red-600">{parseError}</p>}
 
           {!previewItems && (
-            <button
-              onClick={handlePreview}
-              disabled={pasteText.trim() === ""}
-              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-            >
-              Preview
-            </button>
+            <label className="inline-block cursor-pointer rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+              {uploadingPdf ? "Reading PDF..." : "Choose PDF"}
+              <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+            </label>
           )}
 
           {previewItems && (

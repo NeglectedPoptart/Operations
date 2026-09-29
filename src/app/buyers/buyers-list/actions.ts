@@ -1,12 +1,31 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+// unpdf wraps pdf.js specifically for serverless/edge runtimes (avoids a
+// worker-file path Vercel's bundler can't resolve at runtime) - same
+// extraction used by every other PDF-upload page in this app, each keeping
+// its own copy in its own actions.ts.
+import { extractText, getDocumentProxy } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
 import type { BuyersListItem } from "@/lib/types";
 import type { ParsedBuyersItem } from "@/lib/buyersListParse";
 
 function revalidateAll() {
   revalidatePath("/buyers/buyers-list");
+}
+
+export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) return { error: "No file received." };
+
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    const pdf = await getDocumentProxy(data);
+    const { text } = await extractText(pdf, { mergePages: true });
+    return { text: Array.isArray(text) ? text.join("\n") : text };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 function keyOf(i: { whse: string; comm: string; variety: string; pstyle: string; size: string; label: string }) {
