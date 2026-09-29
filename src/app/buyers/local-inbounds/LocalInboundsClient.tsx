@@ -63,24 +63,24 @@ function InboundSection({
   title,
   items,
   showAddRow,
-  showMarkArrived,
+  moveActions,
   adding,
   onAddRow,
   onFieldSave,
-  onMarkArrived,
+  onChangeStatus,
   onDelete,
 }: {
   title: string;
   items: LocalInbound[];
   showAddRow: boolean;
-  showMarkArrived: boolean;
+  moveActions: { label: string; status: LocalInbound["status"] }[];
   adding: boolean;
   onAddRow: () => void;
   onFieldSave: (id: string, patch: Partial<LocalInbound>) => void;
-  onMarkArrived: (id: string) => void;
+  onChangeStatus: (id: string, status: LocalInbound["status"]) => void;
   onDelete: (id: string) => void;
 }) {
-  const extraCols = (showMarkArrived ? 1 : 0) + 1;
+  const extraCols = (moveActions.length > 0 ? 1 : 0) + 1;
   return (
     <div className="space-y-3">
       <h2 className="text-lg font-bold text-green-700 dark:text-green-400">
@@ -97,7 +97,7 @@ function InboundSection({
               <th className="px-2 py-2">Loading Warehouse</th>
               <th className="px-2 py-2">ETA</th>
               <th className="px-2 py-2">Notes</th>
-              {showMarkArrived && <th className="w-32 px-2 py-2" />}
+              {moveActions.length > 0 && <th className="w-36 px-2 py-2" />}
               <th className="w-16 px-2 py-2" />
             </tr>
           </thead>
@@ -160,14 +160,19 @@ function InboundSection({
                     className={field}
                   />
                 </td>
-                {showMarkArrived && (
+                {moveActions.length > 0 && (
                   <td className="px-2 py-1.5">
-                    <button
-                      onClick={() => onMarkArrived(item.id)}
-                      className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
-                    >
-                      Mark Arrived
-                    </button>
+                    <div className="flex flex-wrap gap-1">
+                      {moveActions.map((action) => (
+                        <button
+                          key={action.status}
+                          onClick={() => onChangeStatus(item.id, action.status)}
+                          className="rounded-md bg-green-600 px-2 py-1 text-xs font-medium text-white hover:bg-green-700"
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
                   </td>
                 )}
                 <td className="px-2 py-1.5">
@@ -252,8 +257,8 @@ export default function LocalInboundsClient({
     updateLocalInboundRow(id, patch).catch(() => {});
   }
 
-  function handleMarkArrived(id: string) {
-    handleFieldSave(id, { status: "arrived" });
+  function handleChangeStatus(id: string, status: LocalInbound["status"]) {
+    handleFieldSave(id, { status });
   }
 
   async function handleAddRow(status: LocalInbound["status"], setBusy: (b: boolean) => void) {
@@ -298,11 +303,14 @@ export default function LocalInboundsClient({
           title="Pending"
           items={pending}
           showAddRow
-          showMarkArrived
+          moveActions={[
+            { label: "→ Loading Direct", status: "loading_direct" },
+            { label: "Mark Arrived", status: "arrived" },
+          ]}
           adding={addingPending}
           onAddRow={() => handleAddRow("pending", setAddingPending)}
           onFieldSave={handleFieldSave}
-          onMarkArrived={handleMarkArrived}
+          onChangeStatus={handleChangeStatus}
           onDelete={handleDelete}
         />
 
@@ -310,11 +318,14 @@ export default function LocalInboundsClient({
           title="Loading Direct"
           items={loadingDirect}
           showAddRow
-          showMarkArrived
+          moveActions={[
+            { label: "→ Pending", status: "pending" },
+            { label: "Mark Arrived", status: "arrived" },
+          ]}
           adding={addingLoadingDirect}
           onAddRow={() => handleAddRow("loading_direct", setAddingLoadingDirect)}
           onFieldSave={handleFieldSave}
-          onMarkArrived={handleMarkArrived}
+          onChangeStatus={handleChangeStatus}
           onDelete={handleDelete}
         />
 
@@ -322,11 +333,11 @@ export default function LocalInboundsClient({
           title="Arrived"
           items={arrived}
           showAddRow={false}
-          showMarkArrived={false}
+          moveActions={[]}
           adding={false}
           onAddRow={() => {}}
           onFieldSave={handleFieldSave}
-          onMarkArrived={handleMarkArrived}
+          onChangeStatus={handleChangeStatus}
           onDelete={handleDelete}
         />
       </div>
