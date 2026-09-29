@@ -118,3 +118,50 @@ export async function deleteMajorIssue(id: string) {
   if (error) throw new Error(error.message);
   revalidateAll();
 }
+
+// Documents -----------------------------------------------------------------------
+
+// The file's bytes are already in Storage by the time this runs (uploaded
+// straight from the browser, same reasoning as Employee Files/Food Safety -
+// a Server Action's body is capped at ~4.5MB on Vercel). This only records
+// the metadata.
+export async function recordPerformanceReviewDocument(input: {
+  employeeName: string;
+  year: number;
+  quarter: number;
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data, error } = await supabase
+    .from("performance_review_documents")
+    .insert({
+      employee_name: input.employeeName,
+      year: input.year,
+      quarter: input.quarter,
+      file_name: input.fileName,
+      storage_path: input.storagePath,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      uploaded_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return data;
+}
+
+export async function deleteReviewDocument(id: string, storagePath: string) {
+  const supabase = await createClient();
+  await supabase.storage.from("performance-review-documents").remove([storagePath]);
+  const { error } = await supabase.from("performance_review_documents").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}

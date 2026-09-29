@@ -450,6 +450,19 @@ export interface PerformanceReviewMajorIssue {
   updated_at: string;
 }
 
+export interface PerformanceReviewDocument {
+  id: string;
+  employee_name: string;
+  year: number;
+  quarter: number;
+  file_name: string;
+  storage_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 // Management: QC Agenda -------------------------------------------------------
 
 export interface QcAgendaMeta {

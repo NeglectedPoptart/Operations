@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatQuarterLabel, quarterEnd, quarterStart } from "@/lib/dates";
@@ -8,6 +8,7 @@ import {
   MAJOR_ISSUE_TYPES,
   type Employee,
   type MajorIssueType,
+  type PerformanceReviewDocument,
   type PerformanceReviewImprovement,
   type PerformanceReviewMajorIssue,
   type PerformanceReviewQuickNote,
@@ -20,6 +21,8 @@ import {
   deleteImprovement,
   deleteMajorIssue,
   deleteQuickNote,
+  deleteReviewDocument,
+  recordPerformanceReviewDocument,
   updateImprovement,
   updateMajorIssue,
   updateQuickNote,
@@ -38,10 +41,11 @@ interface EmployeeQuarterData {
   quickNotes: PerformanceReviewQuickNote[];
   improvements: PerformanceReviewImprovement[];
   majorIssues: PerformanceReviewMajorIssue[];
+  documents: PerformanceReviewDocument[];
 }
 
 function emptyData(): EmployeeQuarterData {
-  return { calloutSummary: [], quickNotes: [], improvements: [], majorIssues: [] };
+  return { calloutSummary: [], quickNotes: [], improvements: [], majorIssues: [], documents: [] };
 }
 
 function cacheKey(employeeId: string, year: number, quarter: number): string {
@@ -57,7 +61,7 @@ async function loadEmployeeQuarterData(employeeName: string, year: number, quart
   const start = quarterStart(year, quarter);
   const end = quarterEnd(year, quarter);
 
-  const [calloutsRes, quickNotesRes, improvementsRes, majorIssuesRes] = await Promise.all([
+  const [calloutsRes, quickNotesRes, improvementsRes, majorIssuesRes, documentsRes] = await Promise.all([
     supabase.from("callout_entries").select("call_out_type").eq("employee_name", employeeName).gte("entry_date", start).lte("entry_date", end),
     supabase
       .from("performance_review_quick_notes")
@@ -80,6 +84,13 @@ async function loadEmployeeQuarterData(employeeName: string, year: number, quart
       .eq("year", year)
       .eq("quarter", quarter)
       .order("created_at", { ascending: true }),
+    supabase
+      .from("performance_review_documents")
+      .select("*")
+      .eq("employee_name", employeeName)
+      .eq("year", year)
+      .eq("quarter", quarter)
+      .order("created_at", { ascending: false }),
   ]);
 
   const counts = new Map<string, number>();
@@ -96,6 +107,7 @@ async function loadEmployeeQuarterData(employeeName: string, year: number, quart
     quickNotes: (quickNotesRes.data ?? []) as PerformanceReviewQuickNote[],
     improvements: (improvementsRes.data ?? []) as PerformanceReviewImprovement[],
     majorIssues: (majorIssuesRes.data ?? []) as PerformanceReviewMajorIssue[],
+    documents: (documentsRes.data ?? []) as PerformanceReviewDocument[],
   };
 }
 
@@ -128,7 +140,11 @@ export default function PerformanceReviewsClient({
   const [newEmployeeTitle, setNewEmployeeTitle] = useState("");
   const [addingEmployee, setAddingEmployee] = useState(false);
   const [year, setYear] = useState(initialYear);
-  const [quarter, setQuarter] = useState(initialQuarter);
+  // Which quarter each employee's card is currently showing - independent
+  // per employee (clicking "Q3" on one person doesn't change what anyone
+  // else's card is showing), defaulting to the current quarter until
+  // explicitly changed.
+  const [quarterByEmployee, setQuarterByEmployee] = useState<Record<string, number>>({});
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cache, setCache] = useState<Record<string, EmployeeQuarterData>>({});
   // A note/entry stays in an editable form only while its id is in here - a
@@ -138,8 +154,13 @@ export default function PerformanceReviewsClient({
   // so past entries always come back read-only rather than sitting open in
   // editable boxes.
   const [draftIds, setDraftIds] = useState<Set<string>>(new Set());
+  const [uploadingDocFor, setUploadingDocFor] = useState<string | null>(null);
 
   const yearOptions = Array.from({ length: 5 }, (_, i) => initialYear - 3 + i);
+
+  function quarterFor(employeeId: string): number {
+    return quarterByEmployee[employeeId] ?? initialQuarter;
+  }
 
   function startEditing(id: string) {
     setDraftIds((prev) => new Set(prev).add(id));
@@ -168,16 +189,20 @@ export default function PerformanceReviewsClient({
       else next.add(emp.id);
       return next;
     });
-    ensureLoaded(emp, year, quarter);
+    ensureLoaded(emp, year, quarterFor(emp.id));
   }
 
-  function handlePeriodChange(nextYear: number, nextQuarter: number) {
+  function handleYearChange(nextYear: number) {
     setYear(nextYear);
-    setQuarter(nextQuarter);
     for (const id of expandedIds) {
       const emp = employees.find((e) => e.id === id);
-      if (emp) ensureLoaded(emp, nextYear, nextQuarter);
+      if (emp) ensureLoaded(emp, nextYear, quarterFor(emp.id));
     }
+  }
+
+  function handleQuarterSelect(emp: Employee, nextQuarter: number) {
+    setQuarterByEmployee((prev) => ({ ...prev, [emp.id]: nextQuarter }));
+    ensureLoaded(emp, year, nextQuarter);
   }
 
   async function handleAddEmployee() {
@@ -197,28 +222,29 @@ export default function PerformanceReviewsClient({
   }
 
   function patchEmployeeData(emp: Employee, patch: Partial<EmployeeQuarterData>) {
-    const key = cacheKey(emp.id, year, quarter);
+    const key = cacheKey(emp.id, year, quarterFor(emp.id));
     setCache((prev) => ({ ...prev, [key]: { ...(prev[key] ?? emptyData()), ...patch } }));
   }
 
   // Quick Notes -----------------------------------------------------------------
 
   async function handleAddQuickNote(emp: Employee) {
-    const row = (await addQuickNote(emp.name, year, quarter)) as PerformanceReviewQuickNote;
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const q = quarterFor(emp.id);
+    const row = (await addQuickNote(emp.name, year, q)) as PerformanceReviewQuickNote;
+    const current = cache[cacheKey(emp.id, year, q)] ?? emptyData();
     patchEmployeeData(emp, { quickNotes: [...current.quickNotes, row] });
     startEditing(row.id);
   }
 
   function handleQuickNoteSave(emp: Employee, id: string, patch: Partial<PerformanceReviewQuickNote>) {
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
     patchEmployeeData(emp, { quickNotes: current.quickNotes.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
     updateQuickNote(id, patch).catch(() => {});
   }
 
   async function handleQuickNoteDelete(emp: Employee, id: string) {
     if (!(await confirm("Delete this note?"))) return;
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
     patchEmployeeData(emp, { quickNotes: current.quickNotes.filter((n) => n.id !== id) });
     await deleteQuickNote(id).catch(() => {});
   }
@@ -226,21 +252,22 @@ export default function PerformanceReviewsClient({
   // Improvements ------------------------------------------------------------------
 
   async function handleAddImprovement(emp: Employee) {
-    const row = (await addImprovement(emp.name, year, quarter)) as PerformanceReviewImprovement;
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const q = quarterFor(emp.id);
+    const row = (await addImprovement(emp.name, year, q)) as PerformanceReviewImprovement;
+    const current = cache[cacheKey(emp.id, year, q)] ?? emptyData();
     patchEmployeeData(emp, { improvements: [...current.improvements, row] });
     startEditing(row.id);
   }
 
   function handleImprovementSave(emp: Employee, id: string, patch: Partial<PerformanceReviewImprovement>) {
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
     patchEmployeeData(emp, { improvements: current.improvements.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
     updateImprovement(id, patch).catch(() => {});
   }
 
   async function handleImprovementDelete(emp: Employee, id: string) {
     if (!(await confirm("Delete this entry?"))) return;
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
     patchEmployeeData(emp, { improvements: current.improvements.filter((n) => n.id !== id) });
     await deleteImprovement(id).catch(() => {});
   }
@@ -248,23 +275,77 @@ export default function PerformanceReviewsClient({
   // Major Issues --------------------------------------------------------------
 
   async function handleAddMajorIssue(emp: Employee) {
-    const row = (await addMajorIssue(emp.name, year, quarter)) as PerformanceReviewMajorIssue;
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const q = quarterFor(emp.id);
+    const row = (await addMajorIssue(emp.name, year, q)) as PerformanceReviewMajorIssue;
+    const current = cache[cacheKey(emp.id, year, q)] ?? emptyData();
     patchEmployeeData(emp, { majorIssues: [...current.majorIssues, row] });
     startEditing(row.id);
   }
 
   function handleMajorIssueSave(emp: Employee, id: string, patch: Partial<PerformanceReviewMajorIssue>) {
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
     patchEmployeeData(emp, { majorIssues: current.majorIssues.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
     updateMajorIssue(id, patch).catch(() => {});
   }
 
   async function handleMajorIssueDelete(emp: Employee, id: string) {
     if (!(await confirm("Delete this record?"))) return;
-    const current = cache[cacheKey(emp.id, year, quarter)] ?? emptyData();
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
     patchEmployeeData(emp, { majorIssues: current.majorIssues.filter((n) => n.id !== id) });
     await deleteMajorIssue(id).catch(() => {});
+  }
+
+  // Documents -------------------------------------------------------------------
+
+  async function handleUploadDocument(emp: Employee, file: File) {
+    const q = quarterFor(emp.id);
+    setUploadingDocFor(emp.id);
+    try {
+      // Straight to Storage from the browser, same reasoning as Employee
+      // Files/Food Safety - a Server Action's body is capped at ~4.5MB on
+      // Vercel regardless of Next.js config.
+      const supabase = createClient();
+      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+      const storagePath = `${crypto.randomUUID()}${ext}`;
+      const { error: uploadErr } = await supabase.storage
+        .from("performance-review-documents")
+        .upload(storagePath, file, { contentType: file.type || undefined });
+      if (uploadErr) throw new Error(uploadErr.message);
+
+      const saved = (await recordPerformanceReviewDocument({
+        employeeName: emp.name,
+        year,
+        quarter: q,
+        fileName: file.name,
+        storagePath,
+        contentType: file.type || null,
+        sizeBytes: file.size,
+      })) as PerformanceReviewDocument;
+
+      const current = cache[cacheKey(emp.id, year, q)] ?? emptyData();
+      patchEmployeeData(emp, { documents: [saved, ...current.documents] });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingDocFor(null);
+    }
+  }
+
+  async function handleViewDocument(doc: PerformanceReviewDocument) {
+    const supabase = createClient();
+    const { data, error } = await supabase.storage.from("performance-review-documents").createSignedUrl(doc.storage_path, 60);
+    if (error || !data) {
+      alert("Couldn't open that file.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
+  async function handleDeleteDocument(emp: Employee, doc: PerformanceReviewDocument) {
+    if (!(await confirm(`Delete "${doc.file_name}"?`))) return;
+    const current = cache[cacheKey(emp.id, year, quarterFor(emp.id))] ?? emptyData();
+    patchEmployeeData(emp, { documents: current.documents.filter((d) => d.id !== doc.id) });
+    await deleteReviewDocument(doc.id, doc.storage_path).catch(() => {});
   }
 
   return (
@@ -274,11 +355,7 @@ export default function PerformanceReviewsClient({
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
         <label className="text-sm">
           Year
-          <select
-            value={year}
-            onChange={(e) => handlePeriodChange(Number(e.target.value), quarter)}
-            className={`${field} mt-1 w-28`}
-          >
+          <select value={year} onChange={(e) => handleYearChange(Number(e.target.value))} className={`${field} mt-1 w-28`}>
             {yearOptions.map((y) => (
               <option key={y} value={y}>
                 {y}
@@ -286,22 +363,8 @@ export default function PerformanceReviewsClient({
             ))}
           </select>
         </label>
-        <label className="text-sm">
-          Quarter
-          <select
-            value={quarter}
-            onChange={(e) => handlePeriodChange(year, Number(e.target.value))}
-            className={`${field} mt-1 w-24`}
-          >
-            {QUARTERS.map((q) => (
-              <option key={q} value={q}>
-                Q{q}
-              </option>
-            ))}
-          </select>
-        </label>
         <span className="pb-1.5 text-sm font-medium text-black/60 dark:text-white/60">
-          Viewing {formatQuarterLabel(year, quarter)}
+          Expand an employee below and pick a quarter to view their notes, improvements, and warnings.
         </span>
       </div>
 
@@ -330,7 +393,8 @@ export default function PerformanceReviewsClient({
       <div className="space-y-2">
         {employees.map((emp) => {
           const expanded = expandedIds.has(emp.id);
-          const data = cache[cacheKey(emp.id, year, quarter)];
+          const empQuarter = quarterFor(emp.id);
+          const data = cache[cacheKey(emp.id, year, empQuarter)];
           const totalCallouts = data?.calloutSummary.reduce((s, c) => s + c.count, 0) ?? 0;
 
           return (
@@ -353,6 +417,23 @@ export default function PerformanceReviewsClient({
 
               {expanded && (
                 <div className="space-y-6 border-t border-black/10 p-4 dark:border-white/10">
+                  <div className="flex justify-end">
+                    <div className="inline-flex overflow-hidden rounded-md border border-black/10 dark:border-white/10">
+                      {QUARTERS.map((q) => (
+                        <button
+                          key={q}
+                          onClick={() => handleQuarterSelect(emp, q)}
+                          className={`px-3 py-1 text-xs font-medium ${
+                            q === empQuarter
+                              ? "bg-green-600 text-white"
+                              : "hover:bg-black/5 dark:hover:bg-white/10"
+                          }`}
+                        >
+                          Q{q}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {!data ? (
                     <p className="text-sm text-black/40 dark:text-white/40">Loading...</p>
                   ) : (
@@ -360,7 +441,7 @@ export default function PerformanceReviewsClient({
                       {/* Call Outs ------------------------------------------------ */}
                       <section className="space-y-2">
                         <h3 className="text-sm font-bold text-green-700 dark:text-green-400">
-                          Call Outs - {formatQuarterLabel(year, quarter)}
+                          Call Outs - {formatQuarterLabel(year, empQuarter)}
                         </h3>
                         {data.calloutSummary.length === 0 ? (
                           <p className="text-sm text-black/40 dark:text-white/40">No call outs logged this quarter.</p>
@@ -698,6 +779,50 @@ export default function PerformanceReviewsClient({
                           )}
                           {data.majorIssues.length === 0 && (
                             <p className="text-sm text-black/40 dark:text-white/40">No major issues on record.</p>
+                          )}
+                        </div>
+                      </section>
+
+                      {/* Documents ------------------------------------------------ */}
+                      <section className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold text-green-700 dark:text-green-400">Documents</h3>
+                          <label className="cursor-pointer rounded-md border border-gray-300 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                            {uploadingDocFor === emp.id ? "Uploading..." : "+ Upload Document"}
+                            <input
+                              type="file"
+                              className="hidden"
+                              disabled={uploadingDocFor === emp.id}
+                              onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = "";
+                                if (file) handleUploadDocument(emp, file);
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <div className="space-y-2">
+                          {data.documents.map((d) => (
+                            <div
+                              key={d.id}
+                              className="flex items-center justify-between gap-2 rounded-md border border-black/10 p-2 text-sm dark:border-white/10"
+                            >
+                              <button
+                                onClick={() => handleViewDocument(d)}
+                                className="truncate text-left text-green-700 hover:underline dark:text-green-400"
+                              >
+                                {d.file_name}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDocument(emp, d)}
+                                className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ))}
+                          {data.documents.length === 0 && (
+                            <p className="text-sm text-black/40 dark:text-white/40">No documents uploaded for this quarter.</p>
                           )}
                         </div>
                       </section>
