@@ -512,6 +512,7 @@ export default function ArrivalsClient({
                 <table className="w-full text-xs">
                   <thead className="bg-black/5 text-left dark:bg-white/5">
                     <tr>
+                      <th className="w-12 px-1.5 py-1 font-medium">Arrived</th>
                       <th className="px-1.5 py-1 font-medium">Grower</th>
                       <th className="px-1.5 py-1 font-medium">Origin</th>
                       <th className="px-1.5 py-1 font-medium">Label</th>
@@ -538,9 +539,22 @@ export default function ArrivalsClient({
                         <tr
                           key={row.id}
                           className={`border-t border-black/10 align-top dark:border-white/10 ${
-                            row.arrival_day ? ROW_DAY_BG[row.arrival_day] : ""
+                            row.arrived
+                              ? "bg-black/10 opacity-50 dark:bg-white/5"
+                              : row.arrival_day
+                                ? ROW_DAY_BG[row.arrival_day]
+                                : ""
                           }`}
                         >
+                          <td className="px-1.5 py-1 text-center">
+                            <input
+                              type="checkbox"
+                              checked={row.arrived ?? false}
+                              onChange={(e) => handleRowSave(row.id, { arrived: e.target.checked })}
+                              className="h-4 w-4 accent-gray-600"
+                              title="Mark as arrived on site"
+                            />
+                          </td>
                           <td className="min-w-[8rem] px-1.5 py-1">
                             <select
                               value={row.grower_id ?? ""}

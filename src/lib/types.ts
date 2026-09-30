@@ -1065,6 +1065,10 @@ export interface MxArrival {
   // Pairs this inbound with the domestic Logistics load actually carrying
   // it onward - optional, set from the Arrivals table's Load dropdown.
   linked_load_id: string | null;
+  // Marks the load as physically on site - the row stays on the sheet (never
+  // deleted/moved off) so Carton Inventory's deduction and the historical
+  // record are unaffected; this just greys it out in the UI.
+  arrived: boolean;
   created_at: string;
   updated_at: string;
 }
