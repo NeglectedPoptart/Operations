@@ -165,12 +165,13 @@ export default function BrokerListClient({
           const overdue = overdueCounts[b.id] ?? 0;
           const total = pending + done;
           const statementRequested = requested[b.id] ?? false;
-          // All caught up (nothing pending, so nothing can be sitting overdue
-          // either) -> green; anything still pending, aging or not -> yellow.
-          // A clicked statement request always wins over either.
+          // Green purely means nothing pending - flagged/overdue invoices
+          // are still shown (we pay late anyway, so aging alone isn't
+          // actionable) but don't block green on their own. A clicked
+          // statement request always wins over either.
           const tone: "requested" | "green" | "yellow" = statementRequested
             ? "requested"
-            : pending === 0 && overdue === 0
+            : pending === 0
               ? "green"
               : "yellow";
           const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${tileToneClasses(tone)}`;
