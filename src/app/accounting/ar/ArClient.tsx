@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 import { AR_AGING_BUCKETS, arAgingBucket, type ArAgingBucket } from "@/lib/arAging";
@@ -18,11 +18,11 @@ import {
   payDiscrepancy,
   type ArSummaryTotals,
 } from "@/lib/arShared";
-import { parseArReportPaste, type ParsedArInvoice } from "@/lib/arReportParse";
+import { parsePdfArReport, type ParsedArInvoice } from "@/lib/arReportParse";
 import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
-import { deleteArInvoiceRow, importArReport, saveArBaseline, updateArInvoiceRow } from "./actions";
+import { deleteArInvoiceRow, extractPdfText, importArReport, saveArBaseline, updateArInvoiceRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -167,11 +167,11 @@ export default function ArClient({
   const confirm = useConfirm();
   const [customers, setCustomers] = useState(initialCustomers);
   const [invoices, setInvoices] = useState(initialInvoices);
-  const [showPaste, setShowPaste] = useState(initialInvoices.length === 0);
-  const [pasteText, setPasteText] = useState("");
+  const [showUpload, setShowUpload] = useState(initialInvoices.length === 0);
   const [previewInvoices, setPreviewInvoices] = useState<ParsedArInvoice[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [search, setSearch] = useState("");
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
@@ -260,15 +260,33 @@ export default function ArClient({
       .filter((g) => g.invoices.length > 0);
   }, [customers, nonTroubleInvoices, search, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver]);
 
-  function handlePreview() {
-    const result = parseArReportPaste(pasteText);
-    if (result.error) {
-      setParseError(result.error);
-      setPreviewInvoices(null);
-      return;
-    }
+  async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPdf(true);
     setParseError(null);
-    setPreviewInvoices(result.invoices);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await extractPdfText(formData);
+      if ("error" in result) {
+        setParseError(`Couldn't read that PDF (${result.error}). It may be password protected or corrupted - try again.`);
+        return;
+      }
+      const parsed = parsePdfArReport(result.text);
+      if (parsed.error) {
+        setParseError(parsed.error);
+        setPreviewInvoices(null);
+        return;
+      }
+      setPreviewInvoices(parsed.invoices);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try again.`);
+    } finally {
+      setUploadingPdf(false);
+    }
   }
 
   const existingInvoiceNos = useMemo(() => new Set(invoices.map((i) => i.invoice_no)), [invoices]);
@@ -289,8 +307,7 @@ export default function ArClient({
       setCustomers(newCustomers);
       setInvoices(newInvoices);
       setPreviewInvoices(null);
-      setPasteText("");
-      setShowPaste(false);
+      setShowUpload(false);
     } catch (err) {
       alert(err instanceof Error ? `Couldn't sync: ${err.message}` : "Couldn't sync - try again.");
     } finally {
@@ -411,10 +428,10 @@ export default function ArClient({
               {savingBaseline ? "Saving..." : baseline ? "Reset Baseline" : "Set Baseline"}
             </button>
             <button
-              onClick={() => setShowPaste((s) => !s)}
+              onClick={() => setShowUpload((s) => !s)}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
             >
-              {showPaste ? "Hide paste box" : "Paste AR Aging Report"}
+              {showUpload ? "Hide upload" : "Upload PDF"}
             </button>
           </div>
         </div>
@@ -464,33 +481,19 @@ export default function ArClient({
           </div>
         </div>
 
-        {showPaste && (
+        {showUpload && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
             <p className="text-sm text-black/60 dark:text-white/60">
-              Paste the whole &quot;AR Aging Detail by Customer&quot; export here (select all in Excel, copy, paste below) - this
-              syncs the list: balances/dates refresh, invoices no longer in the export are removed (paid off), and any
-              Last Contact/Notes/Highlight you&apos;ve already logged on a still-open invoice is kept.
+              Upload the whole &quot;AR Aging Detail by Customer&quot; PDF export - this syncs the list: balances/dates
+              refresh, invoices no longer in the export are removed (paid off), and any Last Contact/Notes/Highlight
+              you&apos;ve already logged on a still-open invoice is kept.
             </p>
-            <textarea
-              value={pasteText}
-              onChange={(e) => {
-                setPasteText(e.target.value);
-                setPreviewInvoices(null);
-                setParseError(null);
-              }}
-              rows={6}
-              placeholder="Paste the AR Aging report here..."
-              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
-            />
             {parseError && <p className="text-sm text-red-600">{parseError}</p>}
             {!previewInvoices && (
-              <button
-                onClick={handlePreview}
-                disabled={pasteText.trim() === ""}
-                className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-              >
-                Preview
-              </button>
+              <label className="inline-block cursor-pointer rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+                {uploadingPdf ? "Reading PDF..." : "Choose PDF"}
+                <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+              </label>
             )}
             {previewInvoices && previewSummary && (
               <div className="space-y-2">
@@ -547,7 +550,7 @@ export default function ArClient({
         <div className="space-y-4">
           {groups.length === 0 && (
             <p className="rounded-lg border border-black/10 p-4 text-center text-sm text-black/40 dark:border-white/10 dark:text-white/40">
-              {invoices.length === 0 ? "No open invoices yet - paste in the AR Aging report above." : "Nothing matches the current search/filter."}
+              {invoices.length === 0 ? "No open invoices yet - upload the AR Aging report PDF above." : "Nothing matches the current search/filter."}
             </p>
           )}
           {groups.map((g) => {

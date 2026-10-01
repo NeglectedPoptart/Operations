@@ -87,6 +87,7 @@ interface WeekData {
 }
 
 const COMMODITY_SLOT_KEYS = ["commodity_1_id", "commodity_2_id", "commodity_3_id", "commodity_4_id"] as const;
+const COMMODITY_QTY_SLOT_KEYS = ["commodity_1_qty", "commodity_2_qty", "commodity_3_qty", "commodity_4_qty"] as const;
 
 function commodityIdsOf(row: MxArrival): (string | null)[] {
   return COMMODITY_SLOT_KEYS.map((key) => row[key]);
@@ -108,6 +109,7 @@ const ARRIVAL_HEADERS = [
   "Manifesto",
   "Arrival Booking",
   "Notes",
+  "ETA",
 ];
 
 function arrivalRowValues(row: MxArrival, growers: MxGrower[], labels: MxGrowerLabel[], commodities: MxCommodity[]): string[] {
@@ -127,6 +129,7 @@ function arrivalRowValues(row: MxArrival, growers: MxGrower[], labels: MxGrowerL
     row.manifesto ?? "",
     dayInfo(row.arrival_day)?.label ?? "",
     row.notes ?? "",
+    row.eta ?? "",
   ];
 }
 
@@ -295,6 +298,7 @@ export default function ArrivalsClient({
       const blocks: CanvasBlock[] = MX_ARRIVAL_SECTIONS.map((s) => {
         const rows = sortByDayThenPosition(week.arrivals.filter((a) => a.section === s.value)).map((a) => ({
           cells: arrivalRowValues(a, growers, labels, commodities),
+          dimmed: a.arrived,
         }));
         return {
           title: s.label,
@@ -523,6 +527,7 @@ export default function ArrivalsClient({
                       <th className="px-1.5 py-1 font-medium">Manifesto</th>
                       <th className="px-1.5 py-1 font-medium">Arrival</th>
                       <th className="px-1.5 py-1 font-medium">Notes</th>
+                      <th className="px-1.5 py-1 font-medium">ETA</th>
                       <th className="px-1.5 py-1 font-medium">Load</th>
                       <th className="px-1.5 py-1 font-medium">Truck</th>
                       <th className="px-1.5 py-1 font-medium">Pos</th>
@@ -588,19 +593,33 @@ export default function ArrivalsClient({
                           </td>
                           <td className="min-w-[9rem] space-y-0.5 px-1.5 py-1">
                             {Array.from({ length: shownSlots }, (_, i) => i).map((i) => (
-                              <select
-                                key={i}
-                                value={row[COMMODITY_SLOT_KEYS[i]] ?? ""}
-                                onChange={(e) => handleRowSave(row.id, { [COMMODITY_SLOT_KEYS[i]]: e.target.value || null })}
-                                className={cellField}
-                              >
-                                <option value="">--</option>
-                                {commodities.map((c) => (
-                                  <option key={c.id} value={c.id}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                              </select>
+                              <div key={i} className="flex gap-1">
+                                <select
+                                  value={row[COMMODITY_SLOT_KEYS[i]] ?? ""}
+                                  onChange={(e) => handleRowSave(row.id, { [COMMODITY_SLOT_KEYS[i]]: e.target.value || null })}
+                                  className={cellField}
+                                >
+                                  <option value="">--</option>
+                                  {commodities.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  step="any"
+                                  defaultValue={row[COMMODITY_QTY_SLOT_KEYS[i]] ?? ""}
+                                  onBlur={(e) =>
+                                    handleRowSave(row.id, {
+                                      [COMMODITY_QTY_SLOT_KEYS[i]]: e.target.value === "" ? null : Number(e.target.value),
+                                    })
+                                  }
+                                  placeholder="Qty"
+                                  title="Qty - drives Carton Inventory's auto-deduction once this product has a carton type assigned"
+                                  className={`${cellFieldSm} w-14`}
+                                />
+                              </div>
                             ))}
                             {shownSlots < 4 && (
                               <button
@@ -659,6 +678,14 @@ export default function ArrivalsClient({
                               defaultValue={row.notes ?? ""}
                               onBlur={(e) => handleRowSave(row.id, { notes: e.target.value })}
                               className={cellField}
+                            />
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <input
+                              defaultValue={row.eta ?? ""}
+                              onBlur={(e) => handleRowSave(row.id, { eta: e.target.value || null })}
+                              placeholder="e.g. 2pm"
+                              className={cellFieldSm}
                             />
                           </td>
                           <td className="min-w-[9rem] px-1.5 py-1">

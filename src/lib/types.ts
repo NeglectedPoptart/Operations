@@ -1051,6 +1051,13 @@ export interface MxArrival {
   commodity_2_id: string | null;
   commodity_3_id: string | null;
   commodity_4_id: string | null;
+  // Per-slot qty (distinct from boxes_approx, which is one free-text total
+  // for the whole row) - drives Carton Inventory's auto-deduction, since a
+  // qty needs to be tied to which specific commodity/carton type it's for.
+  commodity_1_qty: number | null;
+  commodity_2_qty: number | null;
+  commodity_3_qty: number | null;
+  commodity_4_qty: number | null;
   boxes_approx: string | null;
   price_to_grower: string | null;
   // Set on the Mexico side (which grade got shipped), independent of which
@@ -1060,6 +1067,9 @@ export interface MxArrival {
   manifesto: string | null;
   arrival_day: MxArrivalDay | null;
   notes: string | null;
+  // Free-text, finer-grained estimate (e.g. "2pm", "tonight") shown after
+  // Notes - distinct from arrival_day, which is only which day of the week.
+  eta: string | null;
   truck_group: string | null;
   truck_position: MxTruckPosition | null;
   // Pairs this inbound with the domestic Logistics load actually carrying

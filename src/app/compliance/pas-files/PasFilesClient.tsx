@@ -3,7 +3,7 @@
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
-import { isPasRow, parsePastedPasFiles, parsePdfPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
+import { isPasRow, parsePdfPasFiles, type ParsedPasFileRow } from "@/lib/pasFilesParse";
 import { daysSince, formatDate } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { PAS_HIGHLIGHTS, type PasFile, type PasHighlight } from "@/lib/types";
@@ -111,8 +111,7 @@ export default function PasFilesClient({
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [pendingKeys, setPendingKeys] = useState(() => new Set(existingPendingKeys));
-  const [showPaste, setShowPaste] = useState(initialItems.length === 0);
-  const [pasteText, setPasteText] = useState("");
+  const [showUpload, setShowUpload] = useState(initialItems.length === 0);
   const [previewRows, setPreviewRows] = useState<ParsedPasFileRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -184,21 +183,6 @@ export default function PasFilesClient({
     { label: "Needing Escalation", value: items.filter((i) => i.highlight === "red").length },
   ];
 
-  function handlePreview() {
-    const result = parsePastedPasFiles(pasteText);
-    if (result.error) {
-      setParseError(result.error);
-      setPreviewRows(null);
-      return;
-    }
-    setParseError(null);
-    setPreviewRows(result.rows);
-  }
-
-  // The PDF's extracted text isn't tab-separated like a real Excel paste - it
-  // comes out of unpdf with columns glued back together in a scrambled order
-  // (see parsePdfPasFiles's comments) - so this runs its own parser directly
-  // rather than routing through the paste textarea/parsePastedPasFiles.
   async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -253,8 +237,7 @@ export default function PasFilesClient({
         return next;
       });
       setPreviewRows(null);
-      setPasteText("");
-      setShowPaste(false);
+      setShowUpload(false);
     } finally {
       setImporting(false);
     }
@@ -315,10 +298,10 @@ export default function PasFilesClient({
               {imageStatus ?? "Copy as Image"}
             </button>
             <button
-              onClick={() => setShowPaste((s) => !s)}
+              onClick={() => setShowUpload((s) => !s)}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
             >
-              {showPaste ? "Hide paste box" : "Paste from Excel"}
+              {showUpload ? "Hide upload" : "Upload PDF"}
             </button>
           </div>
         </div>
@@ -349,42 +332,21 @@ export default function PasFilesClient({
           )}
         </div>
 
-        {showPaste && (
+        {showUpload && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
             <p className="text-sm text-black/60 dark:text-white/60">
-              Paste the entire pending-to-invoice export here (including the header row) - not just PAS
-              orders. Rows marked PAS (on PO or Order Type) are routed here; everything else goes to Sales
-              &gt; Pending to Invoice instead. Both lists are running - rows already present (matched on
-              Order No + PO) are left untouched, only new rows get added.
+              Upload the &quot;Orders Pending to Invoice&quot; PDF export - not just PAS orders. Rows marked
+              PAS (on PO or Order Type) are routed here; everything else goes to Sales &gt; Pending to Invoice
+              instead. Both lists are running - rows already present (matched on Order No + PO) are left
+              untouched, only new rows get added.
             </p>
-            <textarea
-              value={pasteText}
-              onChange={(e) => {
-                setPasteText(e.target.value);
-                setPreviewRows(null);
-                setParseError(null);
-              }}
-              rows={6}
-              placeholder="Paste tab-separated rows from Excel here..."
-              className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
-            />
             {parseError && <p className="text-sm text-red-600">{parseError}</p>}
 
             {!previewRows && (
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handlePreview}
-                  disabled={pasteText.trim() === ""}
-                  className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-                >
-                  Preview
-                </button>
-                <span className="text-xs text-black/40 dark:text-white/40">or</span>
-                <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
-                  {uploadingPdf ? "Reading PDF..." : "Upload PDF"}
-                  <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
-                </label>
-              </div>
+              <label className="inline-block cursor-pointer rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+                {uploadingPdf ? "Reading PDF..." : "Choose PDF"}
+                <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
+              </label>
             )}
 
             {previewRows && (
@@ -586,7 +548,7 @@ export default function PasFilesClient({
                 <tr>
                   <td colSpan={14} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     {items.length === 0
-                      ? "No PAS files yet - paste in today's export from Excel above."
+                      ? "No PAS files yet - upload today's PDF export above."
                       : "No rows match the current filter."}
                   </td>
                 </tr>

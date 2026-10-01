@@ -49,6 +49,10 @@ export function roundUpToNickel(value: number): number {
 export interface MonoRow {
   group?: string;
   cells?: string[];
+  // Greys the row out in the canvas image renderer (buildMonospaceTable
+  // ignores it - WhatsApp's plain text has no way to show it) - e.g. an
+  // Arrivals load already marked arrived on site.
+  dimmed?: boolean;
 }
 
 export function buildMonospaceTable(headers: string[], rows: MonoRow[]): string {
@@ -226,14 +230,14 @@ function drawBlock(ctx: CanvasRenderingContext2D, block: CanvasBlock, x: number,
       ctx.textAlign = "left";
       ctx.fillText(r.group, x + CELL_PAD_X, cursorY + ROW_H / 2);
     } else if (r.cells) {
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = r.dimmed ? "#d9d9d9" : "#ffffff";
       ctx.fillRect(x, cursorY, tableWidth, ROW_H);
       colX = x;
       ctx.font = CANVAS_FONT;
       r.cells.forEach((c, i) => {
         ctx.strokeStyle = "#000000";
         ctx.strokeRect(colX, cursorY, colWidths[i], ROW_H);
-        ctx.fillStyle = "#000000";
+        ctx.fillStyle = r.dimmed ? "#888888" : "#000000";
         ctx.textAlign = i === 0 ? "left" : "right";
         const textX = i === 0 ? colX + CELL_PAD_X : colX + colWidths[i] - CELL_PAD_X;
         ctx.fillText(c, textX, cursorY + ROW_H / 2);

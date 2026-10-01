@@ -2,12 +2,73 @@
 
 import { revalidatePath } from "next/cache";
 import { sendNotification } from "@/app/supreme/notifications/actions";
+import { addDays } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedMxArrivalRow } from "@/lib/mxArrivalsParse";
 import type { Role } from "@/lib/roles";
+import { MX_ARRIVAL_DAYS } from "@/lib/types";
 import type { MxArrivalDay, MxArrivalSection, MxTruckPosition } from "@/lib/types";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+const DAY_INDEX = new Map(MX_ARRIVAL_DAYS.map((d, i) => [d.value, i]));
+
+const COMMODITY_QTY_SLOTS = [
+  { idKey: "commodity_1_id", qtyKey: "commodity_1_qty", slot: 1 },
+  { idKey: "commodity_2_id", qtyKey: "commodity_2_qty", slot: 2 },
+  { idKey: "commodity_3_id", qtyKey: "commodity_3_qty", slot: 3 },
+  { idKey: "commodity_4_id", qtyKey: "commodity_4_qty", slot: 4 },
+] as const;
+
+// Carton Inventory Phase 2: whenever an arrival row's commodity/qty (or
+// grower/day, which change where and when the deduction should land)
+// change, this re-derives the correct auto-deduction from scratch for each
+// of the row's 4 commodity slots - always a full delete-then-recreate per
+// slot (keyed on source_arrival_id + source_arrival_slot) rather than a
+// diff, since that's simplest to keep correct and this runs on every save,
+// not just qty changes. A slot with no product, no assigned carton type, or
+// no positive qty just ends up with nothing to insert - clearing whatever
+// was there before if that slot used to have a deduction.
+async function syncCartonDeductionsForArrival(supabase: SupabaseClient, arrivalId: string) {
+  const { data: arrival, error: arrivalError } = await supabase.from("mx_arrivals").select("*").eq("id", arrivalId).maybeSingle();
+  if (arrivalError || !arrival) return;
+
+  await supabase.from("carton_transactions").delete().eq("source_arrival_id", arrivalId);
+
+  const growerId = arrival.grower_id as string | null;
+  if (!growerId) return;
+  const { data: location } = await supabase.from("carton_locations").select("id").eq("grower_id", growerId).maybeSingle();
+  const locationId = location?.id as string | undefined;
+  if (!locationId) return;
+
+  const commodityIds = COMMODITY_QTY_SLOTS.map((s) => arrival[s.idKey] as string | null).filter((v): v is string => Boolean(v));
+  if (commodityIds.length === 0) return;
+  const { data: commodities } = await supabase.from("mx_commodities").select("id, carton_type_id").in("id", commodityIds);
+  const cartonTypeByCommodity = new Map((commodities ?? []).map((c) => [c.id as string, c.carton_type_id as string | null]));
+
+  const dayIndex = arrival.arrival_day ? DAY_INDEX.get(arrival.arrival_day as MxArrivalDay) : undefined;
+  const entryDate = dayIndex !== undefined ? addDays(arrival.week_start_date as string, dayIndex) : (arrival.week_start_date as string);
+
+  const rows = COMMODITY_QTY_SLOTS.map((s) => {
+    const commodityId = arrival[s.idKey] as string | null;
+    const qty = arrival[s.qtyKey] as number | null;
+    const cartonTypeId = commodityId ? (cartonTypeByCommodity.get(commodityId) ?? null) : null;
+    if (!commodityId || !cartonTypeId || !qty || qty <= 0) return null;
+    return {
+      carton_type_id: cartonTypeId,
+      location_id: locationId,
+      qty: -qty,
+      entry_date: entryDate,
+      source: "arrival" as const,
+      source_arrival_id: arrivalId,
+      source_arrival_slot: s.slot,
+    };
+  }).filter((r): r is NonNullable<typeof r> => r !== null);
+
+  if (rows.length > 0) {
+    await supabase.from("carton_transactions").insert(rows);
+  }
+}
 
 // Every role that actually has the "mexico" tab (see ROLE_TABS in
 // roles.ts) - "everyone" for this notification means everyone who can
@@ -183,6 +244,10 @@ export async function updateArrivalRow(
     commodity_2_id?: string | null;
     commodity_3_id?: string | null;
     commodity_4_id?: string | null;
+    commodity_1_qty?: number | null;
+    commodity_2_qty?: number | null;
+    commodity_3_qty?: number | null;
+    commodity_4_qty?: number | null;
     boxes_approx?: string | null;
     price_to_grower?: string | null;
     grade?: string | null;
@@ -197,12 +262,21 @@ export async function updateArrivalRow(
   const supabase = await createClient();
   const { error } = await supabase.from("mx_arrivals").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
+  if ("grower_id" in patch || "arrival_day" in patch || COMMODITY_QTY_SLOTS.some((s) => s.idKey in patch || s.qtyKey in patch)) {
+    await syncCartonDeductionsForArrival(supabase, id).catch(() => {});
+  }
   revalidateAll();
+  revalidatePath("/mexico/carton-inventory");
 }
 
 export async function deleteArrivalRow(id: string) {
   const supabase = await createClient();
+  // Delete any auto-deduction this row generated first (the delete trigger
+  // reverses its balance effect) - otherwise the FK's on-delete-set-null
+  // would just orphan it, permanently leaving the deduction in place.
+  await supabase.from("carton_transactions").delete().eq("source_arrival_id", id);
   const { error } = await supabase.from("mx_arrivals").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  revalidatePath("/mexico/carton-inventory");
   revalidateAll();
 }
