@@ -314,7 +314,11 @@ export default function GrowersClient({
           title="Commodities"
           items={commodities}
           onAdd={async (name) => {
-            const row = (await createCommodity(name)) as MxCommodity;
+            // Added here as a flat name - same as every pre-existing
+            // product, it starts out as its own one-item Commodity Group
+            // (named after itself); split out a real Variety later from
+            // Supreme > Produce if needed.
+            const row = (await createCommodity(name, null)) as MxCommodity;
             setCommodities((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
           }}
           onDelete={(id) => {

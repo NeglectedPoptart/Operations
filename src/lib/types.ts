@@ -992,7 +992,12 @@ export interface MxGrowerLabel {
 // ships in.
 export interface MxCommodity {
   id: string;
+  // Combined label everything outside the Produce page reads (Arrivals'
+  // dropdown, Carton Inventory, exports) - kept auto-recomputed from
+  // commodity_group + variety whenever either is edited from Produce.
   name: string;
+  commodity_group: string | null;
+  variety: string | null;
   carton_type_id: string | null;
 }
 

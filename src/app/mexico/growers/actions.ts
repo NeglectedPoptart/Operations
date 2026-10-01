@@ -64,11 +64,24 @@ export async function deleteLabel(id: string) {
 
 // Commodities ----------------------------------------------------------------------
 
-export async function createCommodity(name: string) {
+function combinedCommodityName(commodityGroup: string, variety: string | null): string {
+  return [commodityGroup.trim(), (variety ?? "").trim()].filter(Boolean).join(" ");
+}
+
+export async function createCommodity(commodityGroup: string, variety: string | null) {
   const supabase = await createClient();
-  const { data, error } = await supabase.from("mx_commodities").insert({ name }).select().single();
+  const { data, error } = await supabase
+    .from("mx_commodities")
+    .insert({
+      commodity_group: commodityGroup.trim(),
+      variety: variety?.trim() || null,
+      name: combinedCommodityName(commodityGroup, variety),
+    })
+    .select()
+    .single();
   if (error) throw new Error(error.message);
   revalidateAll();
+  revalidatePath("/supreme/produce");
   return data;
 }
 
@@ -77,12 +90,39 @@ export async function deleteCommodity(id: string) {
   const { error } = await supabase.from("mx_commodities").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
+  revalidatePath("/supreme/produce");
 }
 
-export async function updateCommodityName(id: string, name: string) {
+export async function updateCommodityVariety(id: string, commodityGroup: string, variety: string | null) {
   const supabase = await createClient();
-  const { error } = await supabase.from("mx_commodities").update({ name }).eq("id", id);
+  const { error } = await supabase
+    .from("mx_commodities")
+    .update({ variety: variety?.trim() || null, name: combinedCommodityName(commodityGroup, variety) })
+    .eq("id", id);
   if (error) throw new Error(error.message);
+  revalidateAll();
+  revalidatePath("/supreme/produce");
+}
+
+// Renames a whole Commodity Group at once (every variety under it) rather
+// than one row at a time - matched by its current group name since that's
+// the only thing identifying the group (there's no separate group table).
+export async function renameCommodityGroup(oldGroupName: string, newGroupName: string) {
+  const supabase = await createClient();
+  const trimmedNew = newGroupName.trim();
+  const { data: rows, error: fetchError } = await supabase
+    .from("mx_commodities")
+    .select("id, variety")
+    .eq("commodity_group", oldGroupName);
+  if (fetchError) throw new Error(fetchError.message);
+
+  for (const row of rows ?? []) {
+    const { error } = await supabase
+      .from("mx_commodities")
+      .update({ commodity_group: trimmedNew, name: combinedCommodityName(trimmedNew, row.variety as string | null) })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+  }
   revalidateAll();
   revalidatePath("/supreme/produce");
 }

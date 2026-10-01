@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { createCommodity, deleteCommodity, updateCommodityCartonType, updateCommodityName } from "@/app/mexico/growers/actions";
+import {
+  createCommodity,
+  deleteCommodity,
+  renameCommodityGroup,
+  updateCommodityCartonType,
+  updateCommodityVariety,
+} from "@/app/mexico/growers/actions";
 import type { CartonType, MxCommodity } from "@/lib/types";
 import { addCartonType, deleteCartonType } from "./actions";
 
@@ -85,71 +91,103 @@ function CartonTypesPanel({ items, onAdd, onDelete }: { items: CartonType[]; onA
   );
 }
 
-function ProductsPanel({
-  items,
+interface CommodityGroupRows {
+  groupName: string;
+  products: MxCommodity[];
+}
+
+// Grouped by commodity_group (falling back to the product's own name for a
+// row that's never been organized yet - e.g. one auto-created from an
+// Arrivals paste import, which only ever supplies a flat name), then each
+// group's own varieties sorted alphabetically (blank variety - a group's
+// sole, not-yet-split-out entry - sorts first).
+function groupByCommodity(items: MxCommodity[]): CommodityGroupRows[] {
+  const map = new Map<string, MxCommodity[]>();
+  for (const p of items) {
+    const key = p.commodity_group || p.name;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(p);
+  }
+  return Array.from(map.entries())
+    .map(([groupName, products]) => ({
+      groupName,
+      products: [...products].sort((a, b) => (a.variety ?? "").localeCompare(b.variety ?? "")),
+    }))
+    .sort((a, b) => a.groupName.localeCompare(b.groupName));
+}
+
+function CommodityGroupSection({
+  group,
   cartonTypes,
-  onAdd,
+  onAddVariety,
   onDelete,
   onCartonTypeChange,
-  onNameChange,
+  onVarietyChange,
+  onRenameGroup,
 }: {
-  items: MxCommodity[];
+  group: CommodityGroupRows;
   cartonTypes: CartonType[];
-  onAdd: (name: string) => Promise<void>;
-  onDelete: (id: string) => void;
+  onAddVariety: (groupName: string) => Promise<void>;
+  onDelete: (id: string, label: string) => void;
   onCartonTypeChange: (id: string, cartonTypeId: string | null) => void;
-  onNameChange: (id: string, name: string) => void;
+  onVarietyChange: (product: MxCommodity, variety: string) => void;
+  onRenameGroup: (oldName: string, newName: string) => void;
 }) {
   const confirm = useConfirm();
-  const [newName, setNewName] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [addingVariety, setAddingVariety] = useState(false);
 
-  async function handleAdd() {
-    const name = newName.trim();
-    if (!name) return;
-    setAdding(true);
+  async function handleAddVariety() {
+    setAddingVariety(true);
     try {
-      await onAdd(name);
-      setNewName("");
-    } catch {
-      alert(`Couldn't add "${name}" - a product with that name may already exist.`);
+      await onAddVariety(group.groupName);
     } finally {
-      setAdding(false);
+      setAddingVariety(false);
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!(await confirm(`Remove "${name}"? Existing arrivals keep their value, but it won't be selectable anymore.`))) return;
-    onDelete(id);
+  async function handleDelete(p: MxCommodity) {
+    const label = p.variety ? `${group.groupName} ${p.variety}` : group.groupName;
+    if (!(await confirm(`Remove "${label}"? Existing arrivals keep their value, but it won't be selectable anymore.`))) return;
+    onDelete(p.id, label);
   }
 
   return (
-    <div className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
-      <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Products</h2>
-      <p className="text-xs text-black/50 dark:text-white/50">
-        Same list Arrivals picks its commodities from - assigning a carton type here is what lets Carton Inventory
-        eventually pull from Arrivals automatically.
-      </p>
-      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+    <div className="space-y-2 rounded-lg border border-black/10 dark:border-white/10">
+      <div className="flex items-center justify-between gap-2 border-b border-black/10 bg-black/[0.03] px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+        <input
+          defaultValue={group.groupName}
+          onBlur={(e) => {
+            const name = e.target.value.trim();
+            if (name && name !== group.groupName) onRenameGroup(group.groupName, name);
+            else e.target.value = group.groupName;
+          }}
+          className={`${field} max-w-xs font-semibold`}
+        />
+        <button
+          onClick={handleAddVariety}
+          disabled={addingVariety}
+          className="shrink-0 text-xs font-medium text-green-700 hover:underline disabled:opacity-60 dark:text-green-400"
+        >
+          {addingVariety ? "Adding..." : "+ Add Variety"}
+        </button>
+      </div>
+      <div className="overflow-x-auto px-3 pb-3">
         <table className="w-full text-sm">
-          <thead className="bg-black/5 text-left dark:bg-white/5">
+          <thead className="text-left text-xs text-black/50 dark:text-white/50">
             <tr>
-              <th className="px-2 py-2">Name</th>
-              <th className="px-2 py-2">Carton Type</th>
-              <th className="w-16 px-2 py-2" />
+              <th className="px-1 py-1">Variety</th>
+              <th className="px-1 py-1">Carton Type</th>
+              <th className="w-16 px-1 py-1" />
             </tr>
           </thead>
           <tbody>
-            {items.map((p) => (
+            {group.products.map((p) => (
               <tr key={p.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="min-w-[10rem] px-1 py-1">
+                <td className="min-w-[8rem] px-1 py-1">
                   <input
-                    defaultValue={p.name}
-                    onBlur={(e) => {
-                      const name = e.target.value.trim();
-                      if (name && name !== p.name) onNameChange(p.id, name);
-                      else e.target.value = p.name;
-                    }}
+                    defaultValue={p.variety ?? ""}
+                    placeholder="e.g. Red"
+                    onBlur={(e) => onVarietyChange(p, e.target.value)}
                     className={field}
                   />
                 </td>
@@ -167,33 +205,116 @@ function ProductsPanel({
                     ))}
                   </select>
                 </td>
-                <td className="px-2 py-1.5">
-                  <button onClick={() => handleDelete(p.id, p.name)} className="text-xs font-medium text-red-600 hover:underline">
+                <td className="px-1 py-1.5">
+                  <button onClick={() => handleDelete(p)} className="text-xs font-medium text-red-600 hover:underline">
                     Delete
                   </button>
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                  No products yet.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
-      <div className="flex items-center gap-2">
+    </div>
+  );
+}
+
+function ProductsPanel({
+  items,
+  cartonTypes,
+  onAdd,
+  onDelete,
+  onCartonTypeChange,
+  onVarietyChange,
+  onRenameGroup,
+}: {
+  items: MxCommodity[];
+  cartonTypes: CartonType[];
+  onAdd: (commodityGroup: string, variety: string | null) => Promise<void>;
+  onDelete: (id: string) => void;
+  onCartonTypeChange: (id: string, cartonTypeId: string | null) => void;
+  onVarietyChange: (product: MxCommodity, variety: string) => void;
+  onRenameGroup: (oldName: string, newName: string) => void;
+}) {
+  const [newGroup, setNewGroup] = useState("");
+  const [newVariety, setNewVariety] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const groups = groupByCommodity(items);
+  const groupNames = groups.map((g) => g.groupName);
+
+  async function handleAdd() {
+    const group = newGroup.trim();
+    if (!group) return;
+    setAdding(true);
+    try {
+      await onAdd(group, newVariety.trim() || null);
+      setNewGroup("");
+      setNewVariety("");
+    } catch {
+      alert(`Couldn't add "${group}${newVariety.trim() ? ` ${newVariety.trim()}` : ""}" - it may already exist.`);
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleAddVariety(groupName: string) {
+    // name = "{group} {variety}" is unique per product - a blank variety
+    // would collide with the group's own un-split entry (or any other
+    // blank-variety row already added), since both would resolve to the
+    // bare group name. A throwaway numbered placeholder sidesteps that;
+    // the user overwrites it with the real variety right away.
+    const existingCount = groups.find((g) => g.groupName === groupName)?.products.length ?? 0;
+    await onAdd(groupName, String(existingCount + 1)).catch(() => alert(`Couldn't add a new variety to "${groupName}".`));
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+      <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Products</h2>
+      <p className="text-xs text-black/50 dark:text-white/50">
+        Organized by Commodity Group (e.g. &quot;Bell Pepper&quot;), each with its own Varieties (e.g. &quot;Red&quot;) -
+        this is the same list Arrivals picks from (shown there as &quot;Group Variety&quot;), and assigning a carton
+        type here is what lets Carton Inventory eventually pull from Arrivals automatically.
+      </p>
+
+      <div className="space-y-3">
+        {groups.map((g) => (
+          <CommodityGroupSection
+            key={g.groupName}
+            group={g}
+            cartonTypes={cartonTypes}
+            onAddVariety={handleAddVariety}
+            onDelete={onDelete}
+            onCartonTypeChange={onCartonTypeChange}
+            onVarietyChange={onVarietyChange}
+            onRenameGroup={onRenameGroup}
+          />
+        ))}
+        {groups.length === 0 && <p className="text-sm text-black/40 dark:text-white/40">No products yet.</p>}
+      </div>
+
+      <datalist id="commodity-group-options">
+        {groupNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <div className="flex flex-wrap items-center gap-2">
         <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Add a product..."
+          value={newGroup}
+          onChange={(e) => setNewGroup(e.target.value)}
+          placeholder="Commodity Group (e.g. Bell Pepper)..."
+          list="commodity-group-options"
+          className={`${field} max-w-xs`}
+        />
+        <input
+          value={newVariety}
+          onChange={(e) => setNewVariety(e.target.value)}
+          placeholder="Variety (optional)..."
           className={`${field} max-w-xs`}
         />
         <button
           onClick={handleAdd}
-          disabled={adding || newName.trim() === ""}
+          disabled={adding || newGroup.trim() === ""}
           className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
         >
           {adding ? "Adding..." : "+ Add"}
@@ -225,9 +346,9 @@ export default function ProduceClient({
     await deleteCartonType(id).catch(() => {});
   }
 
-  async function handleAddProduct(name: string) {
-    const row = (await createCommodity(name)) as MxCommodity;
-    setProducts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+  async function handleAddProduct(commodityGroup: string, variety: string | null) {
+    const row = (await createCommodity(commodityGroup, variety)) as MxCommodity;
+    setProducts((prev) => [...prev, row]);
   }
 
   async function handleDeleteProduct(id: string) {
@@ -240,9 +361,23 @@ export default function ProduceClient({
     updateCommodityCartonType(id, cartonTypeId).catch(() => {});
   }
 
-  function handleProductNameChange(id: string, name: string) {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)).sort((a, b) => a.name.localeCompare(b.name)));
-    updateCommodityName(id, name).catch(() => {});
+  function handleVarietyChange(product: MxCommodity, variety: string) {
+    const trimmed = variety.trim();
+    if (trimmed === (product.variety ?? "")) return;
+    const commodityGroup = product.commodity_group ?? product.name;
+    const name = [commodityGroup, trimmed].filter(Boolean).join(" ");
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, variety: trimmed || null, name } : p)));
+    updateCommodityVariety(product.id, commodityGroup, trimmed || null).catch(() => {});
+  }
+
+  function handleRenameGroup(oldName: string, newName: string) {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if ((p.commodity_group ?? p.name) !== oldName) return p;
+        return { ...p, commodity_group: newName, name: [newName, p.variety ?? ""].filter(Boolean).join(" ") };
+      }),
+    );
+    renameCommodityGroup(oldName, newName).catch(() => {});
   }
 
   return (
@@ -260,7 +395,8 @@ export default function ProduceClient({
         onAdd={handleAddProduct}
         onDelete={handleDeleteProduct}
         onCartonTypeChange={handleCartonTypeChange}
-        onNameChange={handleProductNameChange}
+        onVarietyChange={handleVarietyChange}
+        onRenameGroup={handleRenameGroup}
       />
     </div>
   );
