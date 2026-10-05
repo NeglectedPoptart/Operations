@@ -34,6 +34,24 @@ export async function addCartons(cartonTypeId: string, qty: number, entryDate: s
   revalidateAll();
 }
 
+export async function reorderCartonLocations(orderedIds: string[]) {
+  const supabase = await createClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) => supabase.from("carton_locations").update({ position: index }).eq("id", id)),
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+  revalidateAll();
+}
+
+export async function setCartonLocationInactive(id: string, inactive: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("carton_locations").update({ inactive }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  revalidatePath("/mexico/arrivals");
+}
+
 export interface CountLine {
   cartonTypeId: string;
   qty: number;

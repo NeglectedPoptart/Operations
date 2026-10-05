@@ -6,7 +6,6 @@ import {
   createCommodity,
   deleteCommodity,
   renameCommodityGroup,
-  updateCommodityCartonType,
   updateCommodityVariety,
 } from "@/app/mexico/growers/actions";
 import type { CartonType, MxCommodity } from "@/lib/types";
@@ -36,7 +35,7 @@ function CartonTypesPanel({ items, onAdd, onDelete }: { items: CartonType[]; onA
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!(await confirm(`Delete "${name}"? Any products assigned to it will show no carton type.`))) return;
+    if (!(await confirm(`Delete "${name}"? Arrivals already using it keep their carton, but it will no longer be selectable.`))) return;
     onDelete(id);
   }
 
@@ -118,18 +117,14 @@ function groupByCommodity(items: MxCommodity[]): CommodityGroupRows[] {
 
 function CommodityGroupSection({
   group,
-  cartonTypes,
   onAddVariety,
   onDelete,
-  onCartonTypeChange,
   onVarietyChange,
   onRenameGroup,
 }: {
   group: CommodityGroupRows;
-  cartonTypes: CartonType[];
   onAddVariety: (groupName: string) => Promise<void>;
   onDelete: (id: string, label: string) => void;
-  onCartonTypeChange: (id: string, cartonTypeId: string | null) => void;
   onVarietyChange: (product: MxCommodity, variety: string) => void;
   onRenameGroup: (oldName: string, newName: string) => void;
 }) {
@@ -176,7 +171,6 @@ function CommodityGroupSection({
           <thead className="text-left text-xs text-black/50 dark:text-white/50">
             <tr>
               <th className="px-1 py-1">Variety</th>
-              <th className="px-1 py-1">Carton Type</th>
               <th className="w-16 px-1 py-1" />
             </tr>
           </thead>
@@ -190,20 +184,6 @@ function CommodityGroupSection({
                     onBlur={(e) => onVarietyChange(p, e.target.value)}
                     className={field}
                   />
-                </td>
-                <td className="min-w-[10rem] px-1 py-1">
-                  <select
-                    value={p.carton_type_id ?? ""}
-                    onChange={(e) => onCartonTypeChange(p.id, e.target.value || null)}
-                    className={field}
-                  >
-                    <option value="">--</option>
-                    {cartonTypes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
                 </td>
                 <td className="px-1 py-1.5">
                   <button onClick={() => handleDelete(p)} className="text-xs font-medium text-red-600 hover:underline">
@@ -221,18 +201,14 @@ function CommodityGroupSection({
 
 function ProductsPanel({
   items,
-  cartonTypes,
   onAdd,
   onDelete,
-  onCartonTypeChange,
   onVarietyChange,
   onRenameGroup,
 }: {
   items: MxCommodity[];
-  cartonTypes: CartonType[];
   onAdd: (commodityGroup: string, variety: string | null) => Promise<void>;
   onDelete: (id: string) => void;
-  onCartonTypeChange: (id: string, cartonTypeId: string | null) => void;
   onVarietyChange: (product: MxCommodity, variety: string) => void;
   onRenameGroup: (oldName: string, newName: string) => void;
 }) {
@@ -273,8 +249,7 @@ function ProductsPanel({
       <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Products</h2>
       <p className="text-xs text-black/50 dark:text-white/50">
         Organized by Commodity Group (e.g. &quot;Bell Pepper&quot;), each with its own Varieties (e.g. &quot;Red&quot;) -
-        this is the same list Arrivals picks from (shown there as &quot;Group Variety&quot;), and assigning a carton
-        type here is what lets Carton Inventory eventually pull from Arrivals automatically.
+        this is the same list Arrivals picks from (shown there as &quot;Group Variety&quot;).
       </p>
 
       <div className="space-y-3">
@@ -282,10 +257,8 @@ function ProductsPanel({
           <CommodityGroupSection
             key={g.groupName}
             group={g}
-            cartonTypes={cartonTypes}
             onAddVariety={handleAddVariety}
             onDelete={onDelete}
-            onCartonTypeChange={onCartonTypeChange}
             onVarietyChange={onVarietyChange}
             onRenameGroup={onRenameGroup}
           />
@@ -342,7 +315,6 @@ export default function ProduceClient({
 
   async function handleDeleteCartonType(id: string) {
     setCartonTypes((prev) => prev.filter((c) => c.id !== id));
-    setProducts((prev) => prev.map((p) => (p.carton_type_id === id ? { ...p, carton_type_id: null } : p)));
     await deleteCartonType(id).catch(() => {});
   }
 
@@ -354,11 +326,6 @@ export default function ProduceClient({
   async function handleDeleteProduct(id: string) {
     setProducts((prev) => prev.filter((p) => p.id !== id));
     await deleteCommodity(id).catch(() => {});
-  }
-
-  function handleCartonTypeChange(id: string, cartonTypeId: string | null) {
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, carton_type_id: cartonTypeId } : p)));
-    updateCommodityCartonType(id, cartonTypeId).catch(() => {});
   }
 
   function handleVarietyChange(product: MxCommodity, variety: string) {
@@ -385,16 +352,14 @@ export default function ProduceClient({
       <div>
         <h1 className="text-2xl font-bold">Produce</h1>
         <p className="text-sm text-black/60 dark:text-white/60">
-          Manage the products Arrivals picks from, and which carton type each one ships in.
+          Manage the products Arrivals picks from, and the carton types Carton Inventory tracks.
         </p>
       </div>
       <CartonTypesPanel items={cartonTypes} onAdd={handleAddCartonType} onDelete={handleDeleteCartonType} />
       <ProductsPanel
         items={products}
-        cartonTypes={cartonTypes}
         onAdd={handleAddProduct}
         onDelete={handleDeleteProduct}
-        onCartonTypeChange={handleCartonTypeChange}
         onVarietyChange={handleVarietyChange}
         onRenameGroup={handleRenameGroup}
       />

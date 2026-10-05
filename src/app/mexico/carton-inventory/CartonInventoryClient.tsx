@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { todayISO } from "@/lib/dates";
 import type { CartonBalance, CartonLocation, CartonType, MxGrower } from "@/lib/types";
-import { addCartons, setCartonCounts, transferCartons, type TransferLine } from "./actions";
+import {
+  addCartons,
+  reorderCartonLocations,
+  setCartonCounts,
+  setCartonLocationInactive,
+  transferCartons,
+  type TransferLine,
+} from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -17,6 +24,7 @@ function locationLabel(location: CartonLocation, growerById: Map<string, MxGrowe
 
 function sortLocations(locations: CartonLocation[], growerById: Map<string, MxGrower>): CartonLocation[] {
   return [...locations].sort((a, b) => {
+    if (a.position !== b.position) return a.position - b.position;
     if (a.kind !== b.kind) return a.kind === "homebase" ? -1 : 1;
     return locationLabel(a, growerById).localeCompare(locationLabel(b, growerById));
   });
@@ -39,7 +47,19 @@ export default function CartonInventoryClient({
   initialBalances: CartonBalance[];
   growers: MxGrower[];
 }) {
-  const [locations] = useState(initialLocations);
+  const growerById = useMemo(() => new Map(growers.map((g) => [g.id, g])), [growers]);
+  // Active tiles keep a drag-arranged order (saved as `position`); inactive
+  // ones (growers who ship to us but do not use our cartons) sit in their
+  // own non-reorderable list below, sorted by name.
+  const [order, setOrder] = useState(() => sortLocations(initialLocations.filter((l) => !l.inactive), growerById));
+  const [inactiveList, setInactiveList] = useState(() =>
+    [...initialLocations.filter((l) => l.inactive)].sort((a, b) => locationLabel(a, growerById).localeCompare(locationLabel(b, growerById))),
+  );
+  const [editMode, setEditMode] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const dragStartOrder = useRef<CartonLocation[] | null>(null);
+  const [, startTransition] = useTransition();
+  const locations = useMemo(() => [...order, ...inactiveList], [order, inactiveList]);
   const [balances, setBalances] = useState(initialBalances);
   const [showAddCartons, setShowAddCartons] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
@@ -52,8 +72,10 @@ export default function CartonInventoryClient({
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  const growerById = useMemo(() => new Map(growers.map((g) => [g.id, g])), [growers]);
-  const sortedLocations = useMemo(() => sortLocations(locations, growerById), [locations, growerById]);
+  // Dropdowns: every location can have its count set, but only active ones
+  // take part in transfers.
+  const sortedLocations = locations;
+  const activeLocations = order;
   const cartonTypeById = useMemo(() => new Map(cartonTypes.map((c) => [c.id, c])), [cartonTypes]);
   const homebase = useMemo(() => locations.find((l) => l.kind === "homebase") ?? null, [locations]);
 
@@ -97,6 +119,71 @@ export default function CartonInventoryClient({
     } finally {
       setAdding(false);
     }
+  }
+
+  // Tile layout ----------------------------------------------------------
+
+  function handleInactiveToggle(location: CartonLocation, nextInactive: boolean) {
+    const sortInactive = (list: CartonLocation[]) =>
+      [...list].sort((a, b) => locationLabel(a, growerById).localeCompare(locationLabel(b, growerById)));
+    if (nextInactive) {
+      setOrder((prev) => prev.filter((l) => l.id !== location.id));
+      setInactiveList((prev) => sortInactive([...prev, { ...location, inactive: true }]));
+    } else {
+      setInactiveList((prev) => prev.filter((l) => l.id !== location.id));
+      setOrder((prev) => [...prev, { ...location, inactive: false }]);
+    }
+    startTransition(async () => {
+      try {
+        await setCartonLocationInactive(location.id, nextInactive);
+      } catch {
+        if (nextInactive) {
+          setInactiveList((prev) => prev.filter((l) => l.id !== location.id));
+          setOrder((prev) => [...prev, { ...location, inactive: false }]);
+        } else {
+          setOrder((prev) => prev.filter((l) => l.id !== location.id));
+          setInactiveList((prev) => sortInactive([...prev, { ...location, inactive: true }]));
+        }
+      }
+    });
+  }
+
+  function handleDragStart(index: number) {
+    dragStartOrder.current = order;
+    setDraggedIndex(index);
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+    setOrder((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(draggedIndex, 1);
+      next.splice(index, 0, moved);
+      return next;
+    });
+    setDraggedIndex(index);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const previous = dragStartOrder.current;
+    const finalOrder = order;
+    setDraggedIndex(null);
+    dragStartOrder.current = null;
+    if (!previous || previous.map((l) => l.id).join() === finalOrder.map((l) => l.id).join()) return;
+    startTransition(async () => {
+      try {
+        await reorderCartonLocations(finalOrder.map((l) => l.id));
+      } catch {
+        setOrder(previous);
+      }
+    });
+  }
+
+  function handleDragEnd() {
+    setDraggedIndex(null);
+    dragStartOrder.current = null;
   }
 
   // Set counts -----------------------------------------------------------
@@ -381,7 +468,7 @@ export default function CartonInventoryClient({
                 className={`${field} mt-1 w-56`}
               >
                 <option value="">-- Select --</option>
-                {sortedLocations.map((l) => (
+                {activeLocations.map((l) => (
                   <option key={l.id} value={l.id}>
                     {locationLabel(l, growerById)}
                   </option>
@@ -438,7 +525,7 @@ export default function CartonInventoryClient({
                       className={`${field} mt-1 w-56`}
                     >
                       <option value="">-- Select --</option>
-                      {sortedLocations
+                      {activeLocations
                         .filter((l) => l.id !== fromLocationId)
                         .map((l) => (
                           <option key={l.id} value={l.id}>
@@ -471,43 +558,120 @@ export default function CartonInventoryClient({
         </div>
       )}
 
-      <div className="space-y-4">
-        {sortedLocations.map((location) => {
-          const rows = balancesByLocation.get(location.id) ?? [];
-          return (
-            <div key={location.id} className="space-y-2">
-              <h2 className="rounded-md bg-green-700 px-3 py-1.5 text-sm font-bold text-white">
-                {locationLabel(location, growerById)}
-              </h2>
-              <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-                <table className="w-full text-sm">
-                  <thead className="bg-black/5 text-left dark:bg-white/5">
-                    <tr>
-                      <th className="px-2 py-2">Carton Type</th>
-                      <th className="px-2 py-2 text-right">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+      <div className="space-y-3">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setEditMode((v) => !v)}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              editMode
+                ? "bg-green-600 text-white hover:bg-green-700"
+                : "border border-black/20 text-black/70 hover:border-green-600 hover:text-green-700 dark:border-white/20 dark:text-white/70"
+            }`}
+          >
+            {editMode ? "Done arranging" : "Edit layout"}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {order.map((location, index) => {
+            const rows = balancesByLocation.get(location.id) ?? [];
+            const body = (
+              <>
+                <h2 className="truncate text-sm font-bold text-green-700 dark:text-green-400">
+                  {locationLabel(location, growerById)}
+                </h2>
+                {rows.length === 0 ? (
+                  <p className="mt-1 text-xs text-black/40 dark:text-white/40">Nothing here yet.</p>
+                ) : (
+                  <ul className="mt-1 space-y-0.5">
                     {rows.map((r) => (
-                      <tr key={r.cartonTypeId} className="border-t border-black/10 dark:border-white/10">
-                        <td className="px-2 py-1.5">{cartonTypeById.get(r.cartonTypeId)?.name ?? "?"}</td>
-                        <td className="px-2 py-1.5 text-right font-medium">{r.qty.toLocaleString()}</td>
-                      </tr>
+                      <li key={r.cartonTypeId} className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate text-black/70 dark:text-white/70">
+                          {cartonTypeById.get(r.cartonTypeId)?.name ?? "?"}
+                        </span>
+                        <span className={`shrink-0 font-semibold tabular-nums ${r.qty < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                          {r.qty.toLocaleString()}
+                        </span>
+                      </li>
                     ))}
-                    {rows.length === 0 && (
-                      <tr>
-                        <td colSpan={2} className="px-3 py-3 text-center text-black/40 dark:text-white/40">
-                          Nothing here yet.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                  </ul>
+                )}
+              </>
+            );
+            const cardClasses = "flex flex-col gap-2 rounded-lg border border-black/10 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]";
+
+            if (editMode) {
+              return (
+                <div
+                  key={location.id}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={handleDrop}
+                  onDragEnd={handleDragEnd}
+                  className={`${cardClasses} cursor-grab select-none active:cursor-grabbing ${draggedIndex === index ? "opacity-40" : ""}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span aria-hidden className="shrink-0 text-lg leading-none text-black/30 dark:text-white/30">
+                      ⠿
+                    </span>
+                    <div className="min-w-0 flex-1">{body}</div>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <div key={location.id} className={cardClasses}>
+                <div className="min-w-0 flex-1">{body}</div>
+                {location.kind === "grower" && (
+                  <label className="flex items-center gap-1.5 border-t border-black/10 pt-2 text-xs text-black/50 dark:border-white/10 dark:text-white/50">
+                    <input type="checkbox" checked={false} onChange={() => handleInactiveToggle(location, true)} />
+                    Inactive (does not use our cartons)
+                  </label>
+                )}
               </div>
+            );
+          })}
+        </div>
+
+        {inactiveList.length > 0 && (
+          <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
+            <h2 className="text-sm font-semibold text-black/50 dark:text-white/50">
+              Not Using Our Cartons ({inactiveList.length})
+            </h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {inactiveList.map((location) => {
+                const rows = balancesByLocation.get(location.id) ?? [];
+                return (
+                  <div
+                    key={location.id}
+                    className="flex flex-col gap-2 rounded-lg border border-black/10 bg-black/[0.03] p-3 opacity-60 grayscale transition hover:opacity-80 dark:border-white/10 dark:bg-white/[0.03]"
+                  >
+                    <h2 className="truncate text-sm font-bold">{locationLabel(location, growerById)}</h2>
+                    {rows.length > 0 && (
+                      <ul className="space-y-0.5">
+                        {rows.map((r) => (
+                          <li key={r.cartonTypeId} className="flex items-baseline justify-between gap-2 text-sm">
+                            <span className="min-w-0 truncate">{cartonTypeById.get(r.cartonTypeId)?.name ?? "?"}</span>
+                            <span className="shrink-0 font-semibold tabular-nums">{r.qty.toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <label className="flex items-center gap-1.5 border-t border-black/10 pt-2 text-xs dark:border-white/10">
+                      <input type="checkbox" checked onChange={() => handleInactiveToggle(location, false)} />
+                      Inactive - uncheck to bring back
+                    </label>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-        {sortedLocations.length === 0 && (
+          </div>
+        )}
+
+        {locations.length === 0 && (
           <p className="text-sm text-black/40 dark:text-white/40">No locations yet - add a grower to get started.</p>
         )}
       </div>

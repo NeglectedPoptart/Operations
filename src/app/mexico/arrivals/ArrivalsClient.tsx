@@ -12,6 +12,7 @@ import {
   MX_ARRIVAL_DAYS,
   MX_ARRIVAL_SECTIONS,
   MX_TRUCK_POSITIONS,
+  type CartonType,
   type LoadOption,
   type MxArrival,
   type MxArrivalDay,
@@ -140,6 +141,8 @@ export default function ArrivalsClient({
   commodities,
   initialArrivals,
   loadOptions,
+  cartonTypes,
+  cartonInactiveGrowerIds,
 }: {
   initialWeekStart: string;
   growers: MxGrower[];
@@ -147,6 +150,10 @@ export default function ArrivalsClient({
   commodities: MxCommodity[];
   initialArrivals: MxArrival[];
   loadOptions: LoadOption[];
+  cartonTypes: CartonType[];
+  // Growers marked inactive in Carton Inventory: they still ship to us, but
+  // not in our cartons, so no carton is asked for or deducted.
+  cartonInactiveGrowerIds: string[];
 }) {
   const confirm = useConfirm();
   const router = useRouter();
@@ -163,6 +170,12 @@ export default function ArrivalsClient({
   const [importing, setImporting] = useState(false);
   // Which arrival days are checked in the summary strip - empty means no
   // filter (show every day). Multiple days can be checked at once.
+  const [cartonPicker, setCartonPicker] = useState<{
+    rowId: string;
+    growerName: string;
+    loading: boolean;
+    options: { cartonTypeId: string; qty: number }[];
+  } | null>(null);
   const [dayFilter, setDayFilter] = useState<Set<MxArrivalDay>>(new Set());
 
   const week = cache[weekStart] ?? { arrivals: [] };
@@ -197,6 +210,40 @@ export default function ArrivalsClient({
   function handleRowSave(id: string, patch: Partial<MxArrival>) {
     patchWeek({ arrivals: week.arrivals.map((a) => (a.id === id ? { ...a, ...patch } : a)) });
     updateArrivalRow(id, patch).catch(() => {});
+  }
+
+  // Opens the carton popup for a row: only cartons this grower actually has
+  // stock of (positive balance at their Carton Inventory location) are
+  // offered, with the on-hand count shown so the pick is an informed one.
+  async function openCartonPicker(rowId: string, growerId: string) {
+    if (cartonInactiveGrowerIds.includes(growerId)) return;
+    const growerName = growers.find((g) => g.id === growerId)?.name ?? "this grower";
+    setCartonPicker({ rowId, growerName, loading: true, options: [] });
+    const supabase = createClient();
+    const { data: location } = await supabase.from("carton_locations").select("id").eq("grower_id", growerId).maybeSingle();
+    let options: { cartonTypeId: string; qty: number }[] = [];
+    if (location) {
+      const { data: balances } = await supabase
+        .from("carton_balances")
+        .select("carton_type_id, qty")
+        .eq("location_id", location.id)
+        .gt("qty", 0);
+      options = (balances ?? []).map((b) => ({ cartonTypeId: b.carton_type_id as string, qty: b.qty as number }));
+    }
+    setCartonPicker((prev) => (prev && prev.rowId === rowId ? { ...prev, loading: false, options } : prev));
+  }
+
+  function handleGrowerChange(rowId: string, growerId: string | null) {
+    // A carton picked for the previous grower is not in the new grower's
+    // inventory, so it is cleared and re-asked for.
+    handleRowSave(rowId, { grower_id: growerId, carton_type_id: null });
+    if (growerId) openCartonPicker(rowId, growerId);
+  }
+
+  function handlePickCarton(cartonTypeId: string | null) {
+    if (!cartonPicker) return;
+    handleRowSave(cartonPicker.rowId, { carton_type_id: cartonTypeId });
+    setCartonPicker(null);
   }
 
   async function handleRowDelete(id: string) {
@@ -563,7 +610,7 @@ export default function ArrivalsClient({
                           <td className="min-w-[8rem] px-1.5 py-1">
                             <select
                               value={row.grower_id ?? ""}
-                              onChange={(e) => handleRowSave(row.id, { grower_id: e.target.value || null })}
+                              onChange={(e) => handleGrowerChange(row.id, e.target.value || null)}
                               className={cellField}
                             >
                               <option value="">--</option>
@@ -573,6 +620,17 @@ export default function ArrivalsClient({
                                 </option>
                               ))}
                             </select>
+                            {row.grower_id && !cartonInactiveGrowerIds.includes(row.grower_id) && (
+                              <button
+                                onClick={() => openCartonPicker(row.id, row.grower_id!)}
+                                className="mt-0.5 block text-left text-[11px] font-medium text-green-700 hover:underline dark:text-green-400"
+                                title="Which carton from this grower's inventory this load uses"
+                              >
+                                {row.carton_type_id
+                                  ? `Carton: ${cartonTypes.find((c) => c.id === row.carton_type_id)?.name ?? "?"}`
+                                  : "Select carton"}
+                              </button>
+                            )}
                           </td>
                           <td className="px-1.5 py-1">
                             <input value={grower?.origin ?? ""} disabled className={`${cellFieldSm} bg-black/5 dark:bg-white/10`} />
@@ -761,6 +819,45 @@ export default function ArrivalsClient({
         );
       })}
     </div>
+    {cartonPicker && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCartonPicker(null)}>
+        <div
+          className="w-full max-w-sm space-y-3 rounded-lg bg-white p-4 text-black shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div>
+            <h2 className="text-base font-bold">Which carton is this load using?</h2>
+            <p className="text-xs text-black/60">From {cartonPicker.growerName}&apos;s carton inventory.</p>
+          </div>
+          {cartonPicker.loading ? (
+            <p className="text-sm text-black/50">Loading...</p>
+          ) : cartonPicker.options.length === 0 ? (
+            <p className="rounded-md bg-black/5 p-3 text-sm text-black/60">
+              {cartonPicker.growerName} has no cartons in inventory yet - transfer some to them from Carton Inventory
+              first, or skip for now.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {cartonPicker.options.map((o) => (
+                <button
+                  key={o.cartonTypeId}
+                  onClick={() => handlePickCarton(o.cartonTypeId)}
+                  className="flex w-full items-center justify-between gap-2 rounded-md border border-black/15 px-3 py-2 text-left text-sm hover:border-green-600 hover:bg-green-50"
+                >
+                  <span className="font-medium">{cartonTypes.find((c) => c.id === o.cartonTypeId)?.name ?? "Unknown carton"}</span>
+                  <span className="shrink-0 text-xs text-black/50">{o.qty.toLocaleString()} on hand</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end">
+            <button onClick={() => setCartonPicker(null)} className="text-sm font-medium text-black/60 hover:underline">
+              Skip for now
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 }

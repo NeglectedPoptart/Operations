@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { currentWeekStart, formatDate } from "@/lib/dates";
-import type { LoadOption, MxArrival, MxCommodity, MxGrower, MxGrowerLabel } from "@/lib/types";
+import type { CartonType, LoadOption, MxArrival, MxCommodity, MxGrower, MxGrowerLabel } from "@/lib/types";
 import ArrivalsClient from "./ArrivalsClient";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +39,8 @@ export default async function ArrivalsPage() {
     { data: commodities, error: commoditiesError },
     { data: arrivals, error: arrivalsError },
     { data: loadsForOptions, error: loadsError },
+    { data: cartonTypes, error: cartonTypesError },
+    { data: cartonLocations, error: cartonLocationsError },
   ] = await Promise.all([
     supabase.from("mx_growers").select("*").order("name", { ascending: true }),
     supabase.from("mx_grower_labels").select("*").order("name", { ascending: true }),
@@ -52,9 +54,11 @@ export default async function ArrivalsPage() {
       // that hasn't even crossed yet.
       .eq("status", "pending_to_load")
       .order("loading_date", { ascending: false }),
+    supabase.from("carton_types").select("*").order("position", { ascending: true }),
+    supabase.from("carton_locations").select("grower_id, inactive").eq("inactive", true),
   ]);
 
-  const error = growersError ?? labelsError ?? commoditiesError ?? arrivalsError ?? loadsError;
+  const error = growersError ?? labelsError ?? commoditiesError ?? arrivalsError ?? loadsError ?? cartonTypesError ?? cartonLocationsError;
   if (error) {
     return <p className="text-red-600">Failed to load Arrivals: {error.message}</p>;
   }
@@ -72,6 +76,8 @@ export default async function ArrivalsPage() {
       commodities={(commodities ?? []) as MxCommodity[]}
       initialArrivals={(arrivals ?? []) as MxArrival[]}
       loadOptions={loadOptions}
+      cartonTypes={(cartonTypes ?? []) as CartonType[]}
+      cartonInactiveGrowerIds={(cartonLocations ?? []).map((l) => l.grower_id as string).filter(Boolean)}
     />
   );
 }

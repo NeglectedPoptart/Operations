@@ -20,15 +20,16 @@ const COMMODITY_QTY_SLOTS = [
   { idKey: "commodity_4_id", qtyKey: "commodity_4_qty", slot: 4 },
 ] as const;
 
-// Carton Inventory Phase 2: whenever an arrival row's commodity/qty (or
-// grower/day, which change where and when the deduction should land)
+// Carton Inventory Phase 2: whenever an arrival row's carton/commodity/qty
+// (or grower/day, which change where and when the deduction should land)
 // change, this re-derives the correct auto-deduction from scratch for each
 // of the row's 4 commodity slots - always a full delete-then-recreate per
 // slot (keyed on source_arrival_id + source_arrival_slot) rather than a
-// diff, since that's simplest to keep correct and this runs on every save,
-// not just qty changes. A slot with no product, no assigned carton type, or
-// no positive qty just ends up with nothing to insert - clearing whatever
-// was there before if that slot used to have a deduction.
+// diff, since that's simplest to keep correct and this runs on every save.
+// The carton type is one pick for the whole row (chosen from the grower's
+// own inventory); every slot's qty deducts from it. A row with no carton
+// picked, or a slot with no product or no positive qty, just ends up with
+// nothing to insert - clearing whatever was there before.
 async function syncCartonDeductionsForArrival(supabase: SupabaseClient, arrivalId: string) {
   const { data: arrival, error: arrivalError } = await supabase.from("mx_arrivals").select("*").eq("id", arrivalId).maybeSingle();
   if (arrivalError || !arrival) return;
@@ -41,10 +42,8 @@ async function syncCartonDeductionsForArrival(supabase: SupabaseClient, arrivalI
   const locationId = location?.id as string | undefined;
   if (!locationId) return;
 
-  const commodityIds = COMMODITY_QTY_SLOTS.map((s) => arrival[s.idKey] as string | null).filter((v): v is string => Boolean(v));
-  if (commodityIds.length === 0) return;
-  const { data: commodities } = await supabase.from("mx_commodities").select("id, carton_type_id").in("id", commodityIds);
-  const cartonTypeByCommodity = new Map((commodities ?? []).map((c) => [c.id as string, c.carton_type_id as string | null]));
+  const cartonTypeId = arrival.carton_type_id as string | null;
+  if (!cartonTypeId) return;
 
   const dayIndex = arrival.arrival_day ? DAY_INDEX.get(arrival.arrival_day as MxArrivalDay) : undefined;
   const entryDate = dayIndex !== undefined ? addDays(arrival.week_start_date as string, dayIndex) : (arrival.week_start_date as string);
@@ -52,8 +51,7 @@ async function syncCartonDeductionsForArrival(supabase: SupabaseClient, arrivalI
   const rows = COMMODITY_QTY_SLOTS.map((s) => {
     const commodityId = arrival[s.idKey] as string | null;
     const qty = arrival[s.qtyKey] as number | null;
-    const cartonTypeId = commodityId ? (cartonTypeByCommodity.get(commodityId) ?? null) : null;
-    if (!commodityId || !cartonTypeId || !qty || qty <= 0) return null;
+    if (!commodityId || !qty || qty <= 0) return null;
     return {
       carton_type_id: cartonTypeId,
       location_id: locationId,
@@ -240,6 +238,7 @@ export async function updateArrivalRow(
   patch: {
     grower_id?: string | null;
     label_id?: string | null;
+    carton_type_id?: string | null;
     commodity_1_id?: string | null;
     commodity_2_id?: string | null;
     commodity_3_id?: string | null;
@@ -262,7 +261,7 @@ export async function updateArrivalRow(
   const supabase = await createClient();
   const { error } = await supabase.from("mx_arrivals").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  if ("grower_id" in patch || "arrival_day" in patch || COMMODITY_QTY_SLOTS.some((s) => s.idKey in patch || s.qtyKey in patch)) {
+  if ("grower_id" in patch || "carton_type_id" in patch || "arrival_day" in patch || COMMODITY_QTY_SLOTS.some((s) => s.idKey in patch || s.qtyKey in patch)) {
     await syncCartonDeductionsForArrival(supabase, id).catch(() => {});
   }
   revalidateAll();

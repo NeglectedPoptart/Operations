@@ -998,7 +998,6 @@ export interface MxCommodity {
   name: string;
   commodity_group: string | null;
   variety: string | null;
-  carton_type_id: string | null;
 }
 
 // Mexico: Arrivals --------------------------------------------------------------
@@ -1052,6 +1051,10 @@ export interface MxArrival {
   position: number;
   grower_id: string | null;
   label_id: string | null;
+  // The carton type drawn from this grower's carton inventory for this
+  // whole load - picked in a popup right after the grower is set; every
+  // commodity slot's qty deducts from it.
+  carton_type_id: string | null;
   commodity_1_id: string | null;
   commodity_2_id: string | null;
   commodity_3_id: string | null;
@@ -1137,6 +1140,11 @@ export interface CartonLocation {
   kind: CartonLocationKind;
   grower_id: string | null;
   name: string | null;
+  // Saved tile order on Carton Inventory (drag-arranged).
+  position: number;
+  // Grower still ships to us but does not use our cartons - hidden from the
+  // active tiles and from the Arrivals carton popup.
+  inactive: boolean;
   created_at: string;
 }
 
