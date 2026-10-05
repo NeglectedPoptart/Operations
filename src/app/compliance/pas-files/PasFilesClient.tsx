@@ -122,7 +122,10 @@ export default function PasFilesClient({
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
 
-  const existingKeys = new Set(items.map((i) => matchKey(i.order_no, i.po ?? "")));
+  // A report row counts as already in a list when its order number is there
+  // - an order PO can change between reports, so the PO is not part of it.
+  const existingOrderNos = new Set(items.map((i) => i.order_no.trim().toLowerCase()));
+  const pendingOrderNos = new Set(Array.from(pendingKeys).map((k) => k.split("|")[0]));
 
   // No boxes checked = no filter (show everything); otherwise show only the
   // checked highlight(s).
@@ -213,11 +216,11 @@ export default function PasFilesClient({
   }
 
   function previewStatus(row: ParsedPasFileRow) {
-    const key = matchKey(row.order_no, row.po);
+    const orderNo = row.order_no.trim().toLowerCase();
     if (isPasRow(row)) {
-      return { destination: "PAS Files", isNew: !existingKeys.has(key) };
+      return { destination: "PAS Files", isNew: !existingOrderNos.has(orderNo) };
     }
-    return { destination: "Pending to Invoice", isNew: !pendingKeys.has(key) };
+    return { destination: "Pending to Invoice", isNew: !pendingOrderNos.has(orderNo) };
   }
 
   const newPasCount = previewRows ? previewRows.filter((r) => isPasRow(r) && previewStatus(r).isNew).length : 0;
@@ -229,11 +232,14 @@ export default function PasFilesClient({
     if (!previewRows) return;
     setImporting(true);
     try {
-      const { pasFiles, pendingToInvoice } = await importPendingList(previewRows);
-      setItems((prev) => [...prev, ...((pasFiles ?? []) as PasFile[])]);
+      const { pasFiles, pasUpdated, pendingToInvoice, pendingUpdated } = await importPendingList(previewRows);
+      const refreshed = new Map(((pasUpdated ?? []) as PasFile[]).map((r) => [r.id, r]));
+      setItems((prev) => [...prev.map((i) => refreshed.get(i.id) ?? i), ...((pasFiles ?? []) as PasFile[])]);
       setPendingKeys((prev) => {
         const next = new Set(prev);
-        for (const row of pendingToInvoice ?? []) next.add(matchKey(row.order_no, row.po ?? ""));
+        for (const row of [...(pendingToInvoice ?? []), ...(pendingUpdated ?? [])]) {
+          next.add(matchKey(row.order_no, row.po ?? ""));
+        }
         return next;
       });
       setPreviewRows(null);
@@ -337,8 +343,9 @@ export default function PasFilesClient({
             <p className="text-sm text-black/60 dark:text-white/60">
               Upload the &quot;Orders Pending to Invoice&quot; PDF export - not just PAS orders. Rows marked
               PAS (on PO or Order Type) are routed here; everything else goes to Sales &gt; Pending to Invoice
-              instead. Both lists are running - rows already present (matched on Order No + PO) are left
-              untouched, only new rows get added.
+              instead. Both lists are running - an order already present (matched on Order No) has its
+              figures refreshed from this report, keeping your Last Contact, Update and Highlight; only new
+              orders get added.
             </p>
             {parseError && <p className="text-sm text-red-600">{parseError}</p>}
 
@@ -353,8 +360,8 @@ export default function PasFilesClient({
               <div className="space-y-2">
                 <p className="text-sm font-medium">
                   Found {previewRows.length} row{previewRows.length === 1 ? "" : "s"}: {newPasCount} new to PAS
-                  Files, {newInvoiceCount} new to Pending to Invoice, {alreadyCount} already in a list (will be
-                  skipped).
+                  Files, {newInvoiceCount} new to Pending to Invoice, {alreadyCount} already in a list (refreshed
+                  from this report - notes, contacts and highlights are kept).
                 </p>
                 <div className="max-h-64 overflow-auto rounded border border-black/10 dark:border-white/10">
                   <table className="w-full text-xs">
@@ -394,10 +401,10 @@ export default function PasFilesClient({
                 <div className="flex gap-2">
                   <button
                     onClick={handleConfirmImport}
-                    disabled={importing || totalNew === 0}
+                    disabled={importing || previewRows.length === 0}
                     className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
                   >
-                    {importing ? "Importing..." : `Add ${totalNew} New Row${totalNew === 1 ? "" : "s"}`}
+                    {importing ? "Importing..." : `Sync ${previewRows.length} Row${previewRows.length === 1 ? "" : "s"}`}
                   </button>
                   <button
                     onClick={handleCancelPreview}

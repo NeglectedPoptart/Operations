@@ -49,29 +49,57 @@ export function isPasRow(row: ParsedPasFileRow): boolean {
 // back together in a fixed but visually-scrambled order (the same quirk as
 // the other ERP PDF exports - see salesOrderParse.ts / oldAgeParse.ts).
 // Reverse-engineered against a real export, each row prints as:
-//   OrderNo Slp Date ShipDate Status OrderType SalesType(glued)ShipQty
-//   Whse(glued)FobAmt Customer(glued)Days(glued)PO
+//   OrderNo [flag] Slp Date ShipDate Status OrderType SalesType(glued)ShipQty
+//   Whse(glued)FobAmt Customer [ CODE ] Days(glued)PO
 // with no separator at all between values that aren't genuinely
-// whitespace-separated in the source sheet. Days (a computed aging value
-// recomputed from ship_date at render time, never imported) is glued
-// directly onto PO with nothing between them, so we split on the first
-// digit run in that combined blob
-// and discard it - this is only ambiguous when PO itself starts with a
-// bare digit, which never happens on a real PAS order (its PO always
-// carries the word "PAS" or a person's name, e.g. "PAS 6/9", "Eric PAS
-// 8/21") - only on the non-PAS invoice numbers this page doesn't care
-// about matching exactly.
+// whitespace-separated in the source sheet. A one-letter flag (e.g. "t")
+// can sit between the order number and the salesperson.
+//
+// Days is glued straight onto the front of PO, so a PO that starts with
+// digits (e.g. "389903") is indistinguishable from more days digits by
+// shape alone. Days is simply the report's run date minus the row's ship
+// date though, so it is recomputed here and stripped off exactly.
 const PDF_ROW_RE =
-  /^(\d{5,10})\s+(\S+)\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]+)\s+([A-Za-z]+)\s+([A-Za-z]+)(\d[\d,]*)\s+(\d{2}(?:,\s*\d{2})*)([\d,]+\.\d{2})(.*)$/;
+  /^(\d{5,10})(?:\s+[A-Za-z](?=\s+\S{2,}\s+\d{1,2}\/))?\s+(\S+)\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+([A-Za-z]+)\s+([A-Za-z]+)\s+([A-Za-z]+)(\d[\d,]*)\s+(\d{2}(?:,\s*\d{2})*)([\d,]+\.\d{2})(.*)$/;
 
-function parsePdfRow(line: string): ParsedPasFileRow | null {
+// The header line "10/5/2026 1:06:14PM" - when the report was run.
+const RUN_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+\d{1,2}:\d{2}:\d{2}\s*[AP]M$/;
+
+function findRunDateUtc(lines: string[]): number | null {
+  for (const line of lines) {
+    const m = line.trim().match(RUN_DATE_RE);
+    if (m) return Date.UTC(Number(m[3]), Number(m[1]) - 1, Number(m[2]));
+  }
+  return null;
+}
+
+function expectedDays(runDateUtc: number | null, shipDateIso: string | null): string | null {
+  if (runDateUtc === null || !shipDateIso) return null;
+  const [y, m, d] = shipDateIso.split("-").map(Number);
+  return String(Math.round((runDateUtc - Date.UTC(y, m - 1, d)) / 86400000));
+}
+
+function splitCustomerAndPo(remainder: string, days: string | null): { customer: string; po: string } {
+  const bracketEnd = remainder.indexOf("]");
+  if (bracketEnd !== -1 && days !== null) {
+    const tail = remainder.slice(bracketEnd + 1).trim();
+    if (tail.startsWith(days)) {
+      return { customer: remainder.slice(0, bracketEnd + 1).trim(), po: tail.slice(days.length).trim() };
+    }
+  }
+  // Fallback (no run date / unexpected shape): treat the first digit run as
+  // the days and drop it - the old behaviour.
+  const m = remainder.match(/^(\D*)(\d+)(.*)$/);
+  return { customer: (m ? m[1] : remainder).trim(), po: m ? m[3].trim() : "" };
+}
+
+function parsePdfRow(line: string, runDateUtc: number | null): ParsedPasFileRow | null {
   const match = line.trim().match(PDF_ROW_RE);
   if (!match) return null;
   const [, orderNo, slp, date, shipDate, status, orderType, salesType, shipQty, whse, fobAmt, remainder] = match;
 
-  const remainderMatch = remainder.match(/^(\D*)(\d+)(.*)$/);
-  const customer = (remainderMatch ? remainderMatch[1] : remainder).trim();
-  const po = remainderMatch ? remainderMatch[3].trim() : "";
+  const shipDateIso = parseUsDate(shipDate);
+  const { customer, po } = splitCustomerAndPo(remainder, expectedDays(runDateUtc, shipDateIso));
 
   return {
     order_no: orderNo,
@@ -79,7 +107,7 @@ function parsePdfRow(line: string): ParsedPasFileRow | null {
     customer,
     slp,
     order_date: parseUsDate(date),
-    ship_date: parseUsDate(shipDate),
+    ship_date: shipDateIso,
     ship_qty: parseNumber(shipQty),
     fob_amt: parseNumber(fobAmt),
     whse,
@@ -92,10 +120,9 @@ function parsePdfRow(line: string): ParsedPasFileRow | null {
 }
 
 export function parsePdfPasFiles(text: string): ParseResult {
-  const rows = text
-    .split(/\r?\n/)
-    .map(parsePdfRow)
-    .filter((r): r is ParsedPasFileRow => r !== null);
+  const lines = text.split(/\r?\n/);
+  const runDateUtc = findRunDateUtc(lines);
+  const rows = lines.map((l) => parsePdfRow(l, runDateUtc)).filter((r): r is ParsedPasFileRow => r !== null);
 
   if (rows.length === 0) {
     return {
