@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
 import { AR_AGING_BUCKETS, arAgingBucket, type ArAgingBucket } from "@/lib/arAging";
@@ -22,7 +22,7 @@ import { parsePdfArReport, type ParsedArInvoice } from "@/lib/arReportParse";
 import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
-import { deleteArInvoiceRow, extractPdfText, importArReport, saveArBaseline, updateArInvoiceRow } from "./actions";
+import { deleteArInvoiceRow, extractPdfText, importArReport, logArOpened, saveArBaseline, updateArInvoiceRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -165,6 +165,9 @@ export default function ArClient({
   initialBaseline: ArSummarySnapshot | null;
 }) {
   const confirm = useConfirm();
+  useEffect(() => {
+    logArOpened().catch(() => {});
+  }, []);
   const [customers, setCustomers] = useState(initialCustomers);
   const [invoices, setInvoices] = useState(initialInvoices);
   const [showUpload, setShowUpload] = useState(initialInvoices.length === 0);

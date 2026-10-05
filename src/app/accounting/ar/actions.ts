@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 // its own copy in its own actions.ts.
 import { extractText, getDocumentProxy } from "unpdf";
 import { computeArSummaryTotals } from "@/lib/arShared";
+import { logActivity } from "@/lib/auditLog";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedArInvoice } from "@/lib/arReportParse";
 import type { ArCustomer, ArInvoice, ArSummarySnapshot } from "@/lib/types";
@@ -138,6 +139,12 @@ export async function importArReport(
     finalCustomers = (finalCustomers ?? []).filter((c) => !strayIds.includes(c.id as string));
   }
 
+  await logActivity(
+    "ar_upload",
+    `Uploaded AR report: ${rows.length} invoices (${newRows.length} new, ${updateRows.length} updated, ${toRemove.length} removed)`,
+    { invoices: rows.length, added: newRows.length, updated: updateRows.length, removed: toRemove.length },
+  );
+
   revalidateAll();
   return { customers: (finalCustomers ?? []) as ArCustomer[], invoices: (finalInvoices ?? []) as ArInvoice[] };
 }
@@ -173,8 +180,23 @@ export async function saveArBaseline(): Promise<ArSummarySnapshot> {
     .single();
   if (insertError) throw new Error(insertError.message);
 
+  await logActivity("ar_change", "Reset the AR comparison baseline");
+
   revalidateAll();
   return row as ArSummarySnapshot;
+}
+
+// Describes which invoice an edit touched, for the activity log. Best-effort -
+// a lookup failure just yields a vaguer line rather than blocking the edit.
+async function describeInvoice(supabase: Awaited<ReturnType<typeof createClient>>, id: string) {
+  const { data } = await supabase
+    .from("ar_invoices")
+    .select("invoice_no, last_contact, notes, highlight, ar_customers(customer_name)")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  const customer = (data.ar_customers as unknown as { customer_name: string } | null)?.customer_name ?? "?";
+  return { label: `${data.invoice_no} (${customer})`, before: data as Record<string, unknown> };
 }
 
 export async function updateArInvoiceRow(
@@ -182,14 +204,34 @@ export async function updateArInvoiceRow(
   patch: Partial<Pick<ArInvoice, "last_contact" | "notes" | "highlight">>,
 ) {
   const supabase = await createClient();
+  const info = await describeInvoice(supabase, id);
   const { error } = await supabase.from("ar_invoices").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
+
+  const changes = Object.entries(patch)
+    .filter(([key, value]) => (info?.before[key] ?? null) !== (value === "" ? null : value))
+    .map(([key, value]) => ({ field: key, from: info?.before[key] ?? null, to: value }));
+  if (changes.length > 0) {
+    await logActivity(
+      "ar_change",
+      `Invoice ${info?.label ?? id}: ${changes.map((c) => `${c.field} "${c.from ?? ""}" -> "${c.to ?? ""}"`).join("; ")}`,
+      { invoice_id: id, changes },
+    );
+  }
   revalidateAll();
 }
 
 export async function deleteArInvoiceRow(id: string) {
   const supabase = await createClient();
+  const info = await describeInvoice(supabase, id);
   const { error } = await supabase.from("ar_invoices").delete().eq("id", id);
   if (error) throw new Error(error.message);
+  await logActivity("ar_change", `Removed invoice ${info?.label ?? id}`, { invoice_id: id });
   revalidateAll();
+}
+
+// Called once when someone opens the AR page (from the client, since a
+// server render also fires on every background refresh).
+export async function logArOpened() {
+  await logActivity("ar_open", "Opened Accounts Receivable");
 }

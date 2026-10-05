@@ -23,6 +23,9 @@ interface NavItem {
   // middleware restriction, which is the real enforcement; this only
   // controls what shows in the sidebar).
   excludeRoles?: Role[];
+  // Shown only to the Supreme account, even inside an otherwise
+  // role-eligible category (see isSupremeUser in roles.ts).
+  supremeOnly?: boolean;
 }
 
 interface NavCategory {
@@ -130,6 +133,7 @@ const NAV: NavCategory[] = [
       { href: "/management/performance-reviews", label: "Performance Reviews" },
       { href: "/management/employee-files", label: "Employee Files" },
       { href: "/management/costs", label: "Costs" },
+      { href: "/management/activity-log", label: "Activity Log", supremeOnly: true },
     ],
   },
   { label: "Documents", href: "/documents", tab: "documents" },
@@ -380,7 +384,9 @@ export default function NavBar({ role, email }: { role: Role | null; email: stri
             return !category.tab || canAccessTab(role, category.tab);
           }).map((category) => ({
             ...category,
-            items: category.items?.filter((item) => !(role && item.excludeRoles?.includes(role))),
+            items: category.items?.filter(
+              (item) => !(role && item.excludeRoles?.includes(role)) && !(item.supremeOnly && !isSupremeUser(email)),
+            ),
           })),
     [isBrokerCarrier, role, email],
   );
