@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { todayISO } from "@/lib/dates";
 import type { CartonBalance, CartonLocation, CartonType, MxGrower } from "@/lib/types";
-import { addCartons, transferCartons, type TransferLine } from "./actions";
+import { addCartons, setCartonCounts, transferCartons, type TransferLine } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -43,6 +43,7 @@ export default function CartonInventoryClient({
   const [balances, setBalances] = useState(initialBalances);
   const [showAddCartons, setShowAddCartons] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showCounts, setShowCounts] = useState(false);
 
   const [addCartonTypeId, setAddCartonTypeId] = useState(cartonTypes[0]?.id ?? "");
   const [addQty, setAddQty] = useState("");
@@ -95,6 +96,49 @@ export default function CartonInventoryClient({
       setAddError(err instanceof Error ? err.message : "Couldn't add cartons - try again.");
     } finally {
       setAdding(false);
+    }
+  }
+
+  // Set counts -----------------------------------------------------------
+
+  const [countLocationId, setCountLocationId] = useState("");
+  const [countDate, setCountDate] = useState(todayISO());
+  const [countValues, setCountValues] = useState<Record<string, string>>({});
+  const [savingCounts, setSavingCounts] = useState(false);
+  const [countError, setCountError] = useState<string | null>(null);
+
+  function onHandAt(locationId: string, cartonTypeId: string): number {
+    return balances.find((b) => b.location_id === locationId && b.carton_type_id === cartonTypeId)?.qty ?? 0;
+  }
+
+  async function handleSaveCounts() {
+    if (!countLocationId) {
+      setCountError("Pick a location.");
+      return;
+    }
+    const lines = Object.entries(countValues)
+      .filter(([, v]) => v.trim() !== "")
+      .map(([cartonTypeId, v]) => ({ cartonTypeId, qty: Number(v) }));
+    if (lines.length === 0) {
+      setCountError("Enter at least one count.");
+      return;
+    }
+    if (lines.some((l) => !Number.isInteger(l.qty) || l.qty < 0)) {
+      setCountError("Counts must be whole numbers, 0 or more.");
+      return;
+    }
+    setSavingCounts(true);
+    setCountError(null);
+    try {
+      await setCartonCounts(countLocationId, lines, countDate);
+      for (const l of lines) {
+        applyLocalBalance(l.cartonTypeId, countLocationId, l.qty - onHandAt(countLocationId, l.cartonTypeId));
+      }
+      setCountValues({});
+    } catch (err) {
+      setCountError(err instanceof Error ? err.message : "Could not save the counts - try again.");
+    } finally {
+      setSavingCounts(false);
     }
   }
 
@@ -173,6 +217,7 @@ export default function CartonInventoryClient({
             onClick={() => {
               setShowAddCartons((v) => !v);
               setShowTransfer(false);
+              setShowCounts(false);
             }}
             className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
           >
@@ -182,10 +227,21 @@ export default function CartonInventoryClient({
             onClick={() => {
               setShowTransfer((v) => !v);
               setShowAddCartons(false);
+              setShowCounts(false);
             }}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
           >
             {showTransfer ? "Hide" : "+ Transfer"}
+          </button>
+          <button
+            onClick={() => {
+              setShowCounts((v) => !v);
+              setShowAddCartons(false);
+              setShowTransfer(false);
+            }}
+            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          >
+            {showCounts ? "Hide" : "Set Counts"}
           </button>
         </div>
       </div>
@@ -231,6 +287,80 @@ export default function CartonInventoryClient({
             </button>
           </div>
           {addError && <p className="text-sm text-red-600">{addError}</p>}
+        </div>
+      )}
+
+      {showCounts && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Set what a location actually has on hand right now - for loading starting inventory or correcting a count.
+            Enter the counted number for each carton type (leave blank to leave it alone); the difference is recorded
+            automatically.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-xs font-medium">
+              Location
+              <select
+                value={countLocationId}
+                onChange={(e) => {
+                  setCountLocationId(e.target.value);
+                  setCountValues({});
+                  setCountError(null);
+                }}
+                className={`${field} mt-1 w-64`}
+              >
+                <option value="">--</option>
+                {sortedLocations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {locationLabel(l, growerById)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-medium">
+              Count date
+              <input type="date" value={countDate} onChange={(e) => setCountDate(e.target.value)} className={`${field} mt-1`} />
+            </label>
+          </div>
+          {countLocationId && (
+            <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+              <table className="w-full text-sm">
+                <thead className="bg-black/5 text-left dark:bg-white/5">
+                  <tr>
+                    <th className="px-2 py-2">Carton Type</th>
+                    <th className="px-2 py-2 text-right">On hand now</th>
+                    <th className="px-2 py-2">Counted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cartonTypes.map((c) => (
+                    <tr key={c.id} className="border-t border-black/10 dark:border-white/10">
+                      <td className="px-2 py-1.5">{c.name}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums">{onHandAt(countLocationId, c.id).toLocaleString()}</td>
+                      <td className="px-1 py-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={countValues[c.id] ?? ""}
+                          onChange={(e) => setCountValues((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                          className={`${field} w-28`}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {countError && <p className="text-sm text-red-600">{countError}</p>}
+          <button
+            onClick={handleSaveCounts}
+            disabled={savingCounts || !countLocationId}
+            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
+          >
+            {savingCounts ? "Saving..." : "Save Counts"}
+          </button>
         </div>
       )}
 

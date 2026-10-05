@@ -34,6 +34,58 @@ export async function addCartons(cartonTypeId: string, qty: number, entryDate: s
   revalidateAll();
 }
 
+export interface CountLine {
+  cartonTypeId: string;
+  qty: number;
+}
+
+// Sets a location's on-hand count for each given carton type to exactly the
+// counted number - used to load starting inventory (and later to correct a
+// physical count). Posts one ledger row for the difference between the
+// count and the balance as of right now, rather than overwriting the
+// balance, so the ledger still adds up and the change is traceable. The
+// difference is worked out here (not trusted from the client) against the
+// live balance.
+export async function setCartonCounts(locationId: string, lines: CountLine[], entryDate: string) {
+  if (lines.length === 0) throw new Error("Enter at least one count.");
+  for (const line of lines) {
+    if (!Number.isInteger(line.qty) || line.qty < 0) {
+      throw new Error("Counts must be whole numbers, 0 or more.");
+    }
+  }
+
+  const supabase = await createClient();
+  const { data: balances, error: balancesError } = await supabase
+    .from("carton_balances")
+    .select("carton_type_id, qty")
+    .eq("location_id", locationId);
+  if (balancesError) throw new Error(balancesError.message);
+  const currentByType = new Map((balances ?? []).map((b) => [b.carton_type_id as string, b.qty as number]));
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const rows = lines
+    .map((line) => ({ line, delta: line.qty - (currentByType.get(line.cartonTypeId) ?? 0) }))
+    .filter(({ delta }) => delta !== 0)
+    .map(({ line, delta }) => ({
+      carton_type_id: line.cartonTypeId,
+      location_id: locationId,
+      qty: delta,
+      entry_date: entryDate,
+      source: "manual" as const,
+      notes: `Counted: ${line.qty}`,
+      created_by: user?.id ?? null,
+    }));
+
+  if (rows.length > 0) {
+    const { error } = await supabase.from("carton_transactions").insert(rows);
+    if (error) throw new Error(error.message);
+  }
+  revalidateAll();
+}
+
 export interface TransferLine {
   cartonTypeId: string;
   qty: number;
