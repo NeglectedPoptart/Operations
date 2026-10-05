@@ -54,7 +54,7 @@ function parseFlags(raw: string): { hasPartialCredit: boolean; troubleStatus: "n
 }
 
 const NON_DATA_LINE_RE =
-  /^(ARAging:|AR Aging Detail|tcamph|Harvest Best|Customer$|1 - 20|Credit Limit|Doc\. Amount|BB Rating|Due$|USDCurrency|Currency:\s*USD|Totals\b|GL vs AR|GL balance|\* = Document|t = Trouble)/;
+  /^(ARAging:|AR Aging Detail|Harvest Best|Customer$|1 - 20|Credit Limit|Doc\. Amount|BB Rating|Due$|USDCurrency|Currency:\s*USD|Totals\b|GL vs AR|GL balance|\* = Document|t = Trouble)/;
 const PAGE_NUMBER_RE = /^\d+\/\d+$/;
 const PERCENT_ROW_RE = /^-?\d+\.\d+%/;
 // A subtotal line starts directly with a money figure (no leading word
@@ -144,7 +144,21 @@ export function parsePdfArReport(raw: string): ParseArReportResult {
   let currentName = "";
   let currentCreditLimit: number | null = null;
 
+  // Every page repeats a header block, and the line right after the title
+  // line is the name of whoever ran the report (e.g. "tsulay") - which is
+  // different per person, so it cannot be matched by a fixed pattern and
+  // would otherwise be mistaken for a customer header on each page.
+  let skipRunByLine = false;
+
   for (const line of lines) {
+    if (line.startsWith("AR Aging Detail")) {
+      skipRunByLine = true;
+      continue;
+    }
+    if (skipRunByLine) {
+      skipRunByLine = false;
+      continue;
+    }
     if (NON_DATA_LINE_RE.test(line) || PAGE_NUMBER_RE.test(line) || PERCENT_ROW_RE.test(line)) continue;
 
     if (line.startsWith("I-")) {
@@ -175,6 +189,9 @@ export function parsePdfArReport(raw: string): ParseArReportResult {
     if (SUBTOTAL_ROW_RE.test(line)) continue;
 
     const header = parseCustomerHeader(line);
+    // A real customer header always carries a name; a nameless leftover
+    // line is page furniture, not a new customer.
+    if (!header.name) continue;
     currentCode = header.code;
     currentName = header.name;
     currentCreditLimit = header.creditLimit;

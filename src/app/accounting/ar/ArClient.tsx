@@ -177,6 +177,7 @@ export default function ArClient({
   const [filterYellow, setFilterYellow] = useState(false);
   const [filterShort, setFilterShort] = useState(false);
   const [filterOver, setFilterOver] = useState(false);
+  const [sortAlpha, setSortAlpha] = useState(false);
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
   const [baseline, setBaseline] = useState(initialBaseline);
@@ -237,7 +238,7 @@ export default function ArClient({
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
     const all = buildGroups(customers, nonTroubleInvoices);
-    return all
+    const filtered = all
       .map((g) => {
         let invs = g.invoices;
         if (highlightFilterActive) {
@@ -258,7 +259,11 @@ export default function ArClient({
         return { ...g, invoices: invs };
       })
       .filter((g) => g.invoices.length > 0);
-  }, [customers, nonTroubleInvoices, search, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver]);
+    // buildGroups orders by balance, largest first; this swaps that for A-Z.
+    return sortAlpha
+      ? [...filtered].sort((a, b) => a.customer.customer_name.localeCompare(b.customer.customer_name))
+      : filtered;
+  }, [customers, nonTroubleInvoices, search, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver, sortAlpha]);
 
   async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -544,6 +549,10 @@ export default function ArClient({
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={filterOver} onChange={(e) => setFilterOver(e.target.checked)} />
             Over Pay
+          </label>
+          <label className="flex items-center gap-1.5 border-l border-black/15 pl-4 dark:border-white/20">
+            <input type="checkbox" checked={sortAlpha} onChange={(e) => setSortAlpha(e.target.checked)} />
+            Sort A-Z
           </label>
         </div>
 

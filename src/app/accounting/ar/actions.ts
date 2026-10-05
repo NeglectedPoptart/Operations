@@ -119,8 +119,23 @@ export async function importArReport(
 
   const { data: finalInvoices, error: finalError } = await supabase.from("ar_invoices").select("*");
   if (finalError) throw new Error(finalError.message);
-  const { data: finalCustomers, error: finalCustomersError } = await supabase.from("ar_customers").select("*");
+  let { data: finalCustomers, error: finalCustomersError } = await supabase.from("ar_customers").select("*");
   if (finalCustomersError) throw new Error(finalCustomersError.message);
+
+  // Sweeps up nameless customers left behind by an earlier parser bug that
+  // mistook the report's "run by" username for a customer. Only removed once
+  // they own no invoices (the import above moves every invoice back to its
+  // real customer first) - ar_invoices cascades on customer delete, so this
+  // must never touch a customer that still has any.
+  const customerIdsWithInvoices = new Set((finalInvoices ?? []).map((i) => i.customer_id as string));
+  const strayIds = (finalCustomers ?? [])
+    .filter((c) => !(c.customer_name as string | null)?.trim() && !customerIdsWithInvoices.has(c.id as string))
+    .map((c) => c.id as string);
+  if (strayIds.length > 0) {
+    const { error: strayError } = await supabase.from("ar_customers").delete().in("id", strayIds);
+    if (strayError) throw new Error(strayError.message);
+    finalCustomers = (finalCustomers ?? []).filter((c) => !strayIds.includes(c.id as string));
+  }
 
   revalidateAll();
   return { customers: (finalCustomers ?? []) as ArCustomer[], invoices: (finalInvoices ?? []) as ArInvoice[] };
