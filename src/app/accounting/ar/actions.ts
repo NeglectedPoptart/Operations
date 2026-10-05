@@ -119,8 +119,9 @@ export async function importArReport(
 
   const { data: finalInvoices, error: finalError } = await supabase.from("ar_invoices").select("*");
   if (finalError) throw new Error(finalError.message);
-  let { data: finalCustomers, error: finalCustomersError } = await supabase.from("ar_customers").select("*");
+  const { data: customersAfterImport, error: finalCustomersError } = await supabase.from("ar_customers").select("*");
   if (finalCustomersError) throw new Error(finalCustomersError.message);
+  let finalCustomers = customersAfterImport;
 
   // Sweeps up nameless customers left behind by an earlier parser bug that
   // mistook the report's "run by" username for a customer. Only removed once
