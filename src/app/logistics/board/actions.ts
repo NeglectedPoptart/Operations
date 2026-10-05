@@ -172,7 +172,10 @@ export async function updateLoad(id: string, formData: FormData) {
   const stops = stopsFromForm(formData);
   const pickups = pickupsFromForm(formData);
 
-  const { error } = await supabase.from("loads").update(fields).eq("id", id);
+  const { error } = await supabase
+    .from("loads")
+    .update(fields.status === "on_the_road" ? fields : { ...fields, pod_pending: false })
+    .eq("id", id);
   if (error) throw new Error(error.message);
 
   await replaceStops(supabase, id, stops);
@@ -183,9 +186,65 @@ export async function updateLoad(id: string, formData: FormData) {
 
 export async function updateLoadStatus(id: string, status: LoadStatus) {
   const supabase = await createClient();
-  const { error } = await supabase.from("loads").update({ status }).eq("id", id);
+  // Pending POD only means something while the load is still On the Road.
+  const { error } = await supabase
+    .from("loads")
+    .update(status === "on_the_road" ? { status } : { status, pod_pending: false })
+    .eq("id", id);
   if (error) throw new Error(error.message);
   revalidateAll();
+}
+
+export async function setPodPending(id: string, podPending: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("loads").update({ pod_pending: podPending }).eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+}
+
+// A POD file the browser already put in the load-documents bucket (done
+// client-side, same as the other document uploads, since a server action's
+// body is capped well below a scan's size). Receiving it completes the load.
+export async function recordLoadPod(input: {
+  loadId: string;
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+}) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("load_documents").insert({
+    load_id: input.loadId,
+    kind: "pod",
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    content_type: input.contentType,
+    size_bytes: input.sizeBytes,
+    source: "manual",
+  });
+  if (error) throw new Error(error.message);
+  const { error: loadError } = await supabase
+    .from("loads")
+    .update({ status: "complete", pod_pending: false })
+    .eq("id", input.loadId);
+  if (loadError) throw new Error(loadError.message);
+  revalidateAll();
+}
+
+export async function getLoadDocuments(loadId: string): Promise<{ id: string; file_name: string; source: string; url: string | null }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("load_documents")
+    .select("id, file_name, storage_path, source")
+    .eq("load_id", loadId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return Promise.all(
+    (data ?? []).map(async (d) => {
+      const { data: signed } = await supabase.storage.from("load-documents").createSignedUrl(d.storage_path as string, 3600);
+      return { id: d.id as string, file_name: d.file_name as string, source: d.source as string, url: signed?.signedUrl ?? null };
+    }),
+  );
 }
 
 // Marks the Pending Orders Check popup seen for today - same one-per-day-

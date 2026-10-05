@@ -126,10 +126,24 @@ export interface Load {
   eta_note: string | null;
   ready_to_load: boolean;
   rate_con_sent: boolean;
+  // Carrier says it's delivered but the signed POD hasn't arrived yet.
+  pod_pending: boolean;
   created_at: string;
   updated_at: string;
   load_stops: LoadStop[];
   load_pickups: LoadPickup[];
+}
+
+export interface LoadDocument {
+  id: string;
+  load_id: string;
+  kind: "pod";
+  file_name: string;
+  storage_path: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  source: "email" | "manual";
+  created_at: string;
 }
 
 export interface BrokerRateEntry {

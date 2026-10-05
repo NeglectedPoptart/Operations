@@ -82,6 +82,14 @@ export default function LoadCard({
             {load.rate_con_sent ? "Rate Con Sent" : "⚠ Rate Con Not Sent"}
           </button>
         )}
+        {load.status === "on_the_road" && load.pod_pending && (
+          <span
+            className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+            title="The carrier says this load is delivered - waiting on the signed POD"
+          >
+            📄 Pending POD
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

@@ -1,7 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { createDestinationCity, createHub, createLoad, updateLoad } from "./actions";
+import { useEffect, useState, useTransition } from "react";
+import { createClient } from "@/lib/supabase/client";
+import {
+  createDestinationCity,
+  createHub,
+  createLoad,
+  getLoadDocuments,
+  recordLoadPod,
+  setPodPending,
+  updateLoad,
+} from "./actions";
 import { splitDestinationLabel, validateCityStateLabel } from "@/lib/destination";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LockedCombobox from "@/components/LockedCombobox";
@@ -56,6 +65,45 @@ export default function LoadModal({
   const [source, setSource] = useState(load?.source ?? "");
   const [hubOptions, setHubOptions] = useState(initialHubOptions);
   const [cityOptions, setCityOptions] = useState(initialCityOptions);
+
+  // Proof of delivery ------------------------------------------------------
+  const [podDocs, setPodDocs] = useState<{ id: string; file_name: string; source: string; url: string | null }[]>([]);
+  const [podUploading, setPodUploading] = useState(false);
+  const [podError, setPodError] = useState<string | null>(null);
+  const loadId = load?.id ?? null;
+
+  useEffect(() => {
+    if (!loadId) return;
+    getLoadDocuments(loadId).then(setPodDocs).catch(() => {});
+  }, [loadId]);
+
+  async function handlePodFile(file: File) {
+    if (!load) return;
+    setPodError(null);
+    setPodUploading(true);
+    try {
+      // Straight to Storage from the browser (a server action's body is
+      // capped far below a scan's size), then recorded against the load.
+      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+      const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
+      const { error: uploadError } = await createClient()
+        .storage.from("load-documents")
+        .upload(storagePath, file, { contentType: file.type || undefined });
+      if (uploadError) throw new Error(uploadError.message);
+      await recordLoadPod({
+        loadId: load.id,
+        fileName: file.name,
+        storagePath,
+        contentType: file.type || null,
+        sizeBytes: file.size,
+      });
+      onClose();
+    } catch (e) {
+      setPodError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setPodUploading(false);
+    }
+  }
 
   function addHubOption(name: string) {
     setHubOptions((prev) => (prev.includes(name) ? prev : [...prev, name].sort()));
@@ -168,6 +216,52 @@ export default function LoadModal({
             <label className={label}>ETA / Location Update</label>
             <textarea name="eta_note" defaultValue={load?.eta_note ?? ""} rows={2} className={field} />
           </div>
+
+          {load && (load.status === "on_the_road" || podDocs.length > 0) && (
+            <div className="col-span-2 space-y-2 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
+              <p className="text-xs font-semibold text-black/70 dark:text-white/70">Proof of Delivery (POD)</p>
+              {podDocs.map((d) => (
+                <p key={d.id} className="text-xs">
+                  {d.url ? (
+                    <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-green-700 hover:underline dark:text-green-400">
+                      📄 {d.file_name}
+                    </a>
+                  ) : (
+                    <span>📄 {d.file_name}</span>
+                  )}{" "}
+                  <span className="text-black/40 dark:text-white/40">({d.source === "email" ? "from carrier email" : "uploaded"})</span>
+                </p>
+              ))}
+              {load.status === "on_the_road" && (
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={load.pod_pending}
+                      disabled={pending}
+                      onChange={(e) => startTransition(() => setPodPending(load.id, e.target.checked).then(onClose))}
+                    />
+                    Delivered - Pending POD
+                  </label>
+                  <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                    {podUploading ? "Uploading..." : "Attach POD and mark Complete"}
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      className="hidden"
+                      disabled={podUploading}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (f) void handlePodFile(f);
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+              {podError && <p className="text-xs text-red-600">{podError}</p>}
+            </div>
+          )}
 
           {error && <p className="col-span-2 text-sm text-red-600 sm:col-span-4">{error}</p>}
 

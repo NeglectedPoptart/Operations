@@ -8,6 +8,13 @@ import type { Load } from "@/lib/types";
 export default function OnTheRoadCard({ load }: { load: Load }) {
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState(load.eta_note ?? "");
+  // The ETA note can also change underneath this card (the HOPS Agent writes
+  // carrier replies into it) - follow the saved value when it does.
+  const [savedNote, setSavedNote] = useState(load.eta_note);
+  if (load.eta_note !== savedNote) {
+    setSavedNote(load.eta_note);
+    setNote(load.eta_note ?? "");
+  }
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const label = destinationLabel(stops);
 
@@ -48,6 +55,10 @@ export default function OnTheRoadCard({ load }: { load: Load }) {
           </p>
         ))}
       </div>
+
+      {load.pod_pending && (
+        <p className="mt-1 text-xs font-semibold text-amber-700 dark:text-amber-300">📄 Delivered - Pending POD</p>
+      )}
 
       <p className="mt-1 text-xs">
         {load.rate_con_sent ? (

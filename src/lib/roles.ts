@@ -52,7 +52,7 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // Admin login still can't see it. Same "hardcoded exception outside the tab
 // system" shape as BROKER_CARRIER_PATH above, just gating a whole path
 // prefix instead of a single page (see middleware.ts and NavBar.tsx).
-const SUPREME_EMAIL = "tcamph@harvestbestinc.com";
+export const SUPREME_EMAIL = "tcamph@harvestbestinc.com";
 export const SUPREME_PATH_PREFIX = "/supreme";
 
 export function isSupremeUser(email: string | null): boolean {
