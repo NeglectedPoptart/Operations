@@ -56,7 +56,6 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
       { label: "Houston Delivered", href: "/sales/delivered/houston" },
       { label: "Dallas Delivered", href: "/sales/delivered/dallas" },
       { label: "East Coast Delivered", href: "/sales/delivered/east-coast" },
-      { label: "Pending to Invoice", href: "/sales/pending-to-invoice" },
     ],
   },
   {
@@ -85,6 +84,7 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
     subtabs: [
       { label: "Accounts Receivable", href: "/accounting/ar" },
       { label: "AR Troubles", href: "/accounting/ar-troubles" },
+      { label: "Pending to Invoice", href: "/accounting/pending-to-invoice" },
       { label: "Accounts Payable", href: "/accounting/ap" },
       { label: "Pay Lists", href: "/accounting/pay-lists" },
       { label: "Logistics Invoicing", href: "/accounting/logistics-invoicing" },
@@ -105,7 +105,7 @@ export const PAGE_STATUS_LABELS: Record<string, { label: string; href: string }>
   "am-holdovers": { label: "AM Holdovers", href: "/warehouse/am-holdovers" },
   "cold-inventory": { label: "Cold Inventory", href: "/warehouse/cold-inventory" },
   "qc-agenda": { label: "QC Agenda", href: "/qc/agenda" },
-  "pending-to-invoice": { label: "Pending to Invoice", href: "/sales/pending-to-invoice" },
+  "pending-to-invoice": { label: "Pending to Invoice", href: "/accounting/pending-to-invoice" },
   "fob-pharr": { label: "FOB - Pharr", href: "/sales/fob-pharr" },
   "mx-arrivals": { label: "Mexico Arrivals", href: "/mexico/arrivals" },
 };
@@ -234,7 +234,7 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/sales/delivered/houston": latestOf(fobItems, fobFreight, msgHouston),
     "/sales/delivered/dallas": latestOf(fobItems, fobFreight, msgDallas),
     "/sales/delivered/east-coast": latestOf(fobItems, fobFreight, msgEastCoast),
-    "/sales/pending-to-invoice": pendingToInvoice,
+    "/accounting/pending-to-invoice": pendingToInvoice,
     "/buyers/price-sheets": priceSheetItems,
     "/buyers/vendor-catalog": priceSheetItems,
     "/buyers/buyers-list": buyersList,

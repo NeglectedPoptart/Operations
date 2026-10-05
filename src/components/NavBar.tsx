@@ -97,7 +97,6 @@ const NAV: NavCategory[] = [
       { href: "/sales/delivered/houston", label: "Houston Delivered" },
       { href: "/sales/delivered/dallas", label: "Dallas Delivered" },
       { href: "/sales/delivered/east-coast", label: "East Coast Delivered" },
-      { href: "/sales/pending-to-invoice", label: "Pending to Invoice" },
       { href: "/sales/calculator", label: "Sales Calculator" },
     ],
   },
@@ -151,6 +150,7 @@ const NAV: NavCategory[] = [
     items: [
       { href: "/accounting/ar", label: "Accounts Receivable" },
       { href: "/accounting/ar-troubles", label: "AR Troubles" },
+      { href: "/accounting/pending-to-invoice", label: "Pending to Invoice" },
       { href: "/accounting/ap", label: "Accounts Payable" },
       { href: "/accounting/pay-lists", label: "Pay Lists" },
       { href: "/accounting/logistics-invoicing", label: "Logistics Invoicing" },

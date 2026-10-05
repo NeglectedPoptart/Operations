@@ -10,7 +10,7 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 function revalidateAll() {
   revalidatePath("/compliance/pas-files");
-  revalidatePath("/sales/pending-to-invoice");
+  revalidatePath("/accounting/pending-to-invoice");
 }
 
 export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
