@@ -998,6 +998,9 @@ export interface MxCommodity {
   name: string;
   commodity_group: string | null;
   variety: string | null;
+  // Commodity-level temperature range - identical on every row of a group.
+  temp_low: number | null;
+  temp_high: number | null;
 }
 
 // Mexico: Arrivals --------------------------------------------------------------

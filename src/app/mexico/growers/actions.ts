@@ -68,7 +68,11 @@ function combinedCommodityName(commodityGroup: string, variety: string | null): 
   return [commodityGroup.trim(), (variety ?? "").trim()].filter(Boolean).join(" ");
 }
 
-export async function createCommodity(commodityGroup: string, variety: string | null) {
+export async function createCommodity(
+  commodityGroup: string,
+  variety: string | null,
+  temps?: { low: number | null; high: number | null },
+) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("mx_commodities")
@@ -76,6 +80,8 @@ export async function createCommodity(commodityGroup: string, variety: string | 
       commodity_group: commodityGroup.trim(),
       variety: variety?.trim() || null,
       name: combinedCommodityName(commodityGroup, variety),
+      temp_low: temps?.low ?? null,
+      temp_high: temps?.high ?? null,
     })
     .select()
     .single();
@@ -83,6 +89,16 @@ export async function createCommodity(commodityGroup: string, variety: string | 
   revalidateAll();
   revalidatePath("/supreme/produce");
   return data;
+}
+
+export async function updateCommodityGroupTemps(commodityGroup: string, low: number | null, high: number | null) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("mx_commodities")
+    .update({ temp_low: low, temp_high: high })
+    .eq("commodity_group", commodityGroup);
+  if (error) throw new Error(error.message);
+  revalidatePath("/supreme/produce");
 }
 
 export async function deleteCommodity(id: string) {
