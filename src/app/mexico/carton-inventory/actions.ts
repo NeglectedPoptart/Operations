@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { CartonTransaction } from "@/lib/types";
 
 function revalidateAll() {
   revalidatePath("/mexico/carton-inventory");
@@ -32,6 +33,53 @@ export async function addCartons(cartonTypeId: string, qty: number, entryDate: s
   });
   if (error) throw new Error(error.message);
   revalidateAll();
+}
+
+// The ledger rows people create by hand - additions, counts and transfers.
+// Arrival deductions are left out: they are generated and kept in step by
+// Arrivals (edit or delete the arrival row there instead).
+export async function getCartonActivity(): Promise<CartonTransaction[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("carton_transactions")
+    .select("*")
+    .in("source", ["manual", "transfer"])
+    .order("created_at", { ascending: false })
+    .limit(300);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CartonTransaction[];
+}
+
+// Removes a ledger entry; the delete trigger reverses its effect on the
+// location's balance. A transfer is two linked rows, so both go together.
+// Returns every id removed.
+export async function deleteCartonTransaction(id: string): Promise<string[]> {
+  const supabase = await createClient();
+  const { data: row, error: rowError } = await supabase
+    .from("carton_transactions")
+    .select("id, source, related_transaction_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (rowError) throw new Error(rowError.message);
+  if (!row) return [];
+  if (row.source === "arrival") {
+    throw new Error("That entry comes from an Arrival - change or delete the arrival row instead.");
+  }
+
+  const ids = [row.id as string];
+  if (row.source === "transfer" && row.related_transaction_id) {
+    const { data: partner } = await supabase
+      .from("carton_transactions")
+      .select("id, source")
+      .eq("id", row.related_transaction_id)
+      .maybeSingle();
+    if (partner && partner.source === "transfer") ids.push(partner.id as string);
+  }
+
+  const { error } = await supabase.from("carton_transactions").delete().in("id", ids);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  return ids;
 }
 
 export async function reorderCartonLocations(orderedIds: string[]) {

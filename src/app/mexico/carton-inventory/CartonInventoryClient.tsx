@@ -1,10 +1,13 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
-import { todayISO } from "@/lib/dates";
-import type { CartonBalance, CartonLocation, CartonType, MxGrower } from "@/lib/types";
+import { useConfirm } from "@/components/ConfirmProvider";
+import { formatDate, todayISO } from "@/lib/dates";
+import type { CartonBalance, CartonLocation, CartonTransaction, CartonType, MxGrower } from "@/lib/types";
 import {
   addCartons,
+  deleteCartonTransaction,
+  getCartonActivity,
   reorderCartonLocations,
   setCartonCounts,
   setCartonLocationInactive,
@@ -30,6 +33,17 @@ function sortLocations(locations: CartonLocation[], growerById: Map<string, MxGr
   });
 }
 
+interface ActivityEntry {
+  key: string;
+  ids: string[];
+  date: string;
+  kind: "Added" | "Count" | "Adjustment" | "Transfer";
+  cartonTypeId: string;
+  qty: number;
+  where: string;
+  notes: string;
+}
+
 interface TransferLineDraft {
   cartonTypeId: string;
   qty: string;
@@ -40,13 +54,16 @@ export default function CartonInventoryClient({
   initialLocations,
   cartonTypes,
   initialBalances,
+  initialActivity,
   growers,
 }: {
   initialLocations: CartonLocation[];
   cartonTypes: CartonType[];
   initialBalances: CartonBalance[];
+  initialActivity: CartonTransaction[];
   growers: MxGrower[];
 }) {
+  const confirm = useConfirm();
   const growerById = useMemo(() => new Map(growers.map((g) => [g.id, g])), [growers]);
   // Active tiles keep a drag-arranged order (saved as `position`); inactive
   // ones (growers who ship to us but do not use our cartons) sit in their
@@ -111,6 +128,7 @@ export default function CartonInventoryClient({
     setAddError(null);
     try {
       await addCartons(addCartonTypeId, qty, addDate, addNotes.trim() || null);
+      void reloadActivity();
       applyLocalBalance(addCartonTypeId, homebase.id, qty);
       setAddQty("");
       setAddNotes("");
@@ -118,6 +136,79 @@ export default function CartonInventoryClient({
       setAddError(err instanceof Error ? err.message : "Couldn't add cartons - try again.");
     } finally {
       setAdding(false);
+    }
+  }
+
+  // Activity -------------------------------------------------------------
+
+  const [activity, setActivity] = useState(initialActivity);
+  const [activityLimit, setActivityLimit] = useState(50);
+  const [activityError, setActivityError] = useState<string | null>(null);
+
+  async function reloadActivity() {
+    try {
+      setActivity(await getCartonActivity());
+    } catch {
+      // the list just stays as it was until the next load
+    }
+  }
+
+  // Newest first. A transfer is two rows (out at the source, in at the
+  // destination) - shown as one line, keyed off whichever row comes first.
+  const activityEntries = useMemo<ActivityEntry[]>(() => {
+    const locationName = (id: string) => {
+      const loc = locations.find((l) => l.id === id);
+      return loc ? locationLabel(loc, growerById) : "?";
+    };
+    const byId = new Map(activity.map((t) => [t.id, t]));
+    const consumed = new Set<string>();
+    const entries: ActivityEntry[] = [];
+    for (const t of activity) {
+      if (consumed.has(t.id)) continue;
+      if (t.source === "transfer") {
+        const partner = t.related_transaction_id ? byId.get(t.related_transaction_id) : undefined;
+        const out = t.qty < 0 ? t : partner;
+        const inn = t.qty < 0 ? partner : t;
+        consumed.add(t.id);
+        if (partner) consumed.add(partner.id);
+        entries.push({
+          key: t.id,
+          ids: [t.id],
+          date: t.entry_date,
+          kind: "Transfer",
+          cartonTypeId: t.carton_type_id,
+          qty: Math.abs(t.qty),
+          where: `${out ? locationName(out.location_id) : "?"} → ${inn ? locationName(inn.location_id) : "?"}`,
+          notes: t.notes ?? "",
+        });
+      } else {
+        const counted = t.notes?.startsWith("Counted:");
+        entries.push({
+          key: t.id,
+          ids: [t.id],
+          date: t.entry_date,
+          kind: counted ? "Count" : t.qty > 0 ? "Added" : "Adjustment",
+          cartonTypeId: t.carton_type_id,
+          qty: t.qty,
+          where: locationName(t.location_id),
+          notes: t.notes ?? "",
+        });
+      }
+    }
+    return entries;
+  }, [activity, locations, growerById]);
+
+  async function handleRemoveEntry(entry: ActivityEntry) {
+    const what = entry.kind === "Transfer" ? "this transfer (both the take-out and the put-in)" : "this entry";
+    if (!(await confirm(`Remove ${what}? The balances go back to what they were before it.`))) return;
+    setActivityError(null);
+    try {
+      const removedIds = await deleteCartonTransaction(entry.ids[0]);
+      const removed = activity.filter((t) => removedIds.includes(t.id));
+      for (const t of removed) applyLocalBalance(t.carton_type_id, t.location_id, -t.qty);
+      setActivity((prev) => prev.filter((t) => !removedIds.includes(t.id)));
+    } catch (err) {
+      setActivityError(err instanceof Error ? err.message : "Could not remove that entry - try again.");
     }
   }
 
@@ -218,6 +309,7 @@ export default function CartonInventoryClient({
     setCountError(null);
     try {
       await setCartonCounts(countLocationId, lines, countDate);
+      void reloadActivity();
       for (const l of lines) {
         applyLocalBalance(l.cartonTypeId, countLocationId, l.qty - onHandAt(countLocationId, l.cartonTypeId));
       }
@@ -276,6 +368,7 @@ export default function CartonInventoryClient({
     setTransferError(null);
     try {
       await transferCartons(fromLocationId, parsedLines, transferDate, transferNotes.trim() || null);
+      void reloadActivity();
       for (const l of parsedLines) {
         applyLocalBalance(l.cartonTypeId, fromLocationId, -l.qty);
         applyLocalBalance(l.cartonTypeId, l.toLocationId, l.qty);
@@ -674,6 +767,70 @@ export default function CartonInventoryClient({
         {locations.length === 0 && (
           <p className="text-sm text-black/40 dark:text-white/40">No locations yet - add a grower to get started.</p>
         )}
+      </div>
+
+      <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Activity</h2>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Every carton addition, count and transfer, newest first. Removing an entry reverses its effect on the
+          balances (a transfer is removed from both locations together). Cartons used by Arrivals are not listed here -
+          they follow the arrival row.
+        </p>
+        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left dark:bg-white/5">
+              <tr>
+                <th className="whitespace-nowrap px-2 py-2">Date</th>
+                <th className="px-2 py-2">What</th>
+                <th className="px-2 py-2">Carton Type</th>
+                <th className="px-2 py-2 text-right">Qty</th>
+                <th className="px-2 py-2">Where</th>
+                <th className="px-2 py-2">Notes</th>
+                <th className="w-16 px-2 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {activityEntries.slice(0, activityLimit).map((e) => (
+                <tr key={e.key} className="border-t border-black/10 align-top dark:border-white/10">
+                  <td className="whitespace-nowrap px-2 py-1.5">{formatDate(e.date)}</td>
+                  <td className="px-2 py-1.5">
+                    <span className="whitespace-nowrap rounded bg-black/5 px-1.5 py-0.5 text-xs font-semibold dark:bg-white/10">
+                      {e.kind}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5">{cartonTypeById.get(e.cartonTypeId)?.name ?? "?"}</td>
+                  <td className={`px-2 py-1.5 text-right font-semibold tabular-nums ${e.qty < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                    {e.qty > 0 && e.kind !== "Transfer" ? "+" : ""}
+                    {e.qty.toLocaleString()}
+                  </td>
+                  <td className="px-2 py-1.5">{e.where}</td>
+                  <td className="px-2 py-1.5 text-black/60 dark:text-white/60">{e.notes}</td>
+                  <td className="px-2 py-1.5">
+                    <button onClick={() => handleRemoveEntry(e)} className="text-xs font-medium text-red-600 hover:underline">
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {activityEntries.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                    No activity yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {activityEntries.length > activityLimit && (
+          <button
+            onClick={() => setActivityLimit((n) => n + 50)}
+            className="text-sm font-medium text-green-700 hover:underline dark:text-green-400"
+          >
+            Show more ({activityEntries.length - activityLimit} older)
+          </button>
+        )}
+        {activityError && <p className="text-sm text-red-600">{activityError}</p>}
       </div>
     </div>
   );
