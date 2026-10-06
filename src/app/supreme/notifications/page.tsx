@@ -4,6 +4,7 @@ import { getPageStatusLog } from "@/app/actions";
 import { getFoodSafetyAlertRecipientIds } from "@/app/compliance/food-safety/actions";
 import { getEmployeeAnniversaryRecipientIds } from "@/app/management/employee-files/actions";
 import type { AppNotification, NotificationRecipient, Profile, SentNotification } from "@/lib/types";
+import { loadRoles } from "@/lib/roleAccess";
 import NotificationsClient from "./NotificationsClient";
 
 export const dynamic = "force-dynamic";
@@ -66,8 +67,11 @@ export default async function NotificationsPage() {
     notification_recipients: recipientsByNotificationId.get(n.id) ?? [],
   }));
 
+  const roleOptions = (await loadRoles(supabase)).map((r) => ({ value: r.key, label: r.label }));
+
   return (
     <NotificationsClient
+      roles={roleOptions}
       profiles={(profilesRes.data ?? []) as Profile[]}
       lastEditedMap={lastEditedMap}
       sent={sent}

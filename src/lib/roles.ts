@@ -1,4 +1,7 @@
-export type Role =
+// The original roles. Their special rules (CRM manager powers, the daily
+// reminder, the Mexico narrowing, Broker/Carrier's single page...) are tied
+// to these keys. Roles created in the app are plain strings (see Role).
+export type BuiltinRole =
   | "admin"
   | "operations"
   | "warehouse_qc"
@@ -10,7 +13,11 @@ export type Role =
   | "mx"
   | "buyer_sales";
 
-export const ROLES: { value: Role; label: string }[] = [
+// Roles live in the `roles` table now and can be added from User Roles.
+export type Role = string;
+
+// Fallback names for the original roles (used if the roles table can't be read).
+export const ROLES: { value: BuiltinRole; label: string }[] = [
   { value: "admin", label: "Admin" },
   { value: "operations", label: "Operations" },
   { value: "warehouse_qc", label: "Warehouse/QC" },
@@ -66,7 +73,9 @@ export function isSupremeUser(email: string | null): boolean {
 // authenticated role except broker_carrier - see the Draft Changes /
 // permission levels round, and middleware.ts for the broker_carrier
 // exception).
-const ROLE_TABS: Record<Role, Tab[]> = {
+// Also what migration 128 seeds into the roles table, and the fallback when
+// the table can't be read, so a database hiccup never locks anyone out.
+export const DEFAULT_ROLE_TABS: Record<BuiltinRole, Tab[]> = {
   admin: [
     "logistics",
     "warehouse",
@@ -137,12 +146,29 @@ const ROLE_TABS: Record<Role, Tab[]> = {
   buyer_sales: ["warehouse", "qc", "sales", "buyers", "meetings", "marketing", "crm"],
 };
 
-export function tabsForRole(role: Role | null): Tab[] {
-  return role ? ROLE_TABS[role] : [];
+export const ALL_TABS: Tab[] = DEFAULT_ROLE_TABS.admin;
+
+// What one role can open: whole sections (tabs), minus any single pages
+// hidden inside them (menu hrefs such as "/sales/calculator").
+export interface RoleAccess {
+  tabs: Tab[];
+  hiddenPages: string[];
 }
 
-export function canAccessTab(role: Role | null, tab: Tab): boolean {
-  return tabsForRole(role).includes(tab);
+// The Supreme account is never limited by role settings.
+export const FULL_ACCESS: RoleAccess = { tabs: ALL_TABS, hiddenPages: [] };
+
+export function defaultAccess(role: Role | null): RoleAccess {
+  const tabs = role ? DEFAULT_ROLE_TABS[role as BuiltinRole] : undefined;
+  return { tabs: tabs ?? [], hiddenPages: [] };
+}
+
+export function canAccessTab(access: RoleAccess | null, tab: Tab): boolean {
+  return !!access && access.tabs.includes(tab);
+}
+
+export function isPageHidden(access: RoleAccess | null, pathname: string): boolean {
+  return !!access && access.hiddenPages.some((h) => pathname === h || pathname.startsWith(`${h}/`));
 }
 
 // Maps a request path to the Tab that governs it. Returns null for paths

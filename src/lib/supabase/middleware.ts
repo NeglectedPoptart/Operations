@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   BROKER_CARRIER_PATH,
   CRM_ACTIVITY_PATH_PREFIX,
+  FULL_ACCESS,
   SUPREME_PATH_PREFIXES,
   canAccessTab,
+  isPageHidden,
   crmActivityAllowed,
   hasLogisticsOversight,
   isSupremeUser,
@@ -13,6 +15,7 @@ import {
   warehouseQcMexicoAllowed,
   type Role,
 } from "@/lib/roles";
+import { loadRoleAccess } from "@/lib/roleAccess";
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -59,6 +62,9 @@ export async function updateSession(request: NextRequest) {
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   const role = (profile?.role ?? null) as Role | null;
   const homePath = role === "broker_carrier" ? BROKER_CARRIER_PATH : "/";
+  // What this role may open (editable on User Roles). The Supreme account is
+  // never limited by it.
+  const access = isSupremeUser(user.email ?? null) ? FULL_ACCESS : await loadRoleAccess(supabase, role);
 
   if (pathname.startsWith("/login")) {
     const url = request.nextUrl.clone();
@@ -89,7 +95,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   const tab = tabForPath(pathname);
-  if (tab && !canAccessTab(role, tab)) {
+  if (tab && !canAccessTab(access, tab)) {
     // Logistics Oversight (Sales/Buyer-Sales/Executive): no "logistics" tab,
     // but still allowed onto a specific handful of Logistics pages - see
     // roles.ts.
@@ -99,6 +105,13 @@ export async function updateSession(request: NextRequest) {
       url.pathname = "/";
       return NextResponse.redirect(url);
     }
+  }
+
+  // A single page the role's settings hide inside an otherwise-open section.
+  if (isPageHidden(access, pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url);
   }
 
   // Warehouse/QC's "mexico" tab grant is deliberately partial - Arrivals

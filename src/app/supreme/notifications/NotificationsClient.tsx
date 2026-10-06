@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { formatTimestamp } from "@/lib/dates";
 import { NOTIFY_BREAKDOWN } from "@/lib/notificationBreakdown";
-import { ROLES, type Role } from "@/lib/roles";
+import type { Role } from "@/lib/roles";
 import type { PageStatusLogEntry } from "@/app/actions";
 import { setFoodSafetyAlertRecipient } from "@/app/compliance/food-safety/actions";
 import { setEmployeeAnniversaryRecipient } from "@/app/management/employee-files/actions";
@@ -21,6 +21,7 @@ interface Composing {
 }
 
 export default function NotificationsClient({
+  roles,
   profiles,
   lastEditedMap,
   sent,
@@ -29,6 +30,7 @@ export default function NotificationsClient({
   foodSafetyRecipientIds,
   employeeAnniversaryRecipientIds,
 }: {
+  roles: { value: string; label: string }[];
   profiles: Profile[];
   lastEditedMap: Record<string, string | null>;
   sent: SentNotification[];
@@ -213,7 +215,7 @@ export default function NotificationsClient({
                   <span className="text-xs text-black/40 dark:text-white/40">{formatTimestamp(n.created_at)}</span>
                 </div>
                 <p className="text-xs text-black/50 dark:text-white/50">
-                  To: {n.target_type === "role" ? ROLES.find((r) => r.value === n.target_role)?.label ?? n.target_role : "person"}
+                  To: {n.target_type === "role" ? roles.find((r) => r.value === n.target_role)?.label ?? n.target_role : "person"}
                 </p>
                 {n.message && <p className="mt-1 text-sm">{n.message}</p>}
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -301,7 +303,7 @@ export default function NotificationsClient({
               <label className="block text-sm">
                 Notify group
                 <select value={targetRole} onChange={(e) => setTargetRole(e.target.value as Role)} className={`${field} mt-1`}>
-                  {ROLES.map((r) => (
+                  {roles.map((r) => (
                     <option key={r.value} value={r.value}>
                       {r.label}
                     </option>

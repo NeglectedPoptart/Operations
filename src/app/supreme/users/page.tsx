@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Broker, Profile } from "@/lib/types";
+import { loadRoles } from "@/lib/roleAccess";
 import UsersClient from "./UsersClient";
 
 export const dynamic = "force-dynamic";
@@ -26,8 +27,11 @@ export default async function UsersPage() {
     return <p className="text-red-600">Failed to load brokers: {brokersError.message}</p>;
   }
 
+  const roles = await loadRoles(supabase);
+
   return (
     <UsersClient
+      initialRoles={roles}
       initialProfiles={(profiles ?? []) as Profile[]}
       brokers={(brokers ?? []) as Broker[]}
       currentUserId={user?.id ?? null}

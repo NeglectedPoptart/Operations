@@ -9,7 +9,8 @@ import PushRegistration from "@/components/PushRegistration";
 import { todayISO } from "@/lib/dates";
 import { getDailyReminderCheck, type DailyReminderCheck } from "@/lib/dailyReminders";
 import { createClient } from "@/lib/supabase/server";
-import type { Role } from "@/lib/roles";
+import { FULL_ACCESS, isSupremeUser, type Role, type RoleAccess } from "@/lib/roles";
+import { loadRoleAccess, loadRoles } from "@/lib/roleAccess";
 import "./globals.css";
 
 const rajdhani = Rajdhani({
@@ -53,6 +54,8 @@ export default async function RootLayout({
   } = await supabase.auth.getUser();
 
   let role: Role | null = null;
+  let access: RoleAccess = { tabs: [], hiddenPages: [] };
+  let roleLabel: string | null = null;
   let reminderCheck: DailyReminderCheck | null = null;
   if (user) {
     const { data: profile } = await supabase
@@ -61,6 +64,8 @@ export default async function RootLayout({
       .eq("id", user.id)
       .single();
     role = (profile?.role ?? null) as Role | null;
+    access = isSupremeUser(user.email ?? null) ? FULL_ACCESS : await loadRoleAccess(supabase, role);
+    roleLabel = (await loadRoles(supabase)).find((r) => r.key === role)?.label ?? null;
     const lastSeen = profile?.last_reminder_seen_date as string | null;
     if (role === "warehouse_qc" && lastSeen !== todayISO()) {
       reminderCheck = await getDailyReminderCheck(supabase);
@@ -79,7 +84,7 @@ export default async function RootLayout({
         <ConfirmProvider>
           {user ? (
             <div className="flex h-screen flex-col lg:flex-row print:h-auto">
-              <NavBar role={role} email={user.email ?? null} />
+              <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} />
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
                 {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
                 {!isBrokerCarrier && <NotificationPopup />}
