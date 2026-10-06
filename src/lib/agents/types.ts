@@ -17,6 +17,10 @@ export interface Agent {
     // false = notify-only: emails still go out, but replies are never read
     // or applied (no Claude needed). Unset means true.
     read_replies?: boolean;
+    // Apply confident replies to HOPS without waiting in Review, even while
+    // outgoing emails still wait for approval. Unset means follow the
+    // agent's mode (auto sends and auto applies; approve reviews everything).
+    auto_apply_replies?: boolean;
     // Where replies should go instead of the HOP@ mailbox, e.g. the person
     // who'll act on them. Most useful with read_replies off.
     reply_to?: string[];

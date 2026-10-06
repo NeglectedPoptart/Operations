@@ -216,6 +216,18 @@ function AgentCard({ agent }: { agent: Agent }) {
           Read replies and update HOPS
           {!readReplies && <span className="text-black/50 dark:text-white/50">(notify only - no Claude needed)</span>}
         </label>
+        {readReplies && (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={agent.config.auto_apply_replies ?? agent.mode === "auto"}
+              disabled={pending}
+              onChange={(e) => save({ auto_apply_replies: e.target.checked })}
+            />
+            Apply replies to HOPS automatically
+            <span className="text-black/50 dark:text-white/50">(anything unclear still waits for you)</span>
+          </label>
+        )}
         <label className="block space-y-0.5">
           <span className="block text-black/60 dark:text-white/60">
             Replies go to (leave blank for the HOP@ mailbox{readReplies ? ", which the agent reads" : ""})

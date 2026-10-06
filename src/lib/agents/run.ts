@@ -128,6 +128,11 @@ function loadHeadline(load: Load): string {
 // Email content. Templates rather than Claude-written: the ask is always
 // the same, and a fixed format keeps replies predictable to read back.
 
+// Whether confident replies are applied to HOPS without a person reviewing them.
+function appliesRepliesAutomatically(agent: Agent): boolean {
+  return agent.config.auto_apply_replies ?? agent.mode === "auto";
+}
+
 function readsReplies(agent: Agent): boolean {
   return agent.config.read_replies !== false;
 }
@@ -722,7 +727,8 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
 
     const podsOk = attachments.every((a) => !a.is_pod || (a.confident && a.load_id !== null));
     const autoOk =
-      agent?.mode === "auto" &&
+      !!agent &&
+      appliesRepliesAutomatically(agent) &&
       !parseError &&
       proposed.length > 0 &&
       podsOk &&
@@ -838,7 +844,7 @@ async function handleBuyersReply(db: SupabaseClient, agent: Agent, thread: Agent
   await db.from("agent_threads").update({ last_reply_at: msg.receivedAt }).eq("id", thread.id);
   await markRead(msg.id).catch(() => {});
 
-  const autoOk = agent.mode === "auto" && !parseError && proposed.length > 0 && proposed.every((u) => u.confident);
+  const autoOk = appliesRepliesAutomatically(agent) && !parseError && proposed.length > 0 && proposed.every((u) => u.confident);
   if (autoOk) {
     await applyBuyersReply(db, reply.id, proposed, "auto_applied");
   } else if (reply.status === "pending_review") {
