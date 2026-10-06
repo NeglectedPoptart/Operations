@@ -331,7 +331,7 @@ async function runLoadEta(db: SupabaseClient, agent: Agent, force: boolean): Pro
     const thread = await createThread(db, agent, { tag, recordIds: carrierLoads.map((l) => l.id), to, ...email });
     created++;
     if (agent.mode === "auto") await sendThread(db, thread.id);
-    else await logEvent(db, agent.id, "draft", `Drafted "${email.subject}" - waiting for approval`, thread.id);
+    else await draftCreated(db, agent, thread);
   }
 
   if (missingEmail.size > 0) {
@@ -414,8 +414,37 @@ async function runBuyersList(db: SupabaseClient, agent: Agent, force: boolean): 
   const email = buyersListEmail(items as BuyersListItem[], tag, readsReplies(agent));
   const thread = await createThread(db, agent, { tag, recordIds: (items as BuyersListItem[]).map((i) => i.id), to, ...email });
   if (agent.mode === "auto") await sendThread(db, thread.id);
-  else await logEvent(db, agent.id, "draft", `Drafted "${email.subject}" - waiting for approval`, thread.id);
+  else await draftCreated(db, agent, thread);
   return 1;
+}
+
+// ---------------------------------------------------------------------------
+// Approve by email. A draft waiting for approval is also emailed to the
+// owner; replying APPROVE sends it, SKIP throws it away (see
+// handleApprovalReply). The Agents page keeps working as the fallback.
+
+async function draftCreated(db: SupabaseClient, agent: Agent, thread: AgentThread): Promise<void> {
+  await logEvent(db, agent.id, "draft", `Drafted "${thread.subject}" - waiting for approval`, thread.id);
+  if (!graphConfigured()) return;
+  try {
+    await sendEmail({
+      to: [SUPREME_EMAIL],
+      // Carries the draft's [HOPS-XXXXXX] tag, which is how the reply is matched back to it.
+      subject: `Approve? ${thread.subject}`,
+      body: [
+        "This email is ready to go out. Nothing is sent until you reply.",
+        "",
+        "Reply APPROVE to send it as written, or SKIP to throw it away.",
+        "",
+        `To: ${thread.to_emails.join(", ")}`,
+        `Subject: ${thread.subject}`,
+        "----------------------------------------",
+        thread.body,
+      ].join("\n"),
+    });
+  } catch (err) {
+    await logEvent(db, agent.id, "error", `Couldn't email the approval request: ${err instanceof Error ? err.message : String(err)}`, thread.id);
+  }
 }
 
 async function operationsRecipients(db: SupabaseClient, agent: Agent): Promise<string[]> {
@@ -452,7 +481,7 @@ async function runLoadPending(db: SupabaseClient, agent: Agent): Promise<number>
   const email = pendingDigestEmail(loads as Load[], tag, readsReplies(agent));
   const thread = await createThread(db, agent, { tag, recordIds: (loads as Load[]).map((l) => l.id), to, ...email });
   if (agent.mode === "auto") await sendThread(db, thread.id);
-  else await logEvent(db, agent.id, "draft", `Drafted "${email.subject}" - waiting for approval`, thread.id);
+  else await draftCreated(db, agent, thread);
   return 1;
 }
 
@@ -615,6 +644,16 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
     }
     if (!thread) continue; // not a reply to an agent email - left unread for a person
 
+    // The owner answering an "Approve?" email - never a carrier/buyer reply.
+    if (msg.fromEmail === SUPREME_EMAIL.toLowerCase() && /approve\?/i.test(msg.subject)) {
+      processed++;
+      await handleApprovalReply(db, thread, msg).catch(async (err) => {
+        await logEvent(db, thread!.agent_id, "error", `Approval reply failed: ${err instanceof Error ? err.message : String(err)}`, thread!.id);
+      });
+      await markRead(msg.id).catch(() => {});
+      continue;
+    }
+
     const { data: agent } = await db.from("agents").select("*").eq("id", thread.agent_id).single<Agent>();
     // Notify-only agent - the reply stays unread in the mailbox for a person.
     if (agent && !readsReplies(agent)) continue;
@@ -709,6 +748,52 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
 // ones Claude was confident about, in Review whatever the owner left ticked).
 // "Delivered" with no POD raises the Pending POD flag instead and the load
 // stays On the Road.
+async function tellOwner(subject: string, body: string): Promise<void> {
+  // No [HOPS-...] tag in these, so a reply to one is never mistaken for a carrier reply.
+  await sendEmail({ to: [SUPREME_EMAIL], subject, body }).catch(() => {});
+}
+
+async function handleApprovalReply(db: SupabaseClient, thread: AgentThread, msg: InboxMessage): Promise<void> {
+  const plainSubject = thread.subject.replace(TAG_RE, "").trim();
+  const answer = msg.text.replace(/\s+/g, " ").trim().toLowerCase().slice(0, 100);
+  const approve = /^(approve|approved|yes|y|ok|okay|send|go)\b/.test(answer);
+  const skip = /^(skip|no|n|cancel|discard|reject|stop)\b/.test(answer);
+
+  if (thread.status !== "draft" && thread.status !== "failed") {
+    await tellOwner(
+      `Already handled: ${plainSubject}`,
+      `That email is already ${thread.status === "discarded" ? "discarded" : "sent"} - nothing more was done.`,
+    );
+    return;
+  }
+  if (!approve && !skip) {
+    await tellOwner(
+      `Couldn't read your answer: ${plainSubject}`,
+      "Reply to the approval email with APPROVE to send it or SKIP to discard it. Nothing was sent.",
+    );
+    return;
+  }
+
+  if (skip) {
+    await db.from("agent_threads").update({ status: "discarded" }).eq("id", thread.id);
+    await logEvent(db, thread.agent_id, "discarded", `Discarded "${thread.subject}" by email`, thread.id);
+    await tellOwner(`Discarded: ${plainSubject}`, "Okay - that email was thrown away and not sent.");
+    return;
+  }
+
+  await sendThread(db, thread.id);
+  const { data: after } = await db.from("agent_threads").select("status, error").eq("id", thread.id).single();
+  if (after?.status === "sent") {
+    await logEvent(db, thread.agent_id, "approved", `Approved by email: "${thread.subject}"`, thread.id);
+    await tellOwner(`Sent: ${plainSubject}`, `Sent to ${thread.to_emails.join(", ")}.`);
+  } else {
+    await tellOwner(
+      `Couldn't send: ${plainSubject}`,
+      `It wasn't sent: ${after?.error ?? "unknown error"}\n\nReply APPROVE again to retry.`,
+    );
+  }
+}
+
 // Buyers List replies: Claude proposes a note / new quantity / "purchased"
 // per numbered line. Same Approve vs Auto rules as the carrier agent, except
 // there is nothing to verify - a confident "purchased" removes the line.

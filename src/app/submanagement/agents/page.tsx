@@ -4,6 +4,9 @@ import type { Agent, AgentEvent, AgentReply, AgentThread } from "@/lib/agents/ty
 import AgentsClient, { type CarrierRow, type ReviewItem } from "./AgentsClient";
 
 export const dynamic = "force-dynamic";
+// Approving a draft sends email through Outlook from a server action on this
+// page - give it more than the 10s default so a slow send is not cut off.
+export const maxDuration = 60;
 
 export default async function AgentsPage() {
   const supabase = await createClient();

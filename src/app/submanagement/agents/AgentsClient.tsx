@@ -584,6 +584,9 @@ export default function AgentsClient({
       </Section>
 
       <Section title="Emails to approve" count={drafts.length}>
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Each draft is also emailed to you - reply APPROVE to send it or SKIP to discard it.
+        </p>
         {drafts.length === 0 ? (
           <p className="text-sm text-black/50 dark:text-white/50">Nothing waiting.</p>
         ) : (
