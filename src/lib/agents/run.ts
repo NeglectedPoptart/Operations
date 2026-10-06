@@ -651,7 +651,14 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
 
     // The owner answering an "Approve?" email - never a carrier/buyer reply.
     if (msg.fromEmail === SUPREME_EMAIL.toLowerCase() && /approve\?/i.test(msg.subject)) {
+      // Each poll re-reads the newest message (the cursor is "at or after"),
+      // and approval replies leave no agent_replies row to dedupe on, so
+      // remember them here - otherwise the owner is answered every 15 minutes.
+      const handledKey = `approval:${msg.id}`;
+      const { data: handled } = await db.from("agent_state").select("key").eq("key", handledKey).maybeSingle();
+      if (handled) continue;
       processed++;
+      await db.from("agent_state").upsert({ key: handledKey, value: msg.receivedAt, updated_at: new Date().toISOString() });
       await handleApprovalReply(db, thread, msg).catch(async (err) => {
         await logEvent(db, thread!.agent_id, "error", `Approval reply failed: ${err instanceof Error ? err.message : String(err)}`, thread!.id);
       });
