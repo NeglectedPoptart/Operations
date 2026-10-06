@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   BROKER_CARRIER_PATH,
   CRM_ACTIVITY_PATH_PREFIX,
-  SUPREME_PATH_PREFIX,
+  SUPREME_PATH_PREFIXES,
   canAccessTab,
   crmActivityAllowed,
   hasLogisticsOversight,
@@ -82,7 +82,7 @@ export async function updateSession(request: NextRequest) {
   // Locked to one specific account regardless of role - checked before the
   // generic tab logic since tabForPath deliberately doesn't map this prefix
   // to any Tab (there's nothing for canAccessTab to approve or deny here).
-  if (pathname.startsWith(SUPREME_PATH_PREFIX) && !isSupremeUser(user.email ?? null)) {
+  if (SUPREME_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`)) && !isSupremeUser(user.email ?? null)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

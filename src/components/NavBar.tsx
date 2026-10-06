@@ -128,11 +128,18 @@ const NAV: NavCategory[] = [
     items: [
       { href: "/management/callout-sheet", label: "Callout Sheet" },
       { href: "/management/schedules", label: "Schedules" },
-      { href: "/management/order-status-report", label: "Order Status Report" },
       { href: "/management/performance-reviews", label: "Performance Reviews" },
       { href: "/management/employee-files", label: "Employee Files" },
       { href: "/management/costs", label: "Costs" },
-      { href: "/management/activity-log", label: "Activity Log", supremeOnly: true },
+    ],
+  },
+  {
+    label: "SubManagement",
+    supremeOnly: true,
+    items: [
+      { href: "/submanagement/agents", label: "Agents" },
+      { href: "/submanagement/activity-log", label: "Activity Log" },
+      { href: "/submanagement/order-status-report", label: "Order Status Report" },
     ],
   },
   { label: "Documents", href: "/documents", tab: "documents" },
@@ -191,7 +198,6 @@ const NAV: NavCategory[] = [
     supremeOnly: true,
     items: [
       { href: "/supreme/workflow", label: "Workflow" },
-      { href: "/supreme/agents", label: "Agents" },
       { href: "/supreme/meal-plans", label: "Meal Plans" },
       { href: "/supreme/users", label: "User Roles" },
       { href: "/supreme/notifications", label: "Notifications" },
@@ -274,6 +280,14 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
         <svg {...common}>
           <circle cx="12" cy="12" r="2.75" />
           <path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20M6.3 6.3l1.6 1.6M16.1 16.1l1.6 1.6M6.3 17.7l1.6-1.6M16.1 7.9l1.6-1.6" />
+        </svg>
+      );
+    case "SubManagement":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="2.75" />
+          <path d="M12 4v2.2M12 17.8V20M4 12h2.2M17.8 12H20" />
+          <path d="M8 3.5h8M8 20.5h8" />
         </svg>
       );
     case "Documents":

@@ -19,7 +19,7 @@ async function handle(request: NextRequest) {
   const inbox = await pollInbox(db).catch((err) => ({ error: String(err) }));
   const run = await runAgents(db).catch((err) => ({ error: String(err) }));
 
-  revalidatePath("/supreme/agents");
+  revalidatePath("/submanagement/agents");
   revalidatePath("/logistics/board");
   revalidatePath("/logistics");
   return NextResponse.json({ inbox, run });

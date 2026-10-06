@@ -66,7 +66,7 @@ async function notifyOwner(db: SupabaseClient, title: string, body: string) {
     (tokens ?? []).map((t) => t.token as string),
     title,
     body,
-    { pagePath: "/supreme/agents" },
+    { pagePath: "/submanagement/agents" },
   );
 }
 

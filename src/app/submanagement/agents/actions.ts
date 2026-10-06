@@ -18,7 +18,7 @@ async function ownerClient() {
 }
 
 function revalidateAll() {
-  revalidatePath("/supreme/agents");
+  revalidatePath("/submanagement/agents");
   revalidatePath("/logistics/board");
   revalidatePath("/logistics");
 }
@@ -115,5 +115,5 @@ export async function saveCarrierEmail(brokerId: string, email: string) {
     .update({ followup_email: email.trim() === "" ? null : email.trim() })
     .eq("id", brokerId);
   if (error) throw new Error(error.message);
-  revalidatePath("/supreme/agents");
+  revalidatePath("/submanagement/agents");
 }

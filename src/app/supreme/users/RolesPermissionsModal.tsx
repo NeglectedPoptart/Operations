@@ -27,7 +27,7 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: b
   {
     tab: "management",
     label: "Management",
-    pages: "Callout Sheet, Schedules, Order Status Report, Performance Reviews",
+    pages: "Callout Sheet, Schedules, Performance Reviews",
   },
   { tab: "compliance", label: "Compliance", pages: "PAS Files, Food Safety" },
   { tab: "accounting", label: "Accounting", pages: "Accounts Receivable" },
@@ -37,6 +37,12 @@ const SECTIONS: { tab: Tab | null; label: string; pages: string; supremeOnly?: b
     tab: "shipping_receiving",
     label: "ERP",
     pages: "Inventory, Order Entry, PO Entry, Shipping",
+  },
+  {
+    tab: null,
+    supremeOnly: true,
+    label: "SubManagement",
+    pages: "Agents, Activity Log, Order Status Report",
   },
   {
     tab: null,

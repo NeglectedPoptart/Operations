@@ -54,6 +54,9 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // prefix instead of a single page (see middleware.ts and NavBar.tsx).
 export const SUPREME_EMAIL = "tcamph@harvestbestinc.com";
 export const SUPREME_PATH_PREFIX = "/supreme";
+// SubManagement (Agents, Activity Log, Order Status Report) is locked to the
+// same account for now, so it gets the same path-prefix treatment.
+export const SUPREME_PATH_PREFIXES = [SUPREME_PATH_PREFIX, "/submanagement"];
 
 export function isSupremeUser(email: string | null): boolean {
   return email === SUPREME_EMAIL;

@@ -1,7 +1,6 @@
-import OrderStatusReportClient from "./OrderStatusReportClient";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default function OrderStatusReportPage() {
-  return <OrderStatusReportClient />;
+// Moved to SubManagement.
+export default function Moved() {
+  redirect("/submanagement/order-status-report");
 }
