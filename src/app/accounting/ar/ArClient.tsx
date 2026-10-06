@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
@@ -38,6 +37,7 @@ const AR_HEADERS = [
   "Aging",
   "Last Contact",
   "Notes",
+  "Trouble",
 ];
 
 function arRowValues(invoice: ArInvoice, customerName: string): string[] {
@@ -55,7 +55,18 @@ function arRowValues(invoice: ArInvoice, customerName: string): string[] {
     AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label ?? "",
     invoice.last_contact ? formatDate(invoice.last_contact) : "",
     invoice.notes ?? "",
+    invoice.trouble_status === "posted" ? "Trouble - claim posted" : invoice.trouble_status === "pending" ? "Trouble - claim pending" : "",
   ];
+}
+
+// Very visible on purpose - these are the invoices with a claim against them.
+function TroubleBadge({ status }: { status: ArInvoice["trouble_status"] }) {
+  return (
+    <span className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+      ⚠ Trouble
+      <span className="font-medium normal-case opacity-90">{status === "posted" ? "· claim posted" : "· claim pending"}</span>
+    </span>
+  );
 }
 
 interface ChangeMetric {
@@ -178,6 +189,7 @@ export default function ArClient({
   const [search, setSearch] = useState("");
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
+  const [filterTrouble, setFilterTrouble] = useState(false);
   const [filterShort, setFilterShort] = useState(false);
   const [filterOver, setFilterOver] = useState(false);
   const [sortAlpha, setSortAlpha] = useState(false);
@@ -201,15 +213,9 @@ export default function ArClient({
     });
   }
 
-  // AR Troubles (a separate page) owns anything with trouble_status !==
-  // "none" - this page is the complementary slice of the same
-  // ar_invoices/ar_customers data, so trouble-flagged rows are excluded
-  // here entirely rather than just visually de-emphasized.
-  const nonTroubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status === "none"), [invoices]);
-  // Matches AR Troubles' own count exactly - "posted" is settled and
-  // excluded there, so this tile (which links straight to that page)
-  // would be misleading if it counted posted+pending together.
-  const troubleCount = useMemo(() => invoices.filter((i) => i.trouble_status === "pending").length, [invoices]);
+  // Every open invoice shows here. Ones the report flags as trouble ("t"
+  // pending / "T" posted) get a Trouble badge instead of a page of their own.
+  const troubleCount = useMemo(() => invoices.filter((i) => i.trouble_status !== "none").length, [invoices]);
 
   const totals = useMemo(() => {
     const byBucket = new Map<ArAgingBucket, number>(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
@@ -218,7 +224,7 @@ export default function ArClient({
     let needsContact = 0;
     let shortTotal = 0;
     let overTotal = 0;
-    for (const inv of nonTroubleInvoices) {
+    for (const inv of invoices) {
       total += inv.balance;
       byBucket.set(arAgingBucket(inv.due_date), (byBucket.get(arAgingBucket(inv.due_date)) ?? 0) + inv.balance);
       if (inv.highlight === "red") escalated++;
@@ -230,7 +236,7 @@ export default function ArClient({
       }
     }
     return { total, byBucket, escalated, needsContact, shortTotal, overTotal };
-  }, [nonTroubleInvoices]);
+  }, [invoices]);
 
   // Same math as `totals` above but in the shared ArSummaryTotals shape,
   // for comparing against the persisted baseline in ChangesPanel.
@@ -240,10 +246,11 @@ export default function ArClient({
   const discrepancyFilterActive = filterShort || filterOver;
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const all = buildGroups(customers, nonTroubleInvoices);
+    const all = buildGroups(customers, invoices);
     const filtered = all
       .map((g) => {
         let invs = g.invoices;
+        if (filterTrouble) invs = invs.filter((i) => i.trouble_status !== "none");
         if (highlightFilterActive) {
           invs = invs.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"));
         }
@@ -266,7 +273,7 @@ export default function ArClient({
     return sortAlpha
       ? [...filtered].sort((a, b) => a.customer.customer_name.localeCompare(b.customer.customer_name))
       : filtered;
-  }, [customers, nonTroubleInvoices, search, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver, sortAlpha]);
+  }, [customers, invoices, search, filterTrouble, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver, sortAlpha]);
 
   async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -466,12 +473,7 @@ export default function ArClient({
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Trouble Claims</p>
-                <Link
-                  href="/accounting/ar-troubles"
-                  className="text-xl font-bold text-green-700 hover:underline dark:text-green-400"
-                >
-                  {troubleCount} →
-                </Link>
+                <p className="text-xl font-bold text-red-600 dark:text-red-400">{troubleCount}</p>
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Short Pay Total</p>
@@ -544,6 +546,10 @@ export default function ArClient({
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={filterYellow} onChange={(e) => setFilterYellow(e.target.checked)} />
             Needs Contact
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filterTrouble} onChange={(e) => setFilterTrouble(e.target.checked)} />
+            Trouble
           </label>
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={filterShort} onChange={(e) => setFilterShort(e.target.checked)} />
@@ -631,8 +637,14 @@ export default function ArClient({
                       const bucket = arAgingBucket(inv.due_date);
                       const discrepancy = payDiscrepancy(inv);
                       return (
-                        <tr key={inv.id} className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]}`}>
-                          <td className="px-2 py-1.5">{inv.invoice_no}</td>
+                        <tr
+                          key={inv.id}
+                          className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]} ${inv.trouble_status !== "none" ? "border-l-4 border-l-red-600" : ""}`}
+                        >
+                          <td className="px-2 py-1.5">
+                            <div>{inv.invoice_no}</div>
+                            {inv.trouble_status !== "none" && <TroubleBadge status={inv.trouble_status} />}
+                          </td>
                           <td className="px-2 py-1.5">{inv.po ?? ""}</td>
                           <td className="px-2 py-1.5">{formatDate(inv.invoice_date)}</td>
                           <td className="px-2 py-1.5">{formatDate(inv.due_date)}</td>

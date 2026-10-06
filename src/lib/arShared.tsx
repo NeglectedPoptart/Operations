@@ -74,14 +74,15 @@ export interface ArSummaryTotals {
 // this exact shape too when it saves the "as of this sync" snapshot that
 // Show Changes compares the next sync against.
 export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
-  const nonTrouble = invoices.filter((i) => i.trouble_status === "none");
-  const customerIds = new Set(nonTrouble.map((i) => i.customer_id));
+  // Every open invoice counts - trouble-flagged ones are shown on the same
+  // list (with a Trouble badge) rather than split onto a separate page.
+  const customerIds = new Set(invoices.map((i) => i.customer_id));
   let total = 0;
   let escalated = 0;
   let needsContact = 0;
   let shortTotal = 0;
   let overTotal = 0;
-  for (const inv of nonTrouble) {
+  for (const inv of invoices) {
     total += inv.balance;
     if (inv.highlight === "red") escalated++;
     if (inv.highlight === "yellow") needsContact++;
@@ -96,7 +97,7 @@ export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
     customers: customerIds.size,
     escalated,
     needsContact,
-    troubleClaims: invoices.length - nonTrouble.length,
+    troubleClaims: invoices.filter((i) => i.trouble_status !== "none").length,
     shortTotal,
     overTotal,
   };

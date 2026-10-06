@@ -216,13 +216,14 @@ export default async function HomePage() {
   const pendingInbounds = localInbounds.filter((i) => i.status === "pending");
   const arrivedInboundsCount = localInbounds.filter((i) => i.status === "arrived").length;
 
-  // AR Troubles is a separate page/tile's worth of data (trouble_status
-  // !== "none") - excluded here the same way the AR page itself excludes
-  // it, so this tile's total stays consistent with what clicking through
-  // to /accounting/ar actually shows.
-  const arInvoices = (
-    (arInvoicesRes.data ?? []) as { due_date: string | null; balance: number; highlight: string; trouble_status: string }[]
-  ).filter((i) => i.trouble_status === "none");
+  // Every open invoice, trouble-flagged ones included - the same set the AR
+  // page itself lists, so this tile matches what clicking through shows.
+  const arInvoices = (arInvoicesRes.data ?? []) as {
+    due_date: string | null;
+    balance: number;
+    highlight: string;
+    trouble_status: string;
+  }[];
   const arTotalOutstanding = arInvoices.reduce((sum, i) => sum + i.balance, 0);
   const arEscalatedCount = arInvoices.filter((i) => i.highlight === "red").length;
   const arBucketTotals = new Map(AR_AGING_BUCKETS.map((b) => [b.key, 0]));

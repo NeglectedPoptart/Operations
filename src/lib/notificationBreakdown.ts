@@ -83,7 +83,6 @@ export const NOTIFY_BREAKDOWN: NotifyTab[] = [
     label: "Accounting",
     subtabs: [
       { label: "Accounts Receivable", href: "/accounting/ar" },
-      { label: "AR Troubles", href: "/accounting/ar-troubles" },
       { label: "Pending to Invoice", href: "/accounting/pending-to-invoice" },
       { label: "Accounts Payable", href: "/accounting/ap" },
       { label: "Pay Lists", href: "/accounting/pay-lists" },
@@ -242,7 +241,6 @@ export async function getLastEditedMap(supabase: SupabaseServerClient): Promise<
     "/management/callout-sheet": latestOf(calloutEntries, ptoRequests),
     "/compliance/pas-files": pasFiles,
     "/accounting/ar": arInvoices,
-    "/accounting/ar-troubles": arInvoices,
     "/accounting/ap": apPayables,
     "/accounting/pay-lists": apPayListItems,
     "/accounting/logistics-invoicing": invoiceStatements,
