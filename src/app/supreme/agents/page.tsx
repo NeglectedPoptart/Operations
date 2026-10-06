@@ -13,7 +13,7 @@ export default async function AgentsPage() {
     supabase.from("agent_threads").select("*").in("status", ["draft", "failed"]).order("created_at"),
     supabase
       .from("agent_replies")
-      .select("*, agent_threads(subject, record_ids, body)")
+      .select("*, agent_threads(subject, record_ids, body, agents(key))")
       .eq("status", "pending_review")
       .order("created_at"),
     supabase.from("agent_events").select("*").order("created_at", { ascending: false }).limit(50),
@@ -30,12 +30,26 @@ export default async function AgentsPage() {
   }
 
   const replies = (repliesRes.data ?? []) as (AgentReply & {
-    agent_threads: { subject: string; record_ids: string[]; body: string } | null;
+    agent_threads: { subject: string; record_ids: string[]; body: string; agents: { key: string } | null } | null;
   })[];
 
   // Friendly labels for each load a reply proposes to change.
-  const loadIds = [...new Set(replies.flatMap((r) => r.agent_threads?.record_ids ?? []))];
+  const isBuyers = (r: (typeof replies)[number]) => r.agent_threads?.agents?.key === "buyers_list";
+  const loadIds = [...new Set(replies.filter((r) => !isBuyers(r)).flatMap((r) => r.agent_threads?.record_ids ?? []))];
   const labels: Record<string, string> = {};
+
+  // Buyers List lines get a label too (their ids are buyers_list_items).
+  const itemIds = [...new Set(replies.filter(isBuyers).flatMap((r) => r.agent_threads?.record_ids ?? []))];
+  if (itemIds.length > 0) {
+    const { data: items } = await supabase
+      .from("buyers_list_items")
+      .select("id, comm, variety, pstyle, size, label, qty_needed")
+      .in("id", itemIds);
+    for (const i of items ?? []) {
+      labels[i.id] = [[i.comm, i.variety, i.pstyle, i.size, i.label].filter(Boolean).join(" - "), `need ${i.qty_needed}`].join(" · ");
+    }
+  }
+
   if (loadIds.length > 0) {
     const { data: loads } = await supabase
       .from("loads")
@@ -66,6 +80,7 @@ export default async function AgentsPage() {
     subject: r.agent_threads?.subject ?? "",
     loadLabels: Object.fromEntries((r.agent_threads?.record_ids ?? []).map((id) => [id, labels[id] ?? id])),
     loadIds: r.agent_threads?.record_ids ?? [],
+    agentKey: r.agent_threads?.agents?.key ?? "",
     attachmentUrls,
   }));
 

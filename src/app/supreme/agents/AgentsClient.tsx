@@ -1,8 +1,17 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { Agent, AgentEvent, AgentReply, AgentThread, ProposedLoadUpdate, ReplyAttachment } from "@/lib/agents/types";
+import type {
+  Agent,
+  AgentEvent,
+  AgentReply,
+  AgentThread,
+  ProposedBuyerUpdate,
+  ProposedLoadUpdate,
+  ReplyAttachment,
+} from "@/lib/agents/types";
 import {
+  applyBuyerReplyUpdates,
   applyReplyUpdates,
   approveDraft,
   checkInboxNow,
@@ -26,6 +35,7 @@ export interface ReviewItem {
   loadLabels: Record<string, string>;
   // The thread's loads in the order they are numbered in the email.
   loadIds: string[];
+  agentKey: string;
   attachmentUrls: Record<string, string>;
 }
 
@@ -86,7 +96,7 @@ function AgentCard({ agent }: { agent: Agent }) {
   const [replyTo, setReplyTo] = useState((agent.config.reply_to ?? []).join(", "));
   const readReplies = agent.config.read_replies !== false;
   const [sendTimes, setSendTimes] = useState((agent.config.send_times ?? []).join(", "));
-  const isSlotAgent = agent.key === "load_eta";
+  const isSlotAgent = agent.key === "load_eta" || agent.key === "buyers_list";
 
   const save = (patch: Parameters<typeof updateAgent>[1]) => start(() => updateAgent(agent.id, patch));
 
@@ -223,7 +233,7 @@ function AgentCard({ agent }: { agent: Agent }) {
         )}
       </div>
 
-      {agent.key === "load_pending" && (
+      {(agent.key === "load_pending" || agent.key === "buyers_list") && (
         <label className="block space-y-0.5 text-xs">
           <span className="block text-black/60 dark:text-white/60">
             Send to (leave blank for every Operations login)
@@ -288,6 +298,65 @@ function DraftCard({ draft }: { draft: AgentThread }) {
         </button>
         <button className={secondary} disabled={pending} onClick={() => start(() => discardDraft(draft.id))}>
           Discard
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Buyers List replies: a note, a new quantity, or "purchased" (removes the line).
+function BuyerReviewCard({ item }: { item: ReviewItem }) {
+  const [pending, start] = useTransition();
+  // agent_replies.proposed holds whichever update shape the agent produces.
+  const [updates, setUpdates] = useState<ProposedBuyerUpdate[]>(item.reply.proposed as unknown as ProposedBuyerUpdate[]);
+  const set = (i: number, patch: Partial<ProposedBuyerUpdate>) =>
+    setUpdates((prev) => prev.map((u, j) => (j === i ? { ...u, ...patch } : u)));
+
+  return (
+    <div className="space-y-2 rounded-lg border border-black/10 p-3 text-sm dark:border-white/10">
+      <div className="text-xs text-black/60 dark:text-white/60">
+        {item.reply.from_email} · {when(item.reply.received_at)} · re: {item.subject}
+      </div>
+      <blockquote className="max-h-40 overflow-y-auto whitespace-pre-wrap border-l-4 border-green-600 bg-black/5 px-2 py-1 text-xs dark:bg-white/5">
+        {item.reply.body_text}
+      </blockquote>
+      {item.reply.summary && <p className="font-medium">{item.reply.summary}</p>}
+      {item.reply.error && <p className="text-xs text-red-600">{item.reply.error}</p>}
+
+      {updates.map((u, i) => (
+        <div key={i} className={`space-y-1 rounded border p-2 text-xs ${u.confident ? "border-black/10 dark:border-white/10" : "border-amber-400"}`}>
+          <p className="font-semibold">
+            #{u.item_number}: {item.loadLabels[u.item_id] ?? "that line is no longer on the list"}
+            {!u.confident && <span className="ml-2 text-amber-600">check this one</span>}
+          </p>
+          <label className="block">
+            Add to the line&apos;s notes
+            <input className={field} value={u.note ?? ""} onChange={(e) => set(i, { note: e.target.value || null })} />
+          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-1">
+              New qty needed
+              <input
+                type="number"
+                className="w-24 rounded border border-gray-300 bg-white px-1 text-black"
+                value={u.qty_needed ?? ""}
+                onChange={(e) => set(i, { qty_needed: e.target.value === "" ? null : Number(e.target.value) })}
+              />
+            </label>
+            <label className={`flex items-center gap-1 font-medium ${u.purchased ? "text-red-600" : ""}`}>
+              <input type="checkbox" checked={u.purchased === true} onChange={(e) => set(i, { purchased: e.target.checked ? true : null })} />
+              Purchased - remove from list
+            </label>
+          </div>
+        </div>
+      ))}
+
+      <div className="flex gap-2">
+        <button className={primary} disabled={pending || updates.length === 0} onClick={() => start(() => applyBuyerReplyUpdates(item.reply.id, updates))}>
+          {pending ? "Applying..." : "Apply to Buyers List"}
+        </button>
+        <button className={secondary} disabled={pending} onClick={() => start(() => dismissReply(item.reply.id))}>
+          Dismiss
         </button>
       </div>
     </div>
@@ -504,7 +573,13 @@ export default function AgentsClient({
         {reviewItems.length === 0 ? (
           <p className="text-sm text-black/50 dark:text-white/50">Nothing waiting.</p>
         ) : (
-          reviewItems.map((item) => <ReviewCard key={item.reply.id} item={item} />)
+          reviewItems.map((item) =>
+            item.agentKey === "buyers_list" ? (
+              <BuyerReviewCard key={item.reply.id} item={item} />
+            ) : (
+              <ReviewCard key={item.reply.id} item={item} />
+            ),
+          )
         )}
       </Section>
 

@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ProposedLoadUpdate } from "./types";
+import type { ProposedBuyerUpdate, ProposedLoadUpdate } from "./types";
 
 // Turns a free-text email reply ("truck's in Amarillo, should deliver
 // tomorrow 6am") into structured load updates. Claude only proposes -
@@ -159,4 +159,65 @@ export async function verifyPod(input: {
     return { is_pod: false, load_number: null, confident: false, note: "Claude could not read this file - check it by hand." };
   }
   return JSON.parse(text.text) as { is_pod: boolean; load_number: number | null; confident: boolean; note: string };
+}
+
+// ---------------------------------------------------------------------------
+// Buyers List replies: a status per numbered line, or "already purchased".
+
+const BUYERS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary", "updates"],
+  properties: {
+    summary: { type: "string", description: "One short sentence: what the reply says." },
+    updates: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["item_number", "note", "qty_needed", "purchased", "confident"],
+        properties: {
+          item_number: { type: "integer", description: "The line's number in the original email." },
+          note: nullable("string"),
+          qty_needed: { anyOf: [{ type: "integer" }, { type: "null" }] },
+          purchased: nullable("boolean"),
+          confident: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+const BUYERS_SYSTEM = `You read email replies to a Buyers List follow-up sent by Harvest Best, a produce company. The email lists numbered commodity lines the company still needs to buy; the reply says where each stands.
+
+For each numbered line the reply gives information about, return one entry in "updates":
+- item_number: the line's number in the original email.
+- note: a short status in the buyer's words, e.g. "Pending quote from Rio Farms, call Thurs" or "Bought 2 loads, arriving Fri". Null if the reply gives no status beyond "purchased".
+- qty_needed: the quantity still needed ONLY if the reply states a new remaining number (same unit as the list); otherwise null.
+- purchased: true only if the reply clearly says the full need for this line has been bought, ordered or covered. False/null for anything partial, pending, quoted or "working on it".
+- confident: false if you had to guess which line is meant, the reply is ambiguous, or it is unclear whether the line is fully purchased.
+
+Replies may be written by several people; treat the whole reply as one status update. Leave out lines the reply says nothing about. If the reply is only an acknowledgment, out-of-office or unrelated, return an empty "updates" list. Never invent details.`;
+
+export async function parseBuyersReply(input: {
+  originalBody: string;
+  replyText: string;
+}): Promise<{ summary: string; updates: Omit<ProposedBuyerUpdate, "item_id">[] }> {
+  const client = new Anthropic();
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 4000,
+    output_config: { format: { type: "json_schema", schema: BUYERS_SCHEMA } },
+    system: BUYERS_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `<original_email>\n${input.originalBody}\n</original_email>\n\n<reply>\n${input.replyText}\n</reply>`,
+      },
+    ],
+  });
+  if (response.stop_reason === "refusal") throw new Error("Claude declined to read this reply - review it by hand.");
+  const text = response.content.find((b) => b.type === "text");
+  if (!text || text.type !== "text") throw new Error("Claude returned no result.");
+  return JSON.parse(text.text) as { summary: string; updates: Omit<ProposedBuyerUpdate, "item_id">[] };
 }

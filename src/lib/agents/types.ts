@@ -1,4 +1,4 @@
-export type AgentKey = "load_eta" | "load_pending";
+export type AgentKey = "load_eta" | "load_pending" | "buyers_list";
 export type AgentMode = "approve" | "auto";
 
 export interface Agent {
@@ -59,6 +59,20 @@ export interface ProposedLoadUpdate {
   // Carrier says this load has been delivered. Without a verified POD it
   // only raises the Pending POD flag; the load stays On the Road.
   delivered: boolean | null;
+  confident: boolean;
+}
+
+// What the Buyers List agent proposes for one line of the list. Stored in
+// agent_replies.proposed (the same jsonb column the load updates use).
+export interface ProposedBuyerUpdate {
+  item_id: string;
+  item_number: number;
+  // Short status from the buyer, appended to the line's notes.
+  note: string | null;
+  // New quantity still needed, only when the buyer gives one.
+  qty_needed: number | null;
+  // The buyer says this line is already bought - the line is removed.
+  purchased: boolean | null;
   confident: boolean;
 }
 

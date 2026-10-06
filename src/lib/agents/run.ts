@@ -3,10 +3,26 @@ import { APP_TIMEZONE, addDays, todayISO } from "@/lib/dates";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
-import { agentMailbox, graphConfigured, listAttachments, listInboxSince, markRead, sendEmail } from "./graph";
-import { claudeConfigured, parseReply, verifyPod } from "./parseReply";
+import {
+  agentMailbox,
+  graphConfigured,
+  listAttachments,
+  listInboxSince,
+  markRead,
+  sendEmail,
+  type InboxMessage,
+} from "./graph";
+import { claudeConfigured, parseBuyersReply, parseReply, verifyPod } from "./parseReply";
 import { currentSlot, inWindow } from "./slots";
-import type { Agent, AgentReply, AgentThread, ProposedLoadUpdate, ReplyAttachment } from "./types";
+import type {
+  Agent,
+  AgentReply,
+  AgentThread,
+  ProposedBuyerUpdate,
+  ProposedLoadUpdate,
+  ReplyAttachment,
+} from "./types";
+import type { BuyersListItem } from "@/lib/types";
 
 // The HOPS Agents engine. Everything here takes the Supabase client as a
 // parameter so the same code runs from the Agents page (the signed-in
@@ -335,6 +351,73 @@ async function runLoadEta(db: SupabaseClient, agent: Agent, force: boolean): Pro
   return created;
 }
 
+// The Buyers List, numbered, to the buyers. One email per send slot.
+function buyersListEmail(
+  items: BuyersListItem[],
+  tag: string,
+  readReplies: boolean,
+): { subject: string; body: string } {
+  const lines = [
+    "Here is the current Buyers List - these are the lines we still need to buy.",
+    "",
+    ...items.map((item, i) => {
+      const what = [item.comm, item.variety, item.pstyle, item.size, item.label].filter(Boolean).join(" - ");
+      const extra = [
+        `need ${item.qty_needed.toLocaleString()}`,
+        item.whse && `whse ${item.whse}`,
+        item.notes && `notes: ${item.notes.replace(/\s+/g, " ").slice(0, 120)}`,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      return `${i + 1}) ${what}  (${extra})`;
+    }),
+    "",
+    readReplies
+      ? 'Please reply with an update on each line by number, e.g. "1 - quote pending from Rio Farms, call Thurs. 2 - purchased. 3 - bought half, still need 200." HOPS reads your reply: your update goes into that line\'s notes, and a line you say is purchased is taken off the list.'
+      : "Please reply with an update on each line by number.",
+    "",
+    "- HOPS Agent",
+  ];
+  return {
+    subject: `Buyers List update - ${items.length} line${items.length === 1 ? "" : "s"} [${tag}]`,
+    body: lines.join("\n"),
+  };
+}
+
+async function runBuyersList(db: SupabaseClient, agent: Agent, force: boolean): Promise<number> {
+  const slot = force ? null : currentSlot(new Date(), agent.config);
+  if (!force && !slot) return 0;
+
+  const { data: items, error } = await db.from("buyers_list_items").select("*").order("position", { ascending: true });
+  if (error) throw new Error(error.message);
+  if (!items || items.length === 0) return 0;
+
+  const to = await operationsRecipients(db, agent);
+  if (to.length === 0) {
+    await logEvent(db, agent.id, "skipped", "No recipients set for the Buyers List agent.");
+    return 0;
+  }
+
+  const threads = await recentThreads(db, agent.id);
+  if (slot && threads.some((t) => new Date(t.created_at) >= slot)) return 0; // already this slot
+  const draft = threads.find((t) => t.status === "draft");
+  if (draft) {
+    if (force) return 0;
+    await db.from("agent_threads").update({ status: "discarded" }).eq("id", draft.id);
+    await logEvent(db, agent.id, "discarded", `Replaced unsent draft "${draft.subject}" with the new slot's email`, draft.id);
+  }
+  for (const t of threads) {
+    if (t.status === "sent") await db.from("agent_threads").update({ status: "no_reply" }).eq("id", t.id);
+  }
+
+  const tag = newTag();
+  const email = buyersListEmail(items as BuyersListItem[], tag, readsReplies(agent));
+  const thread = await createThread(db, agent, { tag, recordIds: (items as BuyersListItem[]).map((i) => i.id), to, ...email });
+  if (agent.mode === "auto") await sendThread(db, thread.id);
+  else await logEvent(db, agent.id, "draft", `Drafted "${email.subject}" - waiting for approval`, thread.id);
+  return 1;
+}
+
 async function operationsRecipients(db: SupabaseClient, agent: Agent): Promise<string[]> {
   if (agent.config.recipients && agent.config.recipients.length > 0) return agent.config.recipients;
   const { data } = await db.from("profiles").select("email").eq("role", "operations");
@@ -385,13 +468,14 @@ export async function runAgents(
   let created = 0;
   const skipped: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
-    if (agent.key !== "load_eta" && !opts.ignoreHours && !withinActiveHours(agent)) {
+    if (agent.key !== "load_eta" && agent.key !== "buyers_list" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
       continue;
     }
     try {
       if (agent.key === "load_eta") created += await runLoadEta(db, agent, opts.ignoreHours === true);
       else if (agent.key === "load_pending") created += await runLoadPending(db, agent);
+      else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       await db.from("agents").update({ last_run_at: new Date().toISOString() }).eq("id", agent.id);
     } catch (err) {
       await logEvent(db, agent.id, "error", `Run failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -536,6 +620,11 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
     if (agent && !readsReplies(agent)) continue;
     processed++;
 
+    if (agent?.key === "buyers_list") {
+      await handleBuyersReply(db, agent, thread, msg);
+      continue;
+    }
+
     let summary: string | null = null;
     let proposed: ProposedLoadUpdate[] = [];
     let parseError: string | null = null;
@@ -620,6 +709,111 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
 // ones Claude was confident about, in Review whatever the owner left ticked).
 // "Delivered" with no POD raises the Pending POD flag instead and the load
 // stays On the Road.
+// Buyers List replies: Claude proposes a note / new quantity / "purchased"
+// per numbered line. Same Approve vs Auto rules as the carrier agent, except
+// there is nothing to verify - a confident "purchased" removes the line.
+async function handleBuyersReply(db: SupabaseClient, agent: Agent, thread: AgentThread, msg: InboxMessage) {
+  let summary: string | null = null;
+  let proposed: ProposedBuyerUpdate[] = [];
+  let parseError: string | null = null;
+  if (!claudeConfigured()) {
+    parseError = "Claude isn't set up (ANTHROPIC_API_KEY) - read and apply this one by hand.";
+  } else {
+    try {
+      const result = await parseBuyersReply({ originalBody: thread.body, replyText: msg.text });
+      summary = result.summary;
+      proposed = result.updates.map((u) => {
+        const itemId = thread.record_ids[u.item_number - 1] ?? "";
+        return { ...u, item_id: itemId, confident: u.confident && itemId !== "" };
+      });
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const { data: reply, error: insertError } = await db
+    .from("agent_replies")
+    .insert({
+      thread_id: thread.id,
+      graph_message_id: msg.id,
+      from_email: msg.fromEmail,
+      received_at: msg.receivedAt,
+      body_text: msg.text,
+      summary,
+      proposed,
+      error: parseError,
+      status: !parseError && proposed.length === 0 ? "no_update" : "pending_review",
+    })
+    .select()
+    .single<AgentReply>();
+  if (insertError || !reply) return;
+
+  // Stays "sent" (not "replied") so the second and third person's replies
+  // to the same email are read too.
+  await db.from("agent_threads").update({ last_reply_at: msg.receivedAt }).eq("id", thread.id);
+  await markRead(msg.id).catch(() => {});
+
+  const autoOk = agent.mode === "auto" && !parseError && proposed.length > 0 && proposed.every((u) => u.confident);
+  if (autoOk) {
+    await applyBuyersReply(db, reply.id, proposed, "auto_applied");
+  } else if (reply.status === "pending_review") {
+    await logEvent(db, agent.id, "reply", `Reply from ${msg.fromEmail} needs review: ${summary ?? parseError}`, thread.id);
+    await notifyOwner(db, "HOPS Agents", `Buyers List reply to review: ${summary ?? msg.subject}`);
+  } else {
+    await logEvent(db, agent.id, "reply", `Reply from ${msg.fromEmail} had no list updates: ${summary ?? ""}`, thread.id);
+  }
+}
+
+export async function applyBuyersReply(
+  db: SupabaseClient,
+  replyId: string,
+  updates: ProposedBuyerUpdate[],
+  status: "applied" | "auto_applied" = "applied",
+): Promise<void> {
+  const { data: reply, error } = await db
+    .from("agent_replies")
+    .select("*, agent_threads(agent_id)")
+    .eq("id", replyId)
+    .single<AgentReply & { agent_threads: { agent_id: string } | null }>();
+  if (error || !reply) throw new Error(error?.message ?? "Reply not found.");
+
+  const stamp = shortDate(todayISO());
+  const applied: string[] = [];
+  for (const u of updates) {
+    if (!u.item_id) continue;
+    const { data: item } = await db.from("buyers_list_items").select("*").eq("id", u.item_id).maybeSingle<BuyersListItem>();
+    if (!item) continue; // already removed (or the list was cleared)
+    const name = [item.comm, item.variety].filter(Boolean).join(" ") || `line ${u.item_number}`;
+
+    if (u.purchased === true) {
+      const { error: deleteError } = await db.from("buyers_list_items").delete().eq("id", u.item_id);
+      if (deleteError) throw new Error(deleteError.message);
+      applied.push(`${name}: purchased, removed`);
+      continue;
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (u.note) patch.notes = [item.notes, `[Agent ${stamp}] ${u.note}`].filter(Boolean).join("\n");
+    if (u.qty_needed !== null && Number.isFinite(u.qty_needed)) patch.qty_needed = u.qty_needed;
+    if (Object.keys(patch).length === 0) continue;
+    const { error: updateError } = await db.from("buyers_list_items").update(patch).eq("id", u.item_id);
+    if (updateError) throw new Error(updateError.message);
+    applied.push(`${name}: ${Object.keys(patch).map((k) => (k === "notes" ? "note" : "qty")).join(" + ")}`);
+  }
+
+  await db
+    .from("agent_replies")
+    .update({ status, proposed: updates, applied_at: new Date().toISOString() })
+    .eq("id", replyId);
+  await logEvent(
+    db,
+    reply.agent_threads?.agent_id ?? null,
+    status,
+    `${status === "auto_applied" ? "Auto-applied" : "Applied"} reply from ${reply.from_email}: ${applied.join("; ") || "nothing to change"}`,
+    reply.thread_id,
+  );
+}
+
 export async function applyReply(
   db: SupabaseClient,
   replyId: string,

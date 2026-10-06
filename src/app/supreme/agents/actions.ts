@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isSupremeUser } from "@/lib/roles";
-import { applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
-import type { AgentMode, ProposedLoadUpdate, ReplyAttachment } from "@/lib/agents/types";
+import { applyBuyersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
+import type { AgentMode, ProposedBuyerUpdate, ProposedLoadUpdate, ReplyAttachment } from "@/lib/agents/types";
 
 // middleware.ts already locks /supreme to the owner account; checked again
 // here since these actions can send email on the company's behalf.
@@ -92,6 +92,13 @@ export async function applyReplyUpdates(replyId: string, updates: ProposedLoadUp
   const supabase = await ownerClient();
   await applyReply(supabase, replyId, updates, "applied", attachments);
   revalidateAll();
+}
+
+export async function applyBuyerReplyUpdates(replyId: string, updates: ProposedBuyerUpdate[]) {
+  const supabase = await ownerClient();
+  await applyBuyersReply(supabase, replyId, updates, "applied");
+  revalidateAll();
+  revalidatePath("/buyers/buyers-list");
 }
 
 export async function dismissReply(replyId: string) {
