@@ -57,16 +57,25 @@ function arRowValues(invoice: ArInvoice, customerName: string): string[] {
     AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label ?? "",
     invoice.last_contact ? formatDate(invoice.last_contact) : "",
     invoice.notes ?? "",
-    invoice.trouble_status === "posted" ? "Trouble - claim posted" : invoice.trouble_status === "pending" ? "Trouble - claim pending" : "",
+    invoice.trouble_status === "pending" ? "Trouble - claim pending" : invoice.trouble_status === "posted" ? "Trouble Resolved - Adjusted" : "",
   ];
 }
 
-// Very visible on purpose - these are the invoices with a claim against them.
-function TroubleBadge({ status }: { status: ArInvoice["trouble_status"] }) {
+// Very visible on purpose - a trouble claim is still open on these ("t").
+function TroubleBadge() {
   return (
     <span className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
       ⚠ Trouble
-      <span className="font-medium normal-case opacity-90">{status === "posted" ? "· claim posted" : "· claim pending"}</span>
+      <span className="font-medium normal-case opacity-90">· claim pending</span>
+    </span>
+  );
+}
+
+// The claim was already reviewed and adjusted ("T") - fine to collect/pay.
+function ResolvedBadge() {
+  return (
+    <span className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-green-600 px-1.5 py-0.5 text-[11px] font-bold text-white">
+      ✓ Trouble Resolved - Adjusted
     </span>
   );
 }
@@ -216,11 +225,12 @@ export default function ArClient({
     });
   }
 
-  // Every open invoice is listed below, but ones the report flags as trouble
-  // ("t" pending / "T" posted) get a Trouble badge and their own summary box -
-  // they are kept out of the main summary figures.
+  // Every open invoice is listed below. Ones with a trouble claim still
+  // pending ("t") get a red Trouble badge and their own summary box, kept out
+  // of the main summary figures. Ones already reviewed and adjusted ("T") are
+  // resolved: a green badge, otherwise treated like any other invoice.
   const troubleTotals = useMemo(() => computeTroubleTotals(invoices), [invoices]);
-  const nonTroubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status === "none"), [invoices]);
+  const nonTroubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status !== "pending"), [invoices]);
 
   const totals = useMemo(() => {
     const byBucket = new Map<ArAgingBucket, number>(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
@@ -255,7 +265,7 @@ export default function ArClient({
     const filtered = all
       .map((g) => {
         let invs = g.invoices;
-        if (filterTrouble) invs = invs.filter((i) => i.trouble_status !== "none");
+        if (filterTrouble) invs = invs.filter((i) => i.trouble_status === "pending");
         // 21+ days past due - the 21-40, 41-60 and 61+ aging buckets.
         if (filter21) invs = invs.filter((i) => (daysSince(i.due_date) ?? 0) >= 21);
         if (highlightFilterActive) {
@@ -537,7 +547,7 @@ export default function ArClient({
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Customers</p>
-                <p className="text-xl font-bold">{groups.filter((g) => g.invoices.some((i) => i.trouble_status === "none")).length}</p>
+                <p className="text-xl font-bold">{groups.filter((g) => g.invoices.some((i) => i.trouble_status !== "pending")).length}</p>
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Escalated</p>
@@ -561,7 +571,7 @@ export default function ArClient({
 
         {troubleTotals.count > 0 && (
           <div className="space-y-3 rounded-lg border-2 border-red-600 p-4 shadow-sm">
-            <h2 className="text-sm font-bold text-red-600 dark:text-red-400">⚠ Trouble Invoices (not included in the summary above)</h2>
+            <h2 className="text-sm font-bold text-red-600 dark:text-red-400">⚠ Trouble Invoices - claim pending (not included in the summary above)</h2>
             <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
               <div>
                 <p className="text-black/60 dark:text-white/60">Outstanding Troubles</p>
@@ -759,11 +769,12 @@ export default function ArClient({
                       return (
                         <tr
                           key={inv.id}
-                          className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]} ${inv.trouble_status !== "none" ? "border-l-4 border-l-red-600" : ""}`}
+                          className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]} ${inv.trouble_status === "pending" ? "border-l-4 border-l-red-600" : ""}`}
                         >
                           <td className="px-2 py-1.5">
                             <div>{inv.invoice_no}</div>
-                            {inv.trouble_status !== "none" && <TroubleBadge status={inv.trouble_status} />}
+                            {inv.trouble_status === "pending" && <TroubleBadge />}
+                            {inv.trouble_status === "posted" && <ResolvedBadge />}
                           </td>
                           <td className="px-2 py-1.5">{inv.po ?? ""}</td>
                           <td className="px-2 py-1.5">{formatDate(inv.invoice_date)}</td>

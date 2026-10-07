@@ -1,8 +1,9 @@
-// Shared between the main Accounts Receivable page and AR Troubles -
-// the two are a straight partition of the same ar_invoices/ar_customers
-// data (trouble_status === "none" vs. not), so the money-math and
-// presentation helpers below need to stay identical between them rather
-// than drift into two slightly-different copies.
+// Shared money-math and presentation helpers for the Accounts Receivable
+// page and the Home tile. On the report's flags: lower-case "t" = a trouble
+// claim still PENDING (trouble_status "pending" - these are the Trouble
+// files, kept out of the main summary); capital "T" = claim POSTED, already
+// reviewed and adjusted (trouble_status "posted" - resolved, so it counts
+// like any normal invoice).
 import type { ArAgingBucket } from "@/lib/arAging";
 import { escapeHtml } from "@/lib/fobPricing";
 import type { ArCustomer, ArHighlight, ArInvoice } from "@/lib/types";
@@ -74,9 +75,9 @@ export interface ArSummaryTotals {
 // this exact shape too when it saves the "as of this sync" snapshot that
 // Show Changes compares the next sync against.
 export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
-  // Trouble-flagged invoices are listed on the AR page but kept out of the
+  // Pending-trouble invoices are listed on the AR page but kept out of the
   // main summary - they get their own figures (computeTroubleTotals).
-  const nonTrouble = invoices.filter((i) => i.trouble_status === "none");
+  const nonTrouble = invoices.filter((i) => i.trouble_status !== "pending");
   const customerIds = new Set(nonTrouble.map((i) => i.customer_id));
   let total = 0;
   let escalated = 0;
@@ -98,13 +99,13 @@ export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
     customers: customerIds.size,
     escalated,
     needsContact,
-    troubleClaims: invoices.filter((i) => i.trouble_status !== "none").length,
+    troubleClaims: invoices.filter((i) => i.trouble_status === "pending").length,
     shortTotal,
     overTotal,
   };
 }
 
-// The figures for trouble-flagged invoices ("t" pending / "T" posted),
+// The figures for invoices with a trouble claim still pending ("t"),
 // shown in their own box on the AR page instead of the main summary.
 export interface ArTroubleTotals {
   total: number;
@@ -119,7 +120,7 @@ export function computeTroubleTotals(invoices: ArInvoice[]): ArTroubleTotals {
   let shortTotal = 0;
   let overTotal = 0;
   for (const inv of invoices) {
-    if (inv.trouble_status === "none") continue;
+    if (inv.trouble_status !== "pending") continue;
     count++;
     total += inv.balance;
     const d = payDiscrepancy(inv);

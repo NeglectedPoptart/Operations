@@ -216,12 +216,13 @@ export default async function HomePage() {
   const pendingInbounds = localInbounds.filter((i) => i.status === "pending");
   const arrivedInboundsCount = localInbounds.filter((i) => i.status === "arrived").length;
 
-  // Trouble-flagged invoices are listed on the AR page but kept out of its
-  // main summary (they have their own box there), so they're left out of
-  // this tile too - it matches the AR page's Summary.
+  // Invoices with a trouble claim still pending ("t") are listed on the AR
+  // page but kept out of its main summary (they have their own box there), so
+  // they're left out of this tile too - it matches the AR page's Summary.
+  // Resolved ones ("T", already adjusted) count like any other invoice.
   const arInvoices = (
     (arInvoicesRes.data ?? []) as { due_date: string | null; balance: number; highlight: string; trouble_status: string }[]
-  ).filter((i) => i.trouble_status === "none");
+  ).filter((i) => i.trouble_status !== "pending");
   const arTotalOutstanding = arInvoices.reduce((sum, i) => sum + i.balance, 0);
   const arEscalatedCount = arInvoices.filter((i) => i.highlight === "red").length;
   const arBucketTotals = new Map(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
