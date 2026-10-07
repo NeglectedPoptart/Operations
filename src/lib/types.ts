@@ -873,6 +873,11 @@ export interface ArInvoice {
   doc_amount: number | null;
   balance: number;
   has_partial_credit: boolean;
+  // From the "Including Credits" report: everything applied against the
+  // invoice, and the part of that paid by check/ACH. null = not known (the
+  // invoice was last synced from the older report).
+  credits_total: number | null;
+  payments_total: number | null;
   trouble_status: ArTroubleStatus;
   last_contact: string | null;
   notes: string | null;

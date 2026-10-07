@@ -17,21 +17,35 @@ export interface PayDiscrepancy {
   amount: number;
 }
 
-// A partial-credit invoice (the report's own "*" flag) means the customer
-// has already taken a deduction/credit against it - whatever balance is
-// still sitting open on it is money that's actually short, not money still
-// expected to come in, so the balance itself IS the short-pay amount (not
-// doc amount minus balance). A negative balance (regardless of the flag)
-// means the opposite: a credit sitting on the account that we owe back or
-// that can offset a future invoice - an over pay.
+// A SHORT PAY is a customer who paid (a check or ACH was applied against the
+// invoice) and still leaves a balance - whatever is still open is the amount
+// they are short, so the balance itself is the short-pay amount. An invoice
+// whose difference from the doc amount is only an Adjustment (a deduction
+// already reviewed and agreed, e.g. doc 6,015 - adjustment 1,680 = balance
+// 4,335) is NOT a short pay. This needs the "Including Credits" report, which
+// lists the credits under each invoice; for an invoice last synced from the
+// older report (payments_total unknown) the old rule applies: the report's "*"
+// partial-credit flag with a balance left. A negative balance is the
+// opposite: a credit sitting on the account - an over pay.
 export function payDiscrepancy(invoice: ArInvoice): PayDiscrepancy | null {
   if (invoice.balance < 0) return { kind: "over", amount: Math.abs(invoice.balance) };
-  if (!invoice.has_partial_credit || invoice.balance <= 0) return null;
-  return { kind: "short", amount: invoice.balance };
+  if (invoice.balance <= 0) return null;
+  const paid = invoice.payments_total;
+  if (paid !== null && paid !== undefined) return paid > 0 ? { kind: "short", amount: invoice.balance } : null;
+  return invoice.has_partial_credit ? { kind: "short", amount: invoice.balance } : null;
+}
+
+// Payments (check/ACH) and adjustments already applied, for display.
+export function creditsSummary(invoice: ArInvoice): { paid: number; adjustments: number } | null {
+  if (invoice.credits_total === null || invoice.credits_total === undefined) return null;
+  const paid = invoice.payments_total ?? 0;
+  const adjustments = Math.round((invoice.credits_total - paid) * 100) / 100;
+  if (paid <= 0 && adjustments === 0) return null;
+  return { paid, adjustments };
 }
 
 export const DISCREPANCY_BADGE: Record<"short" | "over", string> = {
-  short: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+  short: "bg-yellow-300 text-black dark:bg-yellow-400 dark:text-black",
   over: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
 };
 
@@ -42,6 +56,17 @@ export function DiscrepancyBadge({ discrepancy }: { discrepancy: PayDiscrepancy 
       className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-semibold ${DISCREPANCY_BADGE[discrepancy.kind]}`}
     >
       {discrepancy.kind === "short" ? "Short" : "Over"} ${discrepancy.amount.toFixed(2)}
+    </span>
+  );
+}
+
+// Big and yellow on purpose, like the Trouble badge - a customer paid but is
+// still short.
+export function ShortPayBadge({ amount }: { amount: number }) {
+  return (
+    <span className="mt-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded bg-yellow-300 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-black dark:bg-yellow-400">
+      ⚠ Short Pay
+      <span className="font-extrabold normal-case">${amount.toFixed(2)}</span>
     </span>
   );
 }

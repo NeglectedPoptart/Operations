@@ -7,6 +7,8 @@ import { AR_AGING_BUCKETS, arAgingBucket, type ArAgingBucket } from "@/lib/arAgi
 import {
   BUCKET_BADGE,
   DiscrepancyBadge,
+  ShortPayBadge,
+  creditsSummary,
   DISCREPANCY_BADGE,
   HIGHLIGHT_ROW_CLASS,
   buildGroups,
@@ -39,8 +41,17 @@ const AR_HEADERS = [
   "Aging",
   "Last Contact",
   "Notes",
+  "Credits Applied",
   "Trouble",
 ];
+
+function creditsText(invoice: ArInvoice): string {
+  const c = creditsSummary(invoice);
+  if (!c) return "";
+  return [c.paid > 0 && `Paid ${formatMoney(c.paid)}`, c.adjustments !== 0 && `Adjustment ${formatMoney(c.adjustments)}`]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 function arRowValues(invoice: ArInvoice, customerName: string): string[] {
   const bucket = arAgingBucket(invoice.due_date);
@@ -57,6 +68,7 @@ function arRowValues(invoice: ArInvoice, customerName: string): string[] {
     AR_AGING_BUCKETS.find((b) => b.key === bucket)?.label ?? "",
     invoice.last_contact ? formatDate(invoice.last_contact) : "",
     invoice.notes ?? "",
+    creditsText(invoice),
     invoice.trouble_status === "pending" ? "Trouble - claim pending" : invoice.trouble_status === "posted" ? "Trouble Resolved - Adjusted" : "",
   ];
 }
@@ -769,10 +781,11 @@ export default function ArClient({
                       return (
                         <tr
                           key={inv.id}
-                          className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]} ${inv.trouble_status === "pending" ? "border-l-4 border-l-red-600" : ""}`}
+                          className={`border-t border-black/10 dark:border-white/10 ${HIGHLIGHT_ROW_CLASS[inv.highlight]} ${inv.trouble_status === "pending" ? "border-l-4 border-l-red-600" : discrepancy?.kind === "short" ? "border-l-4 border-l-yellow-400" : ""}`}
                         >
                           <td className="px-2 py-1.5">
                             <div>{inv.invoice_no}</div>
+                            {discrepancy?.kind === "short" && <ShortPayBadge amount={discrepancy.amount} />}
                             {inv.trouble_status === "pending" && <TroubleBadge />}
                             {inv.trouble_status === "posted" && <ResolvedBadge />}
                           </td>
@@ -783,8 +796,18 @@ export default function ArClient({
                           <td className="px-2 py-1.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <span className="font-semibold tabular-nums">{formatMoney(inv.balance)}</span>
-                              <DiscrepancyBadge discrepancy={discrepancy} />
+                              {discrepancy?.kind === "over" && <DiscrepancyBadge discrepancy={discrepancy} />}
                             </div>
+                            {(() => {
+                              const c = creditsSummary(inv);
+                              if (!c) return null;
+                              return (
+                                <div className="mt-0.5 space-y-0 text-right text-[11px] leading-tight text-black/60 dark:text-white/60">
+                                  {c.paid > 0 && <div>Paid {formatMoney(c.paid)}</div>}
+                                  {c.adjustments !== 0 && <div>Adjusted {formatMoney(c.adjustments)}</div>}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-2 py-1.5">
                             <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${BUCKET_BADGE[bucket]}`}>

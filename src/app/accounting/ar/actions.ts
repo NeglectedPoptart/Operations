@@ -99,6 +99,9 @@ export async function importArReport(
       doc_amount: row.docAmount,
       balance: row.balance,
       has_partial_credit: row.hasPartialCredit,
+      // null when the PDF is the older report (it doesn't list credits).
+      credits_total: row.creditsTotal,
+      payments_total: row.paymentsTotal,
       trouble_status: row.troubleStatus,
     };
     if (existingRow) {
