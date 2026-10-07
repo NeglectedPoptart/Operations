@@ -74,15 +74,16 @@ export interface ArSummaryTotals {
 // this exact shape too when it saves the "as of this sync" snapshot that
 // Show Changes compares the next sync against.
 export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
-  // Every open invoice counts - trouble-flagged ones are shown on the same
-  // list (with a Trouble badge) rather than split onto a separate page.
-  const customerIds = new Set(invoices.map((i) => i.customer_id));
+  // Trouble-flagged invoices are listed on the AR page but kept out of the
+  // main summary - they get their own figures (computeTroubleTotals).
+  const nonTrouble = invoices.filter((i) => i.trouble_status === "none");
+  const customerIds = new Set(nonTrouble.map((i) => i.customer_id));
   let total = 0;
   let escalated = 0;
   let needsContact = 0;
   let shortTotal = 0;
   let overTotal = 0;
-  for (const inv of invoices) {
+  for (const inv of nonTrouble) {
     total += inv.balance;
     if (inv.highlight === "red") escalated++;
     if (inv.highlight === "yellow") needsContact++;
@@ -101,6 +102,33 @@ export function computeArSummaryTotals(invoices: ArInvoice[]): ArSummaryTotals {
     shortTotal,
     overTotal,
   };
+}
+
+// The figures for trouble-flagged invoices ("t" pending / "T" posted),
+// shown in their own box on the AR page instead of the main summary.
+export interface ArTroubleTotals {
+  total: number;
+  count: number;
+  shortTotal: number;
+  overTotal: number;
+}
+
+export function computeTroubleTotals(invoices: ArInvoice[]): ArTroubleTotals {
+  let total = 0;
+  let count = 0;
+  let shortTotal = 0;
+  let overTotal = 0;
+  for (const inv of invoices) {
+    if (inv.trouble_status === "none") continue;
+    count++;
+    total += inv.balance;
+    const d = payDiscrepancy(inv);
+    if (d) {
+      if (d.kind === "short") shortTotal += d.amount;
+      else overTotal += d.amount;
+    }
+  }
+  return { total, count, shortTotal, overTotal };
 }
 
 export interface CustomerGroup {

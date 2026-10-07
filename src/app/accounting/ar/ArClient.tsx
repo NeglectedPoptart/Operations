@@ -13,6 +13,7 @@ import {
   buildPlainTextTable,
   buildTableHtml,
   computeArSummaryTotals,
+  computeTroubleTotals,
   formatMoney,
   payDiscrepancy,
   type ArSummaryTotals,
@@ -213,9 +214,11 @@ export default function ArClient({
     });
   }
 
-  // Every open invoice shows here. Ones the report flags as trouble ("t"
-  // pending / "T" posted) get a Trouble badge instead of a page of their own.
-  const troubleCount = useMemo(() => invoices.filter((i) => i.trouble_status !== "none").length, [invoices]);
+  // Every open invoice is listed below, but ones the report flags as trouble
+  // ("t" pending / "T" posted) get a Trouble badge and their own summary box -
+  // they are kept out of the main summary figures.
+  const troubleTotals = useMemo(() => computeTroubleTotals(invoices), [invoices]);
+  const nonTroubleInvoices = useMemo(() => invoices.filter((i) => i.trouble_status === "none"), [invoices]);
 
   const totals = useMemo(() => {
     const byBucket = new Map<ArAgingBucket, number>(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
@@ -224,7 +227,7 @@ export default function ArClient({
     let needsContact = 0;
     let shortTotal = 0;
     let overTotal = 0;
-    for (const inv of invoices) {
+    for (const inv of nonTroubleInvoices) {
       total += inv.balance;
       byBucket.set(arAgingBucket(inv.due_date), (byBucket.get(arAgingBucket(inv.due_date)) ?? 0) + inv.balance);
       if (inv.highlight === "red") escalated++;
@@ -236,7 +239,7 @@ export default function ArClient({
       }
     }
     return { total, byBucket, escalated, needsContact, shortTotal, overTotal };
-  }, [invoices]);
+  }, [nonTroubleInvoices]);
 
   // Same math as `totals` above but in the shared ArSummaryTotals shape,
   // for comparing against the persisted baseline in ChangesPanel.
@@ -465,15 +468,11 @@ export default function ArClient({
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Customers</p>
-                <p className="text-xl font-bold">{groups.length}</p>
+                <p className="text-xl font-bold">{groups.filter((g) => g.invoices.some((i) => i.trouble_status === "none")).length}</p>
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Escalated</p>
                 <p className="text-xl font-bold text-red-600 dark:text-red-400">{totals.escalated}</p>
-              </div>
-              <div>
-                <p className="text-black/60 dark:text-white/60">Trouble Claims</p>
-                <p className="text-xl font-bold text-red-600 dark:text-red-400">{troubleCount}</p>
               </div>
               <div>
                 <p className="text-black/60 dark:text-white/60">Short Pay Total</p>
@@ -490,6 +489,32 @@ export default function ArClient({
             <HorizontalBarChart data={bucketChartData} formatValue={(v) => `$${Math.round(v).toLocaleString()}`} />
           </div>
         </div>
+
+        {troubleTotals.count > 0 && (
+          <div className="space-y-3 rounded-lg border-2 border-red-600 p-4 shadow-sm">
+            <h2 className="text-sm font-bold text-red-600 dark:text-red-400">⚠ Trouble Invoices (not included in the summary above)</h2>
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-black/60 dark:text-white/60">Outstanding Troubles</p>
+                <p className="text-xl font-bold text-red-600 dark:text-red-400">
+                  ${troubleTotals.total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Trouble Invoices</p>
+                <p className="text-xl font-bold text-red-600 dark:text-red-400">{troubleTotals.count}</p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Short Pay Total</p>
+                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">${troubleTotals.shortTotal.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-black/60 dark:text-white/60">Over Pay Total</p>
+                <p className="text-xl font-bold text-purple-600 dark:text-purple-400">${troubleTotals.overTotal.toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showUpload && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
