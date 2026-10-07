@@ -19,7 +19,7 @@ import {
   type ArSummaryTotals,
 } from "@/lib/arShared";
 import { parsePdfArReport, type ParsedArInvoice } from "@/lib/arReportParse";
-import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
+import { daysSince, formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
 import { deleteArInvoiceRow, extractPdfText, importArReport, logArOpened, saveArBaseline, updateArInvoiceRow } from "./actions";
@@ -191,6 +191,7 @@ export default function ArClient({
   const [filterRed, setFilterRed] = useState(false);
   const [filterYellow, setFilterYellow] = useState(false);
   const [filterTrouble, setFilterTrouble] = useState(false);
+  const [filter21, setFilter21] = useState(false);
   const [filterShort, setFilterShort] = useState(false);
   const [filterOver, setFilterOver] = useState(false);
   const [sortAlpha, setSortAlpha] = useState(false);
@@ -254,6 +255,8 @@ export default function ArClient({
       .map((g) => {
         let invs = g.invoices;
         if (filterTrouble) invs = invs.filter((i) => i.trouble_status !== "none");
+        // 21+ days past due - the 21-40, 41-60 and 61+ aging buckets.
+        if (filter21) invs = invs.filter((i) => (daysSince(i.due_date) ?? 0) >= 21);
         if (highlightFilterActive) {
           invs = invs.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"));
         }
@@ -276,7 +279,7 @@ export default function ArClient({
     return sortAlpha
       ? [...filtered].sort((a, b) => a.customer.customer_name.localeCompare(b.customer.customer_name))
       : filtered;
-  }, [customers, invoices, search, filterTrouble, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver, sortAlpha]);
+  }, [customers, invoices, search, filterTrouble, filter21, highlightFilterActive, filterRed, filterYellow, discrepancyFilterActive, filterShort, filterOver, sortAlpha]);
 
   async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -571,6 +574,10 @@ export default function ArClient({
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={filterYellow} onChange={(e) => setFilterYellow(e.target.checked)} />
             Needs Contact
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={filter21} onChange={(e) => setFilter21(e.target.checked)} />
+            21+ Days
           </label>
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={filterTrouble} onChange={(e) => setFilterTrouble(e.target.checked)} />
