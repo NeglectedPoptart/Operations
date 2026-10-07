@@ -605,6 +605,9 @@ export default function ArClient({
                   Found {previewInvoices.length} invoice{previewInvoices.length === 1 ? "" : "s"}: {previewSummary.added} new,{" "}
                   {previewSummary.updated} updated, {previewSummary.removed} will be removed (no longer open).
                 </p>
+                <p className="text-xs text-black/60 dark:text-white/60">
+                  Last Contact, Notes and Highlight on every invoice that stays on the report are kept as they are.
+                </p>
                 <div className="flex gap-2">
                   <button
                     onClick={handleConfirmImport}
