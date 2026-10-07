@@ -17,6 +17,7 @@ import {
   formatMoney,
   payDiscrepancy,
   type ArSummaryTotals,
+  type CustomerGroup,
 } from "@/lib/arShared";
 import { parsePdfArReport, type ParsedArInvoice } from "@/lib/arReportParse";
 import { daysSince, formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
@@ -418,6 +419,71 @@ export default function ArClient({
     }
   }
 
+  // One customer's breakdown - what's listed under them right now, so any
+  // active filter/search applies. The Customer column is dropped (it's the
+  // same on every row) and the customer's name becomes the title.
+  const [customerCopy, setCustomerCopy] = useState<string | null>(null);
+  const activeFilters = [
+    filter21 && "21+ Days",
+    filterTrouble && "Trouble",
+    filterRed && "Escalated",
+    filterYellow && "Needs Contact",
+    filterShort && "Short Pay",
+    filterOver && "Over Pay",
+  ].filter(Boolean) as string[];
+
+  function customerTable(g: CustomerGroup) {
+    return {
+      title: g.customer.customer_name,
+      headers: AR_HEADERS.slice(1),
+      rows: g.invoices.map((inv) => arRowValues(inv, g.customer.customer_name).slice(1)),
+    };
+  }
+
+  function flashCustomerCopy(label: string) {
+    setCustomerCopy(label);
+    setTimeout(() => setCustomerCopy(null), 2000);
+  }
+
+  async function handleCopyCustomerEmail(g: CustomerGroup) {
+    const { title, headers, rows } = customerTable(g);
+    const html = buildTableHtml(title, headers, rows);
+    const text = buildPlainTextTable(title, headers, rows);
+    try {
+      if (typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([text], { type: "text/plain" }) }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      flashCustomerCopy(`${g.customer.id}:email`);
+    } catch {
+      alert("Could not copy to clipboard - your browser may not support it.");
+    }
+  }
+
+  async function handleCopyCustomerImage(g: CustomerGroup) {
+    const { title, headers, rows } = customerTable(g);
+    try {
+      const blob = await renderPriceSheetPng({
+        title,
+        message: [
+          `Balance: $${g.totalBalance.toFixed(2)}`,
+          `${g.invoices.length} invoice${g.invoices.length === 1 ? "" : "s"}`,
+          activeFilters.length > 0 ? `Filtered: ${activeFilters.join(", ")}` : "",
+        ]
+          .filter(Boolean)
+          .join("   "),
+        blocks: [{ title, headerColor: "#8DC63F", columnHeaders: headers, rows: rows.map((cells) => ({ cells })) }],
+      });
+      const result = await copyOrDownloadPng(blob, `${title.replace(/[^A-Za-z0-9]+/g, "-")}-ar.png`);
+      flashCustomerCopy(`${g.customer.id}:${result === "copied" ? "image" : "downloaded"}`);
+    } catch {
+      alert("Could not create the image - try again.");
+    }
+  }
+
   const bucketChartData = AR_AGING_BUCKETS.map((b) => ({ label: b.label, value: totals.byBucket.get(b.key) ?? 0 }));
 
   return (
@@ -647,6 +713,25 @@ export default function ArClient({
                 </div>
               </button>
               {expanded && (
+              <>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  onClick={() => handleCopyCustomerEmail(g)}
+                  className="rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700"
+                >
+                  {customerCopy === `${g.customer.id}:email` ? "Copied!" : "Copy for Email"}
+                </button>
+                <button
+                  onClick={() => handleCopyCustomerImage(g)}
+                  className="rounded-md bg-teal-700 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-800"
+                >
+                  {customerCopy === `${g.customer.id}:image`
+                    ? "Image copied!"
+                    : customerCopy === `${g.customer.id}:downloaded`
+                      ? "Image downloaded!"
+                      : "Copy as Image"}
+                </button>
+              </div>
               <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
                 <table className="w-full text-sm">
                   <thead className="bg-black/5 text-left dark:bg-white/5">
@@ -731,6 +816,7 @@ export default function ArClient({
                   </tbody>
                 </table>
               </div>
+              </>
               )}
             </div>
             );
