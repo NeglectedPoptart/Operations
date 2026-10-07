@@ -7,6 +7,7 @@ import { NAV } from "@/lib/navConfig";
 import type { Role, Tab } from "@/lib/roles";
 import type { RoleRow } from "@/lib/roleAccess";
 import type { Broker, Profile } from "@/lib/types";
+import { TIMEZONE_OPTIONS, timeZoneLabel } from "@/lib/timezones";
 import {
   createRole,
   deleteRole,
@@ -15,6 +16,7 @@ import {
   setRoleTabs,
   updateUserBrokerId,
   updateUserRole,
+  updateUserTimezone,
 } from "./actions";
 
 // The sections a role can be given, straight from the menu, so this list can
@@ -311,6 +313,24 @@ export default function UsersClient({
     }
   }
 
+  async function handleTimezoneChange(id: string, value: string) {
+    const previous = profiles;
+    const manual = value !== "auto";
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, timezone_source: manual ? "manual" : "auto", timezone: manual ? value : p.timezone } : p)),
+    );
+    setSavingId(id);
+    setError(null);
+    try {
+      await updateUserTimezone(id, manual ? value : null);
+    } catch (e) {
+      setProfiles(previous);
+      setError(e instanceof Error ? e.message : "Failed to update time zone.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function handleBrokerChange(id: string, brokerId: string) {
     const value = brokerId || null;
     const previous = profiles;
@@ -347,6 +367,7 @@ export default function UsersClient({
               <tr>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Role</th>
+                <th className="px-3 py-2">Time zone</th>
                 <th className="px-3 py-2">Broker/Carrier Company</th>
                 <th className="px-3 py-2">Added</th>
               </tr>
@@ -378,6 +399,28 @@ export default function UsersClient({
                       </select>
                     </td>
                     <td className="px-2 py-1.5">
+                      <select
+                        value={profile.timezone_source === "manual" && profile.timezone ? profile.timezone : "auto"}
+                        disabled={savingId === profile.id}
+                        onChange={(e) => handleTimezoneChange(profile.id, e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="auto">
+                          Auto{profile.timezone_source !== "manual" && profile.timezone ? ` - ${timeZoneLabel(profile.timezone)}` : " (not detected yet)"}
+                        </option>
+                        {TIMEZONE_OPTIONS.map((z) => (
+                          <option key={z.value} value={z.value}>
+                            {z.label}
+                          </option>
+                        ))}
+                        {profile.timezone_source === "manual" &&
+                          profile.timezone &&
+                          !TIMEZONE_OPTIONS.some((z) => z.value === profile.timezone) && (
+                            <option value={profile.timezone}>{timeZoneLabel(profile.timezone)}</option>
+                          )}
+                      </select>
+                    </td>
+                    <td className="px-2 py-1.5">
                       {isBrokerCarrier ? (
                         <select
                           value={profile.broker_id ?? ""}
@@ -404,7 +447,7 @@ export default function UsersClient({
               })}
               {profiles.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     No users yet.
                   </td>
                 </tr>

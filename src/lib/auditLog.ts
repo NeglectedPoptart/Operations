@@ -24,13 +24,19 @@ export async function logActivity(
     }
     if (!email || !userId || !isTrackedEmail(email)) return;
 
-    await supabase.from("audit_log").insert({
+    const row = {
       user_id: userId,
       user_email: email.toLowerCase(),
       event_type: eventType,
       summary,
       details: details ?? null,
-    });
+    };
+    // Their time zone at this moment, so the log can show their own clock.
+    // Optional: if the column isn't there yet, the event is still recorded.
+    const { data: tzRow } = await supabase.from("profiles").select("timezone").eq("id", userId).maybeSingle();
+    const timezone = (tzRow?.timezone as string | null | undefined) ?? null;
+    const { error } = await supabase.from("audit_log").insert({ ...row, user_timezone: timezone });
+    if (error) await supabase.from("audit_log").insert(row);
   } catch {
     // intentionally swallowed
   }

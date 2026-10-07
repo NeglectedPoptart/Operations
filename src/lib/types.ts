@@ -743,6 +743,10 @@ export interface Profile {
   // Which broker/carrier company this login is - only set when role is
   // "broker_carrier", null for everyone else.
   broker_id: string | null;
+  // Their own time zone (IANA name): picked up from their browser ("auto") or
+  // set on User Roles ("manual"). null until the first visit after migration 130.
+  timezone?: string | null;
+  timezone_source?: "auto" | "manual";
   created_at: string;
 }
 

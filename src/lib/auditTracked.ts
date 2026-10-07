@@ -28,4 +28,6 @@ export interface AuditLogRow {
   event_type: AuditEventType;
   summary: string;
   details: Record<string, unknown> | null;
+  // Their own time zone when it happened (null on older entries).
+  user_timezone?: string | null;
 }

@@ -6,6 +6,7 @@ import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
 import NotificationPopup from "@/components/NotificationPopup";
 import PushRegistration from "@/components/PushRegistration";
+import TimezoneSync from "@/components/TimezoneSync";
 import { todayISO } from "@/lib/dates";
 import { getDailyReminderCheck, type DailyReminderCheck } from "@/lib/dailyReminders";
 import { createClient } from "@/lib/supabase/server";
@@ -57,6 +58,8 @@ export default async function RootLayout({
   let access: RoleAccess = { tabs: [], hiddenPages: [] };
   let roleLabel: string | null = null;
   let reminderCheck: DailyReminderCheck | null = null;
+  let savedTimezone: string | null = null;
+  let timezoneIsManual = false;
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -66,6 +69,11 @@ export default async function RootLayout({
     role = (profile?.role ?? null) as Role | null;
     access = isSupremeUser(user.email ?? null) ? FULL_ACCESS : await loadRoleAccess(supabase, role);
     roleLabel = (await loadRoles(supabase)).find((r) => r.key === role)?.label ?? null;
+    // Separate, error-tolerant read: the time zone columns come from a later
+    // migration, and a missing column must never take the layout down.
+    const { data: tzRow } = await supabase.from("profiles").select("timezone, timezone_source").eq("id", user.id).maybeSingle();
+    savedTimezone = (tzRow?.timezone as string | null | undefined) ?? null;
+    timezoneIsManual = tzRow?.timezone_source === "manual";
     const lastSeen = profile?.last_reminder_seen_date as string | null;
     if (role === "warehouse_qc" && lastSeen !== todayISO()) {
       reminderCheck = await getDailyReminderCheck(supabase);
@@ -89,6 +97,7 @@ export default async function RootLayout({
                 {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
                 {!isBrokerCarrier && <NotificationPopup />}
                 {!isBrokerCarrier && <PushRegistration />}
+                <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
                 <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:px-0 print:py-0">
                   <div className="mx-auto w-full max-w-7xl">{children}</div>
                 </main>

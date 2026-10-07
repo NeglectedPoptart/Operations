@@ -30,5 +30,13 @@ export default async function ActivityLogPage() {
     return <p className="text-red-600">Failed to load Activity Log: {error.message}</p>;
   }
 
-  return <ActivityLogClient rows={(data ?? []) as AuditLogRow[]} nowMs={currentTimeMs()} />;
+  // Each person's own time zone (null where not detected yet, or if the
+  // time zone columns haven't been added).
+  const { data: tzRows } = await supabase.from("profiles").select("email, timezone");
+  const timezoneByEmail: Record<string, string> = {};
+  for (const p of tzRows ?? []) {
+    if (p.email && p.timezone) timezoneByEmail[(p.email as string).toLowerCase()] = p.timezone as string;
+  }
+
+  return <ActivityLogClient rows={(data ?? []) as AuditLogRow[]} nowMs={currentTimeMs()} timezoneByEmail={timezoneByEmail} />;
 }
