@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate, formatTimestamp } from "@/lib/dates";
 import SetPasswordModal from "./SetPasswordModal";
@@ -350,6 +351,126 @@ export default function UsersClient({
     }
   }
 
+  // One table of logins. Carrier/broker logins get their own section (with
+  // the company picker); everyone else is under People.
+  function loginsTable(list: Profile[], carrierSection: boolean) {
+    return (
+          <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+            <table className="w-full text-sm">
+              <thead className="bg-black/5 text-left dark:bg-white/5">
+                <tr>
+                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">Role</th>
+                  <th className="px-3 py-2">Time zone</th>
+                  <th className="px-3 py-2">Password</th>
+                  {carrierSection && <th className="px-3 py-2">Carrier / Broker Company</th>}
+                  <th className="px-3 py-2">Added</th>
+                </tr>
+              </thead>
+              <tbody>
+                {list.map((profile) => {
+                  const isSelf = profile.id === currentUserId;
+                  const isBrokerCarrier = profile.role === "broker_carrier";
+                  return (
+                    <tr key={profile.id} className="border-t border-black/10 dark:border-white/10">
+                      <td className="px-3 py-2">
+                        {profile.email || "(no email)"}
+                        {isSelf && <span className="ml-1 text-xs text-black/40 dark:text-white/40">(you)</span>}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select
+                          value={profile.role}
+                          disabled={isSelf || savingId === profile.id}
+                          title={isSelf ? "You can't change your own role - ask another admin." : undefined}
+                          onChange={(e) => handleRoleChange(profile.id, e.target.value)}
+                          className={selectClass}
+                        >
+                          {roles.map((r) => (
+                            <option key={r.key} value={r.key}>
+                              {r.label}
+                            </option>
+                          ))}
+                          {!roles.some((r) => r.key === profile.role) && <option value={profile.role}>{profile.role}</option>}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <select
+                          value={profile.timezone_source === "manual" && profile.timezone ? profile.timezone : "auto"}
+                          disabled={savingId === profile.id}
+                          onChange={(e) => handleTimezoneChange(profile.id, e.target.value)}
+                          className={selectClass}
+                        >
+                          <option value="auto">
+                            Auto{profile.timezone_source !== "manual" && profile.timezone ? ` - ${timeZoneLabel(profile.timezone)}` : " (not detected yet)"}
+                          </option>
+                          {TIMEZONE_OPTIONS.map((z) => (
+                            <option key={z.value} value={z.value}>
+                              {z.label}
+                            </option>
+                          ))}
+                          {profile.timezone_source === "manual" &&
+                            profile.timezone &&
+                            !TIMEZONE_OPTIONS.some((z) => z.value === profile.timezone) && (
+                              <option value={profile.timezone}>{timeZoneLabel(profile.timezone)}</option>
+                            )}
+                        </select>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <div className="flex flex-col items-start gap-0.5">
+                          <button
+                            onClick={() => setPasswordFor(profile)}
+                            className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+                          >
+                            Set password
+                          </button>
+                          <span className="text-[11px] text-black/50 dark:text-white/50">
+                            {profile.password_changed_at ? `Changed ${formatTimestamp(profile.password_changed_at)}` : "Not changed in HOPS"}
+                          </span>
+                        </div>
+                      </td>
+                      {carrierSection && (
+                      <td className="px-2 py-1.5">
+                        {isBrokerCarrier ? (
+                          <select
+                            value={profile.broker_id ?? ""}
+                            disabled={savingId === profile.id}
+                            onChange={(e) => handleBrokerChange(profile.id, e.target.value)}
+                            className={selectClass}
+                          >
+                            <option value="">-- select --</option>
+                            {brokers.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-black/30 dark:text-white/30">—</span>
+                        )}
+                      </td>
+                      )}
+                      <td className="whitespace-nowrap px-3 py-2 text-black/60 dark:text-white/60">
+                        {formatDate(profile.created_at.slice(0, 10))}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {list.length === 0 && (
+                  <tr>
+                    <td colSpan={carrierSection ? 6 : 5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                      {carrierSection ? "No carrier or broker logins yet." : "No users yet."}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+    );
+  }
+
+  const people = profiles.filter((p) => p.role !== "broker_carrier");
+  const carrierLogins = profiles.filter((p) => p.role === "broker_carrier");
+
   return (
     <div className="space-y-8">
       <div>
@@ -362,122 +483,15 @@ export default function UsersClient({
 
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
 
-      <section className="space-y-2">
-        <h2 className="border-b-2 border-green-600 pb-1 text-lg font-bold text-green-700 dark:text-green-400">People</h2>
-        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 text-left dark:bg-white/5">
-              <tr>
-                <th className="px-3 py-2">Email</th>
-                <th className="px-3 py-2">Role</th>
-                <th className="px-3 py-2">Time zone</th>
-                <th className="px-3 py-2">Password</th>
-                <th className="px-3 py-2">Broker/Carrier Company</th>
-                <th className="px-3 py-2">Added</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profiles.map((profile) => {
-                const isSelf = profile.id === currentUserId;
-                const isBrokerCarrier = profile.role === "broker_carrier";
-                return (
-                  <tr key={profile.id} className="border-t border-black/10 dark:border-white/10">
-                    <td className="px-3 py-2">
-                      {profile.email || "(no email)"}
-                      {isSelf && <span className="ml-1 text-xs text-black/40 dark:text-white/40">(you)</span>}
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <select
-                        value={profile.role}
-                        disabled={isSelf || savingId === profile.id}
-                        title={isSelf ? "You can't change your own role - ask another admin." : undefined}
-                        onChange={(e) => handleRoleChange(profile.id, e.target.value)}
-                        className={selectClass}
-                      >
-                        {roles.map((r) => (
-                          <option key={r.key} value={r.key}>
-                            {r.label}
-                          </option>
-                        ))}
-                        {!roles.some((r) => r.key === profile.role) && <option value={profile.role}>{profile.role}</option>}
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <select
-                        value={profile.timezone_source === "manual" && profile.timezone ? profile.timezone : "auto"}
-                        disabled={savingId === profile.id}
-                        onChange={(e) => handleTimezoneChange(profile.id, e.target.value)}
-                        className={selectClass}
-                      >
-                        <option value="auto">
-                          Auto{profile.timezone_source !== "manual" && profile.timezone ? ` - ${timeZoneLabel(profile.timezone)}` : " (not detected yet)"}
-                        </option>
-                        {TIMEZONE_OPTIONS.map((z) => (
-                          <option key={z.value} value={z.value}>
-                            {z.label}
-                          </option>
-                        ))}
-                        {profile.timezone_source === "manual" &&
-                          profile.timezone &&
-                          !TIMEZONE_OPTIONS.some((z) => z.value === profile.timezone) && (
-                            <option value={profile.timezone}>{timeZoneLabel(profile.timezone)}</option>
-                          )}
-                      </select>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <div className="flex flex-col items-start gap-0.5">
-                        <button
-                          onClick={() => setPasswordFor(profile)}
-                          className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-                        >
-                          Set password
-                        </button>
-                        <span className="text-[11px] text-black/50 dark:text-white/50">
-                          {profile.password_changed_at ? `Changed ${formatTimestamp(profile.password_changed_at)}` : "Not changed in HOPS"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      {isBrokerCarrier ? (
-                        <select
-                          value={profile.broker_id ?? ""}
-                          disabled={savingId === profile.id}
-                          onChange={(e) => handleBrokerChange(profile.id, e.target.value)}
-                          className={selectClass}
-                        >
-                          <option value="">-- select --</option>
-                          {brokers.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span className="text-black/30 dark:text-white/30">—</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2 text-black/60 dark:text-white/60">
-                      {formatDate(profile.created_at.slice(0, 10))}
-                    </td>
-                  </tr>
-                );
-              })}
-              {profiles.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                    No users yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <CollapsibleSection id="users-people" title="People" note={`${people.length}`}>
+        {loginsTable(people, false)}
+      </CollapsibleSection>
 
-      <section className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-green-600 pb-1">
-          <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Roles</h2>
-        </div>
+      <CollapsibleSection id="users-carriers" title="Carriers / Brokers" note={`${carrierLogins.length}`}>
+        {loginsTable(carrierLogins, true)}
+      </CollapsibleSection>
+
+      <CollapsibleSection id="users-roles" title="Roles" note={`${roles.length}`}>
         <div className="space-y-2">
           {roles.map((role) => (
             <RoleCard
@@ -491,7 +505,7 @@ export default function UsersClient({
           ))}
         </div>
         <NewRole roles={roles} onCreated={(r) => setRoles((prev) => [...prev, r])} onError={setError} />
-      </section>
+      </CollapsibleSection>
       {passwordFor && (
         <SetPasswordModal
           email={passwordFor.email ?? "(no email)"}
