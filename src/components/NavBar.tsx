@@ -13,6 +13,7 @@ import {
   type RoleAccess,
 } from "@/lib/roles";
 import { NAV } from "@/lib/navConfig";
+import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 // One small stroke icon per category - hand-drawn rather than pulled from
 // an icon library, since the app doesn't depend on one anywhere else.
@@ -201,6 +202,7 @@ export default function NavBar({
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const isBrokerCarrier = role === "broker_carrier";
   // A broker/carrier login gets none of the normal categories - not even
   // Home, which every other role gets for free (it has no `.tab`, so the
@@ -360,6 +362,12 @@ export default function NavBar({
           </div>
         </div>
         <button
+          onClick={() => setShowPassword(true)}
+          className="mt-1 w-full rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
+        >
+          Change password
+        </button>
+        <button
           onClick={signOut}
           className="mt-1 w-full rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
         >
@@ -371,6 +379,7 @@ export default function NavBar({
 
   return (
     <>
+      {showPassword && <ChangePasswordModal onClose={() => setShowPassword(false)} />}
       {/* Mobile top bar - the sidebar itself is hidden below lg, so this is
           the only way to reach navigation on a phone-width screen (this app
           also ships as an Android/Capacitor + PWA install, where narrow

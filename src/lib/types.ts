@@ -747,6 +747,8 @@ export interface Profile {
   // set on User Roles ("manual"). null until the first visit after migration 130.
   timezone?: string | null;
   timezone_source?: "auto" | "manual";
+  // When they last changed their password in HOPS (never the password itself).
+  password_changed_at?: string | null;
   created_at: string;
 }
 

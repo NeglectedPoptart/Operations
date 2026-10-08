@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { parsePastedOldAge, parsePdfOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
+import { parsePdfOldAge, type ParsedOldAgeRow } from "@/lib/oldAgeParse";
 import { formatDate, todayISO } from "@/lib/dates";
 import { copyOrDownloadPng, escapeHtml, renderPriceSheetPng, type CanvasBlock, type MonoRow } from "@/lib/fobPricing";
 import { summarizeByCommodity, summarizeByNextStep, type BarDatum } from "@/lib/oldAgeSummary";
@@ -448,8 +448,7 @@ export default function OldAgeClient({
   const nextStepSummary = useMemo(() => summarizeByNextStep(items), [items]);
   const commoditySummary = useMemo(() => summarizeByCommodity(items), [items]);
   const cashListItems = useMemo(() => items.filter((i) => i.cash_list), [items]);
-  const [showPaste, setShowPaste] = useState(initialItems.length === 0);
-  const [pasteText, setPasteText] = useState("");
+  const [showUpload, setShowUpload] = useState(initialItems.length === 0);
   const [previewRows, setPreviewRows] = useState<ParsedOldAgeRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -458,21 +457,9 @@ export default function OldAgeClient({
   const [copiedAll, setCopiedAll] = useState(false);
   const [imageStatusAll, setImageStatusAll] = useState<string | null>(null);
 
-  function handlePreview() {
-    const result = parsePastedOldAge(pasteText);
-    if (result.error) {
-      setParseError(result.error);
-      setPreviewRows(null);
-      return;
-    }
-    setParseError(null);
-    setPreviewRows(result.rows);
-  }
-
-  // The PDF's extracted text isn't tab-separated like a real Excel paste - it
-  // comes out of unpdf with columns glued back together in a scrambled order
-  // (see parsePdfOldAge's comments) - so this runs its own parser directly
-  // rather than routing through the paste textarea/parsePastedOldAge.
+  // The PDF's extracted text comes out of unpdf with columns glued back
+  // together in a scrambled order (see parsePdfOldAge's comments), so it has
+  // its own parser.
   async function handlePdfUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -484,7 +471,7 @@ export default function OldAgeClient({
       formData.append("file", file);
       const result = await extractPdfText(formData);
       if ("error" in result) {
-        setParseError(`Couldn't read that PDF (${result.error}). It may be password protected or corrupted - try pasting the text instead.`);
+        setParseError(`Couldn't read that PDF (${result.error}). It may be password protected or corrupted - try again.`);
         return;
       }
       const parsed = parsePdfOldAge(result.text);
@@ -496,7 +483,7 @@ export default function OldAgeClient({
       setPreviewRows(parsed.rows);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try pasting the text instead.`);
+      setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try again.`);
     } finally {
       setUploadingPdf(false);
     }
@@ -509,8 +496,7 @@ export default function OldAgeClient({
       const inserted = await importOldAgeItems(previewRows);
       setItems((inserted ?? []) as OldAgeItem[]);
       setPreviewRows(null);
-      setPasteText("");
-      setShowPaste(false);
+      setShowUpload(false);
     } finally {
       setImporting(false);
     }
@@ -688,10 +674,10 @@ export default function OldAgeClient({
             </>
           )}
           <button
-            onClick={() => setShowPaste((s) => !s)}
+            onClick={() => setShowUpload((s) => !s)}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
           >
-            {showPaste ? "Hide paste box" : "Paste from Excel"}
+            {showUpload ? "Hide upload" : "Upload PDF"}
           </button>
         </div>
       </div>
@@ -716,44 +702,19 @@ export default function OldAgeClient({
         onRemove={(id) => handleCashListToggle(id, false)}
       />
 
-      {showPaste && (
+      {showUpload && (
         <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
           <p className="text-sm text-black/60 dark:text-white/60">
-            Copy the rows from Excel (including the header row) and paste below. This replaces the
-            entire current list.
+            Upload the &quot;Tag Status by Receiving Doc&quot; PDF. This replaces the entire current list - check the
+            preview carefully first, since Size may come through combined with the label.
           </p>
-          <textarea
-            value={pasteText}
-            onChange={(e) => {
-              setPasteText(e.target.value);
-              setPreviewRows(null);
-              setParseError(null);
-            }}
-            rows={6}
-            placeholder="Paste tab-separated rows from Excel here..."
-            className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-xs text-black"
-          />
           <div className="flex flex-wrap items-center gap-2">
-            <label className="cursor-pointer rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
-              {uploadingPdf ? "Reading PDF..." : "Or upload a PDF"}
+            <label className="cursor-pointer rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+              {uploadingPdf ? "Reading PDF..." : "Upload PDF"}
               <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
             </label>
-            <span className="text-xs text-black/40 dark:text-white/40">
-              For the &quot;Tag Status by Receiving Doc&quot; report - check the preview carefully, since Size may
-              come through combined with the label.
-            </span>
           </div>
           {parseError && <p className="text-sm text-red-600">{parseError}</p>}
-
-          {!previewRows && (
-            <button
-              onClick={handlePreview}
-              disabled={pasteText.trim() === ""}
-              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-            >
-              Preview
-            </button>
-          )}
 
           {previewRows && (
             <div className="space-y-2">
@@ -930,7 +891,7 @@ export default function OldAgeClient({
             {items.length === 0 && (
               <tr>
                 <td colSpan={12} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                  No items yet - paste in the Old Age report from Excel above.
+                  No items yet - upload the Old Age report PDF above.
                 </td>
               </tr>
             )}

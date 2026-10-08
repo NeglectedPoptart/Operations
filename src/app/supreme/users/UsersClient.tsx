@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { formatDate } from "@/lib/dates";
+import { formatDate, formatTimestamp } from "@/lib/dates";
+import SetPasswordModal from "./SetPasswordModal";
 import { NAV } from "@/lib/navConfig";
 import type { Role, Tab } from "@/lib/roles";
 import type { RoleRow } from "@/lib/roleAccess";
@@ -291,6 +292,7 @@ export default function UsersClient({
   const [profiles, setProfiles] = useState(initialProfiles);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [passwordFor, setPasswordFor] = useState<Profile | null>(null);
 
   const peopleByRole = useMemo(() => {
     const m = new Map<string, number>();
@@ -368,6 +370,7 @@ export default function UsersClient({
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Role</th>
                 <th className="px-3 py-2">Time zone</th>
+                <th className="px-3 py-2">Password</th>
                 <th className="px-3 py-2">Broker/Carrier Company</th>
                 <th className="px-3 py-2">Added</th>
               </tr>
@@ -421,6 +424,19 @@ export default function UsersClient({
                       </select>
                     </td>
                     <td className="px-2 py-1.5">
+                      <div className="flex flex-col items-start gap-0.5">
+                        <button
+                          onClick={() => setPasswordFor(profile)}
+                          className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+                        >
+                          Set password
+                        </button>
+                        <span className="text-[11px] text-black/50 dark:text-white/50">
+                          {profile.password_changed_at ? `Changed ${formatTimestamp(profile.password_changed_at)}` : "Not changed in HOPS"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5">
                       {isBrokerCarrier ? (
                         <select
                           value={profile.broker_id ?? ""}
@@ -447,7 +463,7 @@ export default function UsersClient({
               })}
               {profiles.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                  <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     No users yet.
                   </td>
                 </tr>
@@ -475,6 +491,16 @@ export default function UsersClient({
         </div>
         <NewRole roles={roles} onCreated={(r) => setRoles((prev) => [...prev, r])} onError={setError} />
       </section>
+      {passwordFor && (
+        <SetPasswordModal
+          email={passwordFor.email ?? "(no email)"}
+          userId={passwordFor.id}
+          onClose={() => setPasswordFor(null)}
+          onSaved={() =>
+            setProfiles((prev) => prev.map((p) => (p.id === passwordFor.id ? { ...p, password_changed_at: new Date().toISOString() } : p)))
+          }
+        />
+      )}
     </div>
   );
 }

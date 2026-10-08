@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { ALL_TABS, isSupremeUser, type Role, type Tab } from "@/lib/roles";
 import { NAV } from "@/lib/navConfig";
 import { isValidTimeZone } from "@/lib/timezones";
+import { adminClient } from "@/lib/supabase/admin";
+import { passwordProblem } from "@/lib/passwordRules";
 
 // The "admins update roles" RLS policy (migration_017) is what actually
 // enforces this is admin-only - a blocked update just returns zero rows
@@ -32,6 +34,31 @@ export async function updateUserBrokerId(id: string, brokerId: string | null) {
   }
   revalidatePath("/supreme/users");
   return data[0];
+}
+
+// Set a new password for someone (Supreme only). Passwords can never be read
+// back - Supabase keeps only a one-way hash - so this sets a new one that you
+// then pass on to them. Same strength rules as everyone's own change.
+export async function setUserPassword(userId: string, newPassword: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!isSupremeUser(user?.email ?? null)) return { error: "Not allowed." };
+
+  const problem = passwordProblem(newPassword);
+  if (problem) return { error: problem };
+
+  try {
+    const admin = adminClient();
+    const { error } = await admin.auth.admin.updateUserById(userId, { password: newPassword });
+    if (error) return { error: error.message };
+    await admin.from("profiles").update({ password_changed_at: new Date().toISOString() }).eq("id", userId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't set the password." };
+  }
+  revalidatePath("/supreme/users");
+  return { ok: true };
 }
 
 // A person's time zone, for the Activity Log's "their time". null puts them
