@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { AUDIT_EVENT_LABELS, TRACKED_HANDLES, type AuditEventType, type AuditLogRow } from "@/lib/auditTracked";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import { APP_TIMEZONE } from "@/lib/dates";
 import { formatTimestampIn, timeZoneLabel } from "@/lib/timezones";
 
@@ -86,6 +87,7 @@ export default function ActivityLogClient({
         </p>
       </div>
 
+      <CollapsibleSection id="activity-latest" title="Latest Activity by Person">
       <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left dark:bg-white/5">
@@ -120,10 +122,11 @@ export default function ActivityLogClient({
           </tbody>
         </table>
       </div>
+      </CollapsibleSection>
 
+      <CollapsibleSection id="activity-all" title="All Activity" note={`${visible.length} event${visible.length === 1 ? "" : "s"}`}>
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-bold text-green-700 dark:text-green-400">All Activity</h2>
           <select value={person} onChange={(e) => setPerson(e.target.value)} className={field}>
             <option value="">Everyone</option>
             {TRACKED_HANDLES.map((h) => (
@@ -183,6 +186,7 @@ export default function ActivityLogClient({
           </table>
         </div>
       </div>
+      </CollapsibleSection>
     </div>
   );
 }

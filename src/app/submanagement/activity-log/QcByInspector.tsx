@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import CollapsibleSection from "@/components/CollapsibleSection";
 import { todayISO } from "@/lib/dates";
 
 export interface QcCountRow {
@@ -125,10 +126,9 @@ export default function QcByInspector({ rows }: { rows: QcCountRow[] }) {
     period === "week" ? `Last ${WEEKS_SHOWN} weeks (weeks start Monday)` : period === "month" ? `Last ${MONTHS_SHOWN} months` : "Each year";
 
   return (
-    <div className="space-y-3">
+    <CollapsibleSection id="activity-qc" title="QC Inspections by Inspector">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-bold text-green-700 dark:text-green-400">QC Inspections by Inspector</h2>
           <p className="text-sm text-black/60 dark:text-white/60">
             Inspections logged on the QC Inspections sheet for each person&apos;s initials, counted by the inspection&apos;s
             date. {heading}.
@@ -205,6 +205,6 @@ export default function QcByInspector({ rows }: { rows: QcCountRow[] }) {
         {model.noInitials > 0 &&
           ` ${model.noInitials} inspection${model.noInitials === 1 ? "" : "s"} in this range ${model.noInitials === 1 ? "has" : "have"} no initials and ${model.noInitials === 1 ? "isn't" : "aren't"} counted above.`}
       </p>
-    </div>
+    </CollapsibleSection>
   );
 }
