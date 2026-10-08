@@ -44,7 +44,10 @@ export type Tab =
   | "mexico"
   | "shipping_receiving"
   | "crm"
-  | "documents";
+  | "documents"
+  // SubManagement: a real section now, so it can be given to any role on User
+  // Roles. Agents and Activity Log inside it stay Supreme-only regardless.
+  | "submanagement";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -61,9 +64,11 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // prefix instead of a single page (see middleware.ts and NavBar.tsx).
 export const SUPREME_EMAIL = "tcamph@harvestbestinc.com";
 export const SUPREME_PATH_PREFIX = "/supreme";
-// SubManagement (Agents, Activity Log, Order Status Report) is locked to the
-// same account for now, so it gets the same path-prefix treatment.
-export const SUPREME_PATH_PREFIXES = [SUPREME_PATH_PREFIX, "/submanagement"];
+// Within SubManagement, Agents (it sends email on the company's behalf) and the
+// Activity Log (an audit trail of other people) stay locked to this one account
+// whatever role a login has. The rest of SubManagement (Order Status Report) is
+// an ordinary section that roles can be given on User Roles.
+export const SUPREME_PATH_PREFIXES = [SUPREME_PATH_PREFIX, "/submanagement/agents", "/submanagement/activity-log"];
 
 export function isSupremeUser(email: string | null): boolean {
   return email === SUPREME_EMAIL;
@@ -146,7 +151,7 @@ export const DEFAULT_ROLE_TABS: Record<BuiltinRole, Tab[]> = {
   buyer_sales: ["warehouse", "qc", "sales", "buyers", "meetings", "marketing", "crm"],
 };
 
-export const ALL_TABS: Tab[] = DEFAULT_ROLE_TABS.admin;
+export const ALL_TABS: Tab[] = [...DEFAULT_ROLE_TABS.admin, "submanagement"];
 
 // What one role can open: whole sections (tabs), minus any single pages
 // hidden inside them (menu hrefs such as "/sales/calculator").
@@ -189,6 +194,7 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/shipping-receiving")) return "shipping_receiving";
   if (pathname.startsWith("/crm")) return "crm";
   if (pathname.startsWith("/documents")) return "documents";
+  if (pathname.startsWith("/submanagement")) return "submanagement";
   return null;
 }
 

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isSupremeUser } from "@/lib/roles";
 import { setupStatus } from "@/lib/agents/run";
 import type { Agent, AgentEvent, AgentReply, AgentThread } from "@/lib/agents/types";
 import AgentsClient, { type CarrierRow, type ReviewItem } from "./AgentsClient";
@@ -10,6 +11,12 @@ export const maxDuration = 60;
 
 export default async function AgentsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!isSupremeUser(user?.email ?? null)) {
+    return <p className="text-sm text-black/60 dark:text-white/60">You do not have access to Agents.</p>;
+  }
 
   const [agentsRes, draftsRes, repliesRes, eventsRes, brokersRes] = await Promise.all([
     supabase.from("agents").select("*").order("created_at"),
