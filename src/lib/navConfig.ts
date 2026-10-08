@@ -80,6 +80,7 @@ export const NAV: NavCategory[] = [
       { href: "/qc/agenda", label: "QC Agenda" },
       { href: "/qc/inspections/new", label: "New Inspection" },
       { href: "/qc/inspections", label: "Inspection History" },
+      { href: "/qc/dashboard", label: "Quality Dashboard" },
       // Only the Quality Control Manager role (and the Supreme account) sees this.
       { href: "/qc/plans", label: "Inspection Plans", onlyRoles: ["qc_manager"] },
       { href: "/qc/old-age", label: "Old Age" },
