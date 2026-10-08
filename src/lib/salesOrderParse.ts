@@ -1,7 +1,6 @@
 // Parses the ERP's "Orders Summary" report (pasted as text, or extracted
 // from an uploaded PDF via unpdf) for the Weekly Company Call's Operations
-// Coordinator breakdown (orders/cases/terms by salesperson), and for
-// Management's Order Status Report (same report, filterable by status).
+// Coordinator breakdown (orders/cases/terms by salesperson).
 //
 // The report's underlying PDF draws each row's cells in a fixed but
 // visually-scrambled order (confirmed against a real export): extracting

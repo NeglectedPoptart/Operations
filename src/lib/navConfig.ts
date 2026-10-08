@@ -125,11 +125,10 @@ export const NAV: NavCategory[] = [
   },
   {
     label: "SubManagement",
-    tab: "submanagement",
+    supremeOnly: true,
     items: [
-      { href: "/submanagement/agents", label: "Agents", supremeOnly: true },
-      { href: "/submanagement/activity-log", label: "Activity Log", supremeOnly: true },
-      { href: "/submanagement/order-status-report", label: "Order Status Report" },
+      { href: "/submanagement/agents", label: "Agents" },
+      { href: "/submanagement/activity-log", label: "Activity Log" },
     ],
   },
   { label: "Documents", href: "/documents", tab: "documents" },
