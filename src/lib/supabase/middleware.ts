@@ -7,6 +7,7 @@ import {
   SUPREME_PATH_PREFIXES,
   canAccessTab,
   isPageHidden,
+  isWarehouseQcLike,
   crmActivityAllowed,
   hasLogisticsOversight,
   isSupremeUser,
@@ -117,7 +118,7 @@ export async function updateSession(request: NextRequest) {
   // Warehouse/QC's "mexico" tab grant is deliberately partial - Arrivals
   // and Orders only, not Growers - so it needs this extra narrowing on top
   // of the generic tab check above, which only knows about whole tabs.
-  if (tab === "mexico" && role === "warehouse_qc" && !warehouseQcMexicoAllowed(pathname)) {
+  if (tab === "mexico" && isWarehouseQcLike(role) && !warehouseQcMexicoAllowed(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

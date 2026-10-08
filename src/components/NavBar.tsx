@@ -221,6 +221,7 @@ export default function NavBar({
               (item) =>
                 !(role && item.excludeRoles?.includes(role)) &&
                 !(item.supremeOnly && !isSupremeUser(email)) &&
+                !(item.onlyRoles && !isSupremeUser(email) && !(role && item.onlyRoles.includes(role))) &&
                 !access.hiddenPages.includes(item.href),
             ),
           })),

@@ -16,6 +16,9 @@ export interface NavItem {
   // Shown only to the Supreme account, even inside an otherwise
   // role-eligible category (see isSupremeUser in roles.ts).
   supremeOnly?: boolean;
+  // Shown only to these roles (and the Supreme account), even inside a section
+  // the role could otherwise open.
+  onlyRoles?: Role[];
 }
 
 export interface NavCategory {
@@ -75,7 +78,10 @@ export const NAV: NavCategory[] = [
     tab: "qc",
     items: [
       { href: "/qc/agenda", label: "QC Agenda" },
-      { href: "/qc/inspections", label: "QC Inspections" },
+      { href: "/qc/inspections/new", label: "New Inspection" },
+      { href: "/qc/inspections", label: "Inspection History" },
+      // Only the Quality Control Manager role (and the Supreme account) sees this.
+      { href: "/qc/plans", label: "Inspection Plans", onlyRoles: ["qc_manager"] },
       { href: "/qc/old-age", label: "Old Age" },
     ],
   },
@@ -167,8 +173,8 @@ export const NAV: NavCategory[] = [
     items: [
       { href: "/mexico/arrivals", label: "Arrivals" },
       { href: "/mexico/orders", label: "Orders" },
-      { href: "/mexico/growers", label: "Growers", excludeRoles: ["warehouse_qc"] },
-      { href: "/mexico/carton-inventory", label: "Carton Inventory", excludeRoles: ["warehouse_qc"] },
+      { href: "/mexico/growers", label: "Growers", excludeRoles: ["warehouse_qc", "qc_manager"] },
+      { href: "/mexico/carton-inventory", label: "Carton Inventory", excludeRoles: ["warehouse_qc", "qc_manager"] },
     ],
   },
   {

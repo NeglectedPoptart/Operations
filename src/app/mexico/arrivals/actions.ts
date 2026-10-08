@@ -71,7 +71,7 @@ async function syncCartonDeductionsForArrival(supabase: SupabaseClient, arrivalI
 // Every role that actually has the "mexico" tab (see ROLE_TABS in
 // roles.ts) - "everyone" for this notification means everyone who can
 // reach the page it links to, not literally every account in the company.
-const ARRIVALS_NOTIFY_ROLES: Role[] = ["admin", "operations", "warehouse_qc", "executive", "mx"];
+const ARRIVALS_NOTIFY_ROLES: Role[] = ["admin", "operations", "warehouse_qc", "qc_manager", "executive", "mx"];
 
 // Fired from the "Mark as Up to Date" button on Arrivals (see
 // UpdateStatusButton's onMarked) - fans out one in-app + push notification

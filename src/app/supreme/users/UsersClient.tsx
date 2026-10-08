@@ -27,7 +27,7 @@ const SECTIONS = NAV.filter((c) => c.tab && !c.supremeOnly).map((c) => ({
   tab: c.tab as Tab,
   label: c.label,
   // Supreme-only pages (Agents, Activity Log) are never given out by role.
-  pages: (c.items ?? []).filter((i) => !i.supremeOnly).map((i) => ({ href: i.href, label: i.label })),
+  pages: (c.items ?? []).filter((i) => !i.supremeOnly && !i.onlyRoles).map((i) => ({ href: i.href, label: i.label })),
 }));
 
 const selectClass = "w-full max-w-[12rem] rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black disabled:opacity-60";

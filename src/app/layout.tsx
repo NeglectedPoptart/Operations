@@ -10,7 +10,7 @@ import TimezoneSync from "@/components/TimezoneSync";
 import { todayISO } from "@/lib/dates";
 import { getDailyReminderCheck, type DailyReminderCheck } from "@/lib/dailyReminders";
 import { createClient } from "@/lib/supabase/server";
-import { FULL_ACCESS, isSupremeUser, type Role, type RoleAccess } from "@/lib/roles";
+import { FULL_ACCESS, isSupremeUser, isWarehouseQcLike, type Role, type RoleAccess } from "@/lib/roles";
 import { loadRoleAccess, loadRoles } from "@/lib/roleAccess";
 import "./globals.css";
 
@@ -75,7 +75,7 @@ export default async function RootLayout({
     savedTimezone = (tzRow?.timezone as string | null | undefined) ?? null;
     timezoneIsManual = tzRow?.timezone_source === "manual";
     const lastSeen = profile?.last_reminder_seen_date as string | null;
-    if (role === "warehouse_qc" && lastSeen !== todayISO()) {
+    if (isWarehouseQcLike(role) && lastSeen !== todayISO()) {
       reminderCheck = await getDailyReminderCheck(supabase);
     }
   }

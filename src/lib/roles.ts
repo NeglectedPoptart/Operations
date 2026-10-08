@@ -11,7 +11,8 @@ export type BuiltinRole =
   | "executive"
   | "broker_carrier"
   | "mx"
-  | "buyer_sales";
+  | "buyer_sales"
+  | "qc_manager";
 
 // Roles live in the `roles` table now and can be added from User Roles.
 export type Role = string;
@@ -21,6 +22,7 @@ export const ROLES: { value: BuiltinRole; label: string }[] = [
   { value: "admin", label: "Admin" },
   { value: "operations", label: "Operations" },
   { value: "warehouse_qc", label: "Warehouse/QC" },
+  { value: "qc_manager", label: "Quality Control Manager" },
   { value: "sales", label: "Sales" },
   { value: "accounting", label: "Accounting" },
   { value: "buyer", label: "Buyer" },
@@ -114,6 +116,8 @@ export const DEFAULT_ROLE_TABS: Record<BuiltinRole, Tab[]> = {
   // it - middleware.ts additionally restricts Warehouse/QC to just
   // Arrivals and Orders, not Growers (see warehouseQcMexicoAllowed below).
   warehouse_qc: ["warehouse", "qc", "buyers", "meetings", "mexico"],
+  // Everything Warehouse/QC has, plus editing the inspection plans (canEditQcPlans).
+  qc_manager: ["warehouse", "qc", "buyers", "meetings", "mexico"],
   sales: ["sales", "qc", "buyers", "marketing", "meetings", "crm"],
   accounting: ["sales", "compliance", "accounting", "meetings"],
   buyer: ["warehouse", "qc", "sales", "buyers", "meetings"],
@@ -146,6 +150,17 @@ export const DEFAULT_ROLE_TABS: Record<BuiltinRole, Tab[]> = {
   // sales' tabs above.
   buyer_sales: ["warehouse", "qc", "sales", "buyers", "meetings", "marketing", "crm"],
 };
+
+// Warehouse/QC and Quality Control Manager share the daily reminder and the
+// narrowed Mexico access (Arrivals/Orders only).
+export function isWarehouseQcLike(role: Role | null): boolean {
+  return role === "warehouse_qc" || role === "qc_manager";
+}
+
+// Who may create or change QC inspection plans (also enforced in the database).
+export function canEditQcPlans(role: Role | null, email: string | null): boolean {
+  return role === "qc_manager" || isSupremeUser(email);
+}
 
 export const ALL_TABS: Tab[] = DEFAULT_ROLE_TABS.admin;
 
