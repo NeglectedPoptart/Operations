@@ -650,6 +650,9 @@ export interface QcInspection {
   status: string | null;
   result: string | null;
   notes: string | null;
+  // The full inspection (form, photos, report) this row was logged from, when
+  // it was done in HOPS rather than typed in by hand.
+  lot_inspection_id?: string | null;
   created_at: string;
   updated_at: string;
 }

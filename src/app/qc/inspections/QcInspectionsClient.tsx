@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
+import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { QC_RESULTS, type QcInspection } from "@/lib/types";
+import InspectionPanel from "./InspectionPanel";
 import { addQcInspectionRow, deleteQcInspectionRow, updateQcInspectionRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -30,8 +32,12 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [adding, setAdding] = useState(false);
-  const [filterDate, setFilterDate] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [filterQc, setFilterQc] = useState("");
+  const [filterResult, setFilterResult] = useState("");
   const [search, setSearch] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
   const cellRefs = useRef<Map<string, HTMLInputElement | HTMLSelectElement>>(new Map());
 
   function cellKey(rowIndex: number, col: ColKey) {
@@ -100,7 +106,13 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   }, [items]);
 
   const displayedItems = useMemo(() => {
-    let list = filterDate ? sortedItems.filter((i) => i.entry_date === filterDate) : sortedItems;
+    let list = sortedItems.filter(
+      (i) =>
+        (!dateFrom || (i.entry_date ?? "") >= dateFrom) &&
+        (!dateTo || (i.entry_date ?? "") <= dateTo) &&
+        (!filterQc || (i.qc ?? "").trim().toUpperCase() === filterQc) &&
+        (!filterResult || (i.result ?? "") === filterResult),
+    );
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((i) =>
@@ -110,7 +122,14 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
       );
     }
     return list;
-  }, [sortedItems, filterDate, search]);
+  }, [sortedItems, dateFrom, dateTo, filterQc, filterResult, search]);
+
+  // The initials that appear on the sheet, for the Inspector filter.
+  const inspectors = useMemo(
+    () => [...new Set(items.map((i) => (i.qc ?? "").trim().toUpperCase()).filter(Boolean))].sort(),
+    [items],
+  );
+  const filtering = !!(search || dateFrom || dateTo || filterQc || filterResult);
 
   async function handleAddRow() {
     setAdding(true);
@@ -138,14 +157,22 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold">QC Inspections</h1>
-          <button
-            onClick={handleAddRow}
-            disabled={adding}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            {adding ? "Adding..." : "+ Add Row"}
-          </button>
+          <h1 className="text-2xl font-bold">QC Inspection History</h1>
+          <div className="flex gap-2">
+            <Link
+              href="/qc/inspections/new"
+              className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+            >
+              + New Inspection
+            </Link>
+            <button
+              onClick={handleAddRow}
+              disabled={adding}
+              className="rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-60 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {adding ? "Adding..." : "+ Add Row"}
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -161,22 +188,48 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
             </button>
           )}
           <span className="mx-1 text-black/20 dark:text-white/20">|</span>
-          <label htmlFor="qc-date-filter" className="text-black/60 dark:text-white/60">
-            Filter by date:
+          <label className="text-black/60 dark:text-white/60">
+            From{" "}
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded border border-gray-300 bg-white px-2 py-1 text-black" />
           </label>
-          <input
-            id="qc-date-filter"
-            type="date"
-            value={filterDate}
-            onChange={(e) => setFilterDate(e.target.value)}
-            className="rounded border border-gray-300 bg-white px-2 py-1 text-black"
-          />
-          {filterDate && (
+          <label className="text-black/60 dark:text-white/60">
+            To{" "}
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded border border-gray-300 bg-white px-2 py-1 text-black" />
+          </label>
+          <label className="text-black/60 dark:text-white/60">
+            Inspector{" "}
+            <select value={filterQc} onChange={(e) => setFilterQc(e.target.value)} className="rounded border border-gray-300 bg-white px-2 py-1 text-black">
+              <option value="">All</option>
+              {inspectors.map((q) => (
+                <option key={q} value={q}>
+                  {q}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-black/60 dark:text-white/60">
+            Result{" "}
+            <select value={filterResult} onChange={(e) => setFilterResult(e.target.value)} className="rounded border border-gray-300 bg-white px-2 py-1 text-black">
+              <option value="">All</option>
+              {QC_RESULTS.map((r) => (
+                <option key={r.label} value={r.label}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {filtering && (
             <button
-              onClick={() => setFilterDate("")}
+              onClick={() => {
+                setSearch("");
+                setDateFrom("");
+                setDateTo("");
+                setFilterQc("");
+                setFilterResult("");
+              }}
               className="text-black/60 hover:underline dark:text-white/60"
             >
-              Clear
+              Clear all filters
             </button>
           )}
         </div>
@@ -185,6 +238,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
           <table className="w-full text-sm">
             <thead className="bg-black/5 text-left dark:bg-white/5">
               <tr>
+                <th className="w-8 px-1 py-2" />
                 <th className="px-2 py-2">Date</th>
                 <th className="px-2 py-2">PO</th>
                 <th className="px-2 py-2">Lot</th>
@@ -200,7 +254,23 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
             </thead>
             <tbody>
               {displayedItems.map((item, rowIndex) => (
-                <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
+                <Fragment key={item.id}>
+                <tr className="border-t border-black/10 dark:border-white/10">
+                  <td className="px-1 py-1 text-center">
+                    {item.lot_inspection_id ? (
+                      <button
+                        onClick={() => setOpenId((cur) => (cur === item.id ? null : item.id))}
+                        aria-expanded={openId === item.id}
+                        aria-label="Show report and photos"
+                        title="Report and photos"
+                        className="rounded p-1 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={`h-4 w-4 transition-transform ${openId === item.id ? "rotate-90" : ""}`}>
+                          <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </td>
                   <td className="min-w-[8rem] px-1 py-1">
                     <input
                       ref={registerCell(rowIndex, "entry_date")}
@@ -308,11 +378,22 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
                     </button>
                   </td>
                 </tr>
+                {item.lot_inspection_id && openId === item.id && (
+                  <tr className="border-t border-black/10 bg-green-50/50 dark:border-white/10 dark:bg-green-950/10">
+                    <td colSpan={12}>
+                      <InspectionPanel
+                        inspectionId={item.lot_inspection_id}
+                        onEmailed={() => setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, mail: true } : i)))}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
               {displayedItems.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                    {search || filterDate
+                  <td colSpan={12} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                    {filtering
                       ? "Nothing matches the current search/filter."
                       : 'No inspections yet - click "+ Add Row" above to log one.'}
                   </td>

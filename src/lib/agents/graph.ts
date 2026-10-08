@@ -59,11 +59,57 @@ async function graph(path: string, init: RequestInit = {}): Promise<Response> {
 // Created as a draft first (rather than a single sendMail call) because
 // that's the only way Graph hands back the conversationId replies will
 // carry - the key used to match a reply back to its thread.
+export interface EmailAttachment {
+  name: string;
+  contentType: string;
+  data: Uint8Array;
+}
+
+// Small files go in one request; bigger ones (a report with 30 photos can be
+// several MB) use Graph's upload session, sent in chunks.
+const INLINE_ATTACHMENT_LIMIT = 3 * 1024 * 1024;
+const UPLOAD_CHUNK = 320 * 1024 * 10; // Graph wants multiples of 320 KiB
+
+async function addAttachment(mailbox: string, messageId: string, file: EmailAttachment): Promise<void> {
+  if (file.data.length <= INLINE_ATTACHMENT_LIMIT) {
+    await graph(`/users/${mailbox}/messages/${messageId}/attachments`, {
+      method: "POST",
+      body: JSON.stringify({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: file.name,
+        contentType: file.contentType,
+        contentBytes: Buffer.from(file.data).toString("base64"),
+      }),
+    });
+    return;
+  }
+
+  const sessionRes = await graph(`/users/${mailbox}/messages/${messageId}/attachments/createUploadSession`, {
+    method: "POST",
+    body: JSON.stringify({ AttachmentItem: { attachmentType: "file", name: file.name, size: file.data.length, contentType: file.contentType } }),
+  });
+  const { uploadUrl } = (await sessionRes.json()) as { uploadUrl: string };
+  for (let start = 0; start < file.data.length; start += UPLOAD_CHUNK) {
+    const end = Math.min(start + UPLOAD_CHUNK, file.data.length);
+    // The upload URL is pre-authorised - no bearer token on these requests.
+    const res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Length": String(end - start),
+        "Content-Range": `bytes ${start}-${end - 1}/${file.data.length}`,
+      },
+      body: Buffer.from(file.data.subarray(start, end)),
+    });
+    if (!res.ok) throw new Error(`Attachment upload failed (${res.status}): ${await res.text()}`);
+  }
+}
+
 export async function sendEmail(input: {
   to: string[];
   replyTo?: string[];
   subject: string;
   body: string;
+  attachments?: EmailAttachment[];
 }): Promise<{ messageId: string; conversationId: string }> {
   const mailbox = encodeURIComponent(agentMailbox());
   const draftRes = await graph(`/users/${mailbox}/messages`, {
@@ -76,6 +122,7 @@ export async function sendEmail(input: {
     }),
   });
   const draft = (await draftRes.json()) as { id: string; conversationId: string };
+  for (const file of input.attachments ?? []) await addAttachment(mailbox, draft.id, file);
   await graph(`/users/${mailbox}/messages/${draft.id}/send`, { method: "POST" });
   return { messageId: draft.id, conversationId: draft.conversationId };
 }
