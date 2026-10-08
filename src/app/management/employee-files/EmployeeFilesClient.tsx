@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatDateSlash, todayISO } from "@/lib/dates";
 import { nextAnniversary } from "@/lib/employeeFiles";
 import { formatPhoneNumber } from "@/lib/phone";
+import PayHistorySection from "./PayHistorySection";
 import type { Role } from "@/lib/roles";
 import { updateDevice } from "@/app/supreme/devices/actions";
 import {
@@ -716,6 +717,8 @@ function EmployeeDetail({
         onUploadDoc={onUploadDoc}
         onDeleteDoc={onDeleteDoc}
       />
+
+      <PayHistorySection employeeId={employee.id} />
 
       <div>
         <p className="mb-2 text-sm font-semibold">Documents</p>

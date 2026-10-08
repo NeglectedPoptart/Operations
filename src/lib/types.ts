@@ -1677,6 +1677,21 @@ export const DEVICE_RETURN_CONDITIONS = ["Good", "Fair", "Damaged"] as const;
 // off since they already live on the Employee record this belongs to, and
 // Device Brand & Model/Operating System/Login Username-Email/
 // Password/Additional Access Notes are dropped entirely per request.
+export type EmployeePayType = "hourly" | "salary";
+
+// One pay rate an employee has had (migration 133). The latest by effective
+// date is their current pay; earlier ones are their past pay / raises.
+export interface EmployeePayEntry {
+  id: string;
+  employee_id: string;
+  effective_date: string;
+  pay_type: EmployeePayType;
+  // Dollars per hour, or per year for a salary.
+  amount: number;
+  note: string | null;
+  created_at: string;
+}
+
 export interface EmployeeDevice {
   id: string;
   employee_id: string;
