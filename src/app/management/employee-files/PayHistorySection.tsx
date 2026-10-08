@@ -12,8 +12,18 @@ function money(amount: number): string {
   return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+// A salary is entered by the week; what's stored is the yearly total
+// (weekly x 52), so the yearly figure is always exact and earlier yearly
+// entries keep working.
+const WEEKS_PER_YEAR = 52;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const weeklyOf = (yearly: number) => round2(yearly / WEEKS_PER_YEAR);
+const yearlyOf = (weekly: number) => round2(weekly * WEEKS_PER_YEAR);
+
 function rate(entry: Pick<EmployeePayEntry, "amount" | "pay_type">): string {
-  return `${money(entry.amount)}${entry.pay_type === "hourly" ? "/hr" : "/yr"}`;
+  return entry.pay_type === "hourly"
+    ? `${money(entry.amount)}/hr`
+    : `${money(weeklyOf(entry.amount))}/wk (${money(entry.amount)}/yr)`;
 }
 
 // Newest first by effective date (ties: most recently entered first).
@@ -31,12 +41,14 @@ function changeFrom(entry: EmployeePayEntry, previous: EmployeePayEntry | undefi
   if (previous.pay_type !== entry.pay_type) {
     return { text: `Changed from ${previous.pay_type} to ${entry.pay_type}`, tone: "neutral" as const };
   }
-  const diff = Math.round((entry.amount - previous.amount) * 100) / 100;
-  if (diff === 0) return { text: "No change", tone: "neutral" as const };
-  const pct = previous.amount > 0 ? (diff / previous.amount) * 100 : null;
+  const salary = entry.pay_type === "salary";
+  // Salaries compare by the week, since that's how they're entered.
+  const diff = salary ? weeklyOf(entry.amount) - weeklyOf(previous.amount) : round2(entry.amount - previous.amount);
+  if (round2(diff) === 0) return { text: "No change", tone: "neutral" as const };
+  const pct = previous.amount > 0 ? ((entry.amount - previous.amount) / previous.amount) * 100 : null;
   const sign = diff > 0 ? "+" : "-";
   return {
-    text: `${sign}${money(Math.abs(diff))}${pct !== null ? ` (${sign}${Math.abs(pct).toFixed(1)}%)` : ""}`,
+    text: `${sign}${money(Math.abs(round2(diff)))}${salary ? "/wk" : "/hr"}${pct !== null ? ` (${sign}${Math.abs(pct).toFixed(1)}%)` : ""}`,
     tone: diff > 0 ? ("up" as const) : ("down" as const),
   };
 }
@@ -84,7 +96,13 @@ export default function PayHistorySection({ employeeId }: { employeeId: string }
     setSaving(true);
     setError(null);
     try {
-      const created = await addEmployeePay({ employeeId, effectiveDate: date, payType, amount: value, note });
+      const created = await addEmployeePay({
+        employeeId,
+        effectiveDate: date,
+        payType,
+        amount: payType === "salary" ? yearlyOf(value) : value,
+        note,
+      });
       setEntries((prev) => [...(prev ?? []), created]);
       setAmount("");
       setNote("");
@@ -167,16 +185,21 @@ export default function PayHistorySection({ employeeId }: { employeeId: string }
                     </td>
                     <td className="min-w-[7rem] px-1 py-1">
                       <input
+                        key={`${entry.pay_type}:${entry.amount}`}
                         type="number"
                         step="0.01"
-                        defaultValue={entry.amount}
+                        defaultValue={entry.pay_type === "salary" ? weeklyOf(entry.amount) : entry.amount}
                         onBlur={(e) => {
                           const v = Number(e.target.value);
-                          if (Number.isFinite(v) && v > 0 && v !== entry.amount) patchEntry(entry.id, { amount: v });
+                          if (!Number.isFinite(v) || v <= 0) return;
+                          const stored = entry.pay_type === "salary" ? yearlyOf(v) : v;
+                          if (stored !== entry.amount) patchEntry(entry.id, { amount: stored });
                         }}
                         className={`${field} font-semibold`}
                       />
-                      <span className="text-[11px] text-black/50 dark:text-white/50">{entry.pay_type === "hourly" ? "per hour" : "per year"}</span>
+                      <span className="text-[11px] text-black/50 dark:text-white/50">
+                        {entry.pay_type === "hourly" ? "per hour" : `per week = ${money(entry.amount)}/yr`}
+                      </span>
                     </td>
                     <td
                       className={`whitespace-nowrap px-2 py-1.5 text-xs font-semibold ${
@@ -222,15 +245,18 @@ export default function PayHistorySection({ employeeId }: { employeeId: string }
           </select>
         </label>
         <label className="text-xs">
-          {payType === "hourly" ? "$ per hour" : "$ per year"}
+          {payType === "hourly" ? "$ per hour" : "$ per week"}
           <input
             type="number"
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder={payType === "hourly" ? "18.50" : "52000"}
+            placeholder={payType === "hourly" ? "18.50" : "1000"}
             className={`${field} mt-0.5`}
           />
+          {payType === "salary" && Number(amount) > 0 && (
+            <span className="mt-0.5 block font-semibold text-green-700 dark:text-green-400">= {money(yearlyOf(Number(amount)))} per year</span>
+          )}
         </label>
         <label className="col-span-2 text-xs sm:col-span-1">
           Note (starting pay, raise, promotion...)
