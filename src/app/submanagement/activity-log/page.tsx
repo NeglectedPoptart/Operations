@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupremeUser } from "@/lib/roles";
 import type { AuditLogRow } from "@/lib/auditTracked";
 import ActivityLogClient from "./ActivityLogClient";
+import QcByInspector, { type QcCountRow } from "./QcByInspector";
 
 export const dynamic = "force-dynamic";
 
@@ -38,5 +39,25 @@ export default async function ActivityLogPage() {
     if (p.email && p.timezone) timezoneByEmail[(p.email as string).toLowerCase()] = p.timezone as string;
   }
 
-  return <ActivityLogClient rows={(data ?? []) as AuditLogRow[]} nowMs={currentTimeMs()} timezoneByEmail={timezoneByEmail} />;
+  // Every QC inspection's date + initials. Read in pages because a single
+  // request stops at 1,000 rows.
+  const qcRows: QcCountRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data: page, error: qcError } = await supabase
+      .from("qc_inspections")
+      .select("entry_date, qc")
+      .order("entry_date", { ascending: true })
+      .order("position", { ascending: true })
+      .range(from, from + 999);
+    if (qcError || !page) break;
+    qcRows.push(...(page as QcCountRow[]));
+    if (page.length < 1000) break;
+  }
+
+  return (
+    <div className="space-y-10">
+      <ActivityLogClient rows={(data ?? []) as AuditLogRow[]} nowMs={currentTimeMs()} timezoneByEmail={timezoneByEmail} />
+      <QcByInspector rows={qcRows} />
+    </div>
+  );
 }
