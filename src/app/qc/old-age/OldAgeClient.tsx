@@ -29,17 +29,105 @@ function nextStepLabel(step: OldAgeNextStep | null): string {
 }
 
 const CASH_LIST_HEADERS = ["Document", "Received", "Description", "PStyle", "Size", "Qty", "Age", "Price", "Notes"];
-function cashListRowValues(item: OldAgeItem): string[] {
+// A Cash List line: one item, or several "like" items (same description,
+// pack style and size) rolled into one condensed line. Combining is optional
+// and saved per item (cash_combined): leave rows apart when different ages
+// need different prices.
+interface CashRow {
+  key: string;
+  items: OldAgeItem[];
+  combined: boolean;
+  // How many cash-list items share this key in total (>= 2 means they can be combined).
+  likeCount: number;
+  // True on the first line shown for a key - where its Combine/Split button goes.
+  first: boolean;
+}
+
+function cashKey(item: OldAgeItem): string {
+  return [item.description, item.pack_style, item.size].map((v) => (v ?? "").trim().toLowerCase()).join("|");
+}
+
+function buildCashRows(items: OldAgeItem[]): CashRow[] {
+  const byKey = new Map<string, OldAgeItem[]>();
+  for (const item of items) {
+    const k = cashKey(item);
+    byKey.set(k, [...(byKey.get(k) ?? []), item]);
+  }
+  const rows: CashRow[] = [];
+  const done = new Set<string>();
+  for (const item of items) {
+    const key = cashKey(item);
+    if (done.has(key)) continue;
+    done.add(key);
+    const members = byKey.get(key)!;
+    const flagged = members.filter((m) => m.cash_combined);
+    const merge = flagged.length >= 2;
+    // Position: the combined line sits where its first member was; the rest
+    // of that key's rows (not combined) keep their own lines in order.
+    let firstShown = true;
+    let combinedShown = false;
+    for (const m of members) {
+      if (merge && m.cash_combined) {
+        if (combinedShown) continue;
+        combinedShown = true;
+        rows.push({ key, items: flagged, combined: true, likeCount: members.length, first: firstShown });
+      } else {
+        rows.push({ key, items: [m], combined: false, likeCount: members.length, first: firstShown });
+      }
+      firstShown = false;
+    }
+  }
+  return rows;
+}
+
+function rangeText(values: (number | null)[]): string {
+  const nums = values.filter((v): v is number => v !== null);
+  if (nums.length === 0) return "";
+  const lo = Math.min(...nums);
+  const hi = Math.max(...nums);
+  return lo === hi ? String(lo) : `${lo}-${hi}`;
+}
+
+function cashRowDocument(row: CashRow): string {
+  return row.items.map((i) => i.document).filter(Boolean).join(", ");
+}
+
+function cashRowReceived(row: CashRow): string {
+  const dates = row.items.map((i) => i.received_date).filter((d): d is string => !!d).sort();
+  if (dates.length === 0) return "";
+  const first = formatDate(dates[0]);
+  const last = formatDate(dates[dates.length - 1]);
+  return first === last ? first : `${first} - ${last}`;
+}
+
+function cashRowQty(row: CashRow): number | null {
+  const qtys = row.items.map((i) => i.qty).filter((q): q is number => q !== null);
+  return qtys.length === 0 ? null : qtys.reduce((a, b) => a + b, 0);
+}
+
+function cashRowPrice(row: CashRow): number | null {
+  return row.items.find((i) => i.cash_price !== null)?.cash_price ?? null;
+}
+
+// Distinct non-empty notes, in order. A single line shows its own note as-is.
+function cashRowNotes(row: CashRow): string {
+  const notes = row.items.map((i) => (i.notes ?? "").trim()).filter(Boolean);
+  return [...new Set(notes)].join("; ");
+}
+
+function cashRowValues(row: CashRow): string[] {
+  const first = row.items[0];
+  const qty = cashRowQty(row);
   return [
-    item.document ?? "",
-    formatDate(item.received_date),
-    item.description ?? "",
-    item.pack_style ?? "",
-    item.size ?? "",
-    item.qty !== null ? String(item.qty) : "",
-    item.age !== null ? String(item.age) : "",
-    formatMoney(item.cash_price),
-    item.notes ?? "",
+    cashRowDocument(row),
+    cashRowReceived(row),
+    first.description ?? "",
+    first.pack_style ?? "",
+    first.size ?? "",
+    qty !== null ? String(qty) : "",
+    rangeText(row.items.map((i) => i.age)),
+    formatMoney(cashRowPrice(row)),
+    cashRowNotes(row),
   ];
 }
 
@@ -304,20 +392,25 @@ function CashListSection({
   onPriceSave,
   onNotesSave,
   onRemove,
+  onCombine,
 }: {
   items: OldAgeItem[];
-  onPriceSave: (id: string, price: number | null) => void;
-  onNotesSave: (id: string, notes: string) => void;
-  onRemove: (id: string) => void;
+  onPriceSave: (ids: string[], price: number | null) => void;
+  onNotesSave: (ids: string[], notes: string) => void;
+  onRemove: (ids: string[]) => void;
+  onCombine: (ids: string[], combined: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [imageStatus, setImageStatus] = useState<string | null>(null);
+  const rows = useMemo(() => buildCashRows(items), [items]);
 
   if (items.length === 0) return null;
 
+  const rowValues = rows.map(cashRowValues);
+
   async function handleCopyEmail() {
-    const html = buildTableHtml("Cash List", "#8DC63F", CASH_LIST_HEADERS, items.map(cashListRowValues));
-    const text = buildPlainTextSection("Cash List", CASH_LIST_HEADERS, items.map(cashListRowValues)).join("\n");
+    const html = buildTableHtml("Cash List", "#8DC63F", CASH_LIST_HEADERS, rowValues);
+    const text = buildPlainTextSection("Cash List", CASH_LIST_HEADERS, rowValues).join("\n");
 
     try {
       if (typeof ClipboardItem !== "undefined") {
@@ -344,7 +437,7 @@ function CashListSection({
           title: "Cash List",
           headerColor: "#8DC63F",
           columnHeaders: CASH_LIST_HEADERS,
-          rows: items.map((item) => ({ cells: cashListRowValues(item) })),
+          rows: rowValues.map((cells) => ({ cells })),
         },
       ];
       const blob = await renderPriceSheetPng({ title: "Cash List", message: "", blocks });
@@ -359,7 +452,10 @@ function CashListSection({
   return (
     <div className="space-y-2 rounded-lg border border-green-300 bg-green-50/50 p-4 dark:border-green-800 dark:bg-green-950/20">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Cash List ({items.length})</h2>
+        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">
+          Cash List ({rows.length}
+          {rows.length !== items.length ? ` lines, ${items.length} items` : ""})
+        </h2>
         <div className="flex gap-2">
           <button
             onClick={handleCopyEmail}
@@ -392,41 +488,64 @@ function CashListSection({
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="px-2 py-1.5">{item.document}</td>
-                <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(item.received_date)}</td>
-                <td className="px-2 py-1.5">{item.description}</td>
-                <td className="px-2 py-1.5">{item.pack_style}</td>
-                <td className="px-2 py-1.5">{item.size}</td>
-                <td className="px-2 py-1.5">{item.qty}</td>
-                <td className="px-2 py-1.5">{item.age}</td>
-                <td className="min-w-[6rem] px-1 py-1">
-                  <input
-                    type="number"
-                    step="any"
-                    defaultValue={item.cash_price ?? ""}
-                    onBlur={(e) => onPriceSave(item.id, e.target.value.trim() === "" ? null : Number(e.target.value))}
-                    className={`${field} font-semibold`}
-                  />
-                </td>
-                <td className="min-w-[10rem] px-1 py-1">
-                  <input
-                    defaultValue={item.notes ?? ""}
-                    onBlur={(e) => onNotesSave(item.id, e.target.value)}
-                    className={field}
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <button
-                    onClick={() => onRemove(item.id)}
-                    className="text-xs font-medium text-red-600 hover:underline"
-                  >
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row) => {
+              const ids = row.items.map((i) => i.id);
+              const values = cashRowValues(row);
+              const keyId = `${row.key}:${ids.join(",")}`;
+              // Everything that could be combined under this key and isn't yet.
+              const likeIds = items.filter((i) => cashKey(i) === row.key).map((i) => i.id);
+              const canCombine = row.first && row.likeCount >= 2 && !(row.combined && ids.length === row.likeCount);
+              return (
+                <tr
+                  key={keyId}
+                  className={`border-t border-black/10 dark:border-white/10 ${row.combined ? "bg-green-100/60 dark:bg-green-900/20" : ""}`}
+                >
+                  <td className="px-2 py-1.5">{values[0]}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5">{values[1]}</td>
+                  <td className="px-2 py-1.5">{values[2]}</td>
+                  <td className="px-2 py-1.5">{values[3]}</td>
+                  <td className="px-2 py-1.5">{values[4]}</td>
+                  <td className="px-2 py-1.5 font-semibold">{values[5]}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5">{values[6]}</td>
+                  <td className="min-w-[6rem] px-1 py-1">
+                    <input
+                      type="number"
+                      step="any"
+                      defaultValue={cashRowPrice(row) ?? ""}
+                      onBlur={(e) => onPriceSave(ids, e.target.value.trim() === "" ? null : Number(e.target.value))}
+                      className={`${field} font-semibold`}
+                    />
+                  </td>
+                  <td className="min-w-[10rem] px-1 py-1">
+                    <input
+                      defaultValue={cashRowNotes(row)}
+                      onBlur={(e) => {
+                        if (e.target.value !== cashRowNotes(row)) onNotesSave(ids, e.target.value);
+                      }}
+                      title={row.combined ? "Notes for a combined line are kept on its first item" : undefined}
+                      className={field}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1.5">
+                    <div className="flex flex-col items-start gap-0.5 text-xs font-medium">
+                      {row.combined && (
+                        <button onClick={() => onCombine(ids, false)} className="text-green-700 hover:underline dark:text-green-400">
+                          Split ({ids.length})
+                        </button>
+                      )}
+                      {canCombine && (
+                        <button onClick={() => onCombine(likeIds, true)} className="text-green-700 hover:underline dark:text-green-400">
+                          Combine {likeIds.length} like
+                        </button>
+                      )}
+                      <button onClick={() => onRemove(ids)} className="text-red-600 hover:underline">
+                        Remove{row.combined ? ` (${ids.length})` : ""}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -569,9 +688,26 @@ export default function OldAgeClient({
     await updateOldAgeItem(id, { qc_needed: qcNeeded }).catch(() => {});
   }
 
-  async function handleCashPriceSave(id: string, price: number | null) {
-    updateLocal(id, { cash_price: price });
-    await updateOldAgeItem(id, { cash_price: price }).catch(() => {});
+  // Cash List lines can stand for several combined items - a price (or the
+  // combine flag) is applied to every item in the line.
+  function handleCashPriceSave(ids: string[], price: number | null) {
+    for (const id of ids) {
+      updateLocal(id, { cash_price: price });
+      updateOldAgeItem(id, { cash_price: price }).catch(() => {});
+    }
+  }
+
+  function handleCashCombine(ids: string[], combined: boolean) {
+    for (const id of ids) {
+      updateLocal(id, { cash_combined: combined });
+      updateOldAgeItem(id, { cash_combined: combined }).catch(() => {});
+    }
+  }
+
+  // A combined line shows its items' notes together; edits are kept on the
+  // first item and cleared from the others so nothing is shown twice.
+  function handleCashNotesSave(ids: string[], notes: string) {
+    ids.forEach((id, i) => handleFieldSave(id, { notes: i === 0 ? notes : "" }));
   }
 
   async function handleCopyAllEmail() {
@@ -579,7 +715,7 @@ export default function OldAgeClient({
         <div style="text-align:center;font-size:18px;font-weight:bold;padding-bottom:8px;color:#000000;">Old Age Report</div>
         ${buildBarChartHtml("Next Step Summary", "#8DC63F", nextStepSummary)}
         ${buildBarChartHtml("Qty by Commodity", "#8DC63F", commoditySummary)}
-        ${cashListItems.length > 0 ? buildTableHtml("Cash List", "#FFA726", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues)) : ""}
+        ${cashListItems.length > 0 ? buildTableHtml("Cash List", "#FFA726", CASH_LIST_HEADERS, buildCashRows(cashListItems).map(cashRowValues)) : ""}
         ${buildTableHtml("Full List", "#64B5F6", FULL_LIST_HEADERS, items.map((item) => fullListRowValues(item, moves)))}
       </div>`;
     const text = [
@@ -588,7 +724,7 @@ export default function OldAgeClient({
       ...buildBarChartText("Next Step Summary", nextStepSummary),
       ...buildBarChartText("Qty by Commodity", commoditySummary),
       ...(cashListItems.length > 0
-        ? buildPlainTextSection("Cash List", CASH_LIST_HEADERS, cashListItems.map(cashListRowValues))
+        ? buildPlainTextSection("Cash List", CASH_LIST_HEADERS, buildCashRows(cashListItems).map(cashRowValues))
         : []),
       ...buildPlainTextSection("Full List", FULL_LIST_HEADERS, items.map((item) => fullListRowValues(item, moves))),
     ].join("\n");
@@ -632,7 +768,7 @@ export default function OldAgeClient({
                 title: "Cash List",
                 headerColor: "#FFA726",
                 columnHeaders: CASH_LIST_HEADERS,
-                rows: toCanvasRows(cashListItems.map(cashListRowValues), CASH_LIST_HEADERS.length),
+                rows: toCanvasRows(buildCashRows(cashListItems).map(cashRowValues), CASH_LIST_HEADERS.length),
               },
             ]
           : []),
@@ -698,8 +834,9 @@ export default function OldAgeClient({
       <CashListSection
         items={cashListItems}
         onPriceSave={handleCashPriceSave}
-        onNotesSave={(id, notes) => handleFieldSave(id, { notes })}
-        onRemove={(id) => handleCashListToggle(id, false)}
+        onNotesSave={handleCashNotesSave}
+        onRemove={(ids) => ids.forEach((id) => handleCashListToggle(id, false))}
+        onCombine={handleCashCombine}
       />
 
       {showUpload && (

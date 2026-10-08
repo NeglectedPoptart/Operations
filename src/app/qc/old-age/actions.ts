@@ -87,6 +87,7 @@ export async function updateOldAgeItem(
     notes?: string | null;
     cash_list?: boolean;
     cash_price?: number | null;
+    cash_combined?: boolean;
     qc_needed?: boolean;
   },
 ) {

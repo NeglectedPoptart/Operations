@@ -275,6 +275,9 @@ export interface OldAgeItem {
   notes: string | null;
   cash_list: boolean;
   cash_price: number | null;
+  // Rolled into one condensed Cash List line with the other combined items
+  // that share its description / pack style / size.
+  cash_combined: boolean;
   qc_needed: boolean;
   // Running total moved out so far - kept in sync from old_age_moves by a
   // trigger, same as Repack Inventory's current_stock.
