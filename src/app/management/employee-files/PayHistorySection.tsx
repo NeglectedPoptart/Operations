@@ -39,16 +39,17 @@ function sortEntries(entries: EmployeePayEntry[]): EmployeePayEntry[] {
 function changeFrom(entry: EmployeePayEntry, previous: EmployeePayEntry | undefined) {
   if (!previous) return null;
   if (previous.pay_type !== entry.pay_type) {
-    return { text: `Changed from ${previous.pay_type} to ${entry.pay_type}`, tone: "neutral" as const };
+    return { text: `Changed from ${previous.pay_type} to ${entry.pay_type}`, pct: null, tone: "neutral" as const };
   }
   const salary = entry.pay_type === "salary";
   // Salaries compare by the week, since that's how they're entered.
   const diff = salary ? weeklyOf(entry.amount) - weeklyOf(previous.amount) : round2(entry.amount - previous.amount);
-  if (round2(diff) === 0) return { text: "No change", tone: "neutral" as const };
+  if (round2(diff) === 0) return { text: "No change", pct: null, tone: "neutral" as const };
   const pct = previous.amount > 0 ? ((entry.amount - previous.amount) / previous.amount) * 100 : null;
   const sign = diff > 0 ? "+" : "-";
   return {
-    text: `${sign}${money(Math.abs(round2(diff)))}${salary ? "/wk" : "/hr"}${pct !== null ? ` (${sign}${Math.abs(pct).toFixed(1)}%)` : ""}`,
+    pct: pct !== null ? `${sign}${Math.abs(pct).toFixed(1)}%` : null,
+    text: `${sign}${money(Math.abs(round2(diff)))}${salary ? "/wk" : "/hr"}`,
     tone: diff > 0 ? ("up" as const) : ("down" as const),
   };
 }
@@ -87,6 +88,18 @@ export default function PayHistorySection({ employeeId }: { employeeId: string }
   const today = todayISO();
   const current = sorted.find((e) => e.effective_date <= today) ?? null;
   const upcoming = sorted.filter((e) => e.effective_date > today).slice(-1)[0] ?? null;
+
+  // Overall change from their first recorded pay to now (same pay type only -
+  // hourly and salary can't be compared without knowing hours).
+  const starting = sorted.length > 0 ? sorted[sorted.length - 1] : null;
+  const sinceStart =
+    current && starting && starting.id !== current.id && starting.pay_type === current.pay_type && starting.amount > 0
+      ? {
+          pct: ((current.amount - starting.amount) / starting.amount) * 100,
+          since: starting.effective_date,
+          raises: sorted.filter((e, i) => i < sorted.length - 1 && e.effective_date <= today && e.amount > sorted[i + 1].amount && e.pay_type === sorted[i + 1].pay_type).length,
+        }
+      : null;
 
   if (denied) return null; // only Admin / Executive / Supreme can see pay
   if (entries === null) return <p className="text-xs text-black/40 dark:text-white/40">Loading pay history...</p>;
@@ -139,6 +152,20 @@ export default function PayHistorySection({ employeeId }: { employeeId: string }
           </>
         ) : (
           <span className="text-black/50 dark:text-white/50">No pay recorded yet.</span>
+        )}
+        {sinceStart && (
+          <span
+            className={`ml-2 rounded px-1.5 py-0.5 text-xs font-bold ${
+              sinceStart.pct >= 0
+                ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+            }`}
+            title={`From their first recorded pay on ${formatDate(sinceStart.since)}`}
+          >
+            {sinceStart.pct >= 0 ? "+" : "-"}
+            {Math.abs(sinceStart.pct).toFixed(1)}% since {formatDate(sinceStart.since)}
+            {sinceStart.raises > 0 ? ` · ${sinceStart.raises} raise${sinceStart.raises === 1 ? "" : "s"}` : ""}
+          </span>
         )}
         {upcoming && (
           <span className="ml-2 text-xs text-amber-600">
@@ -211,6 +238,17 @@ export default function PayHistorySection({ employeeId }: { employeeId: string }
                       }`}
                     >
                       {change ? change.text : "Starting pay"}
+                      {change?.pct && (
+                        <span
+                          className={`ml-1.5 rounded px-1.5 py-0.5 text-[11px] font-bold ${
+                            change.tone === "up"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                              : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                          }`}
+                        >
+                          {change.pct}
+                        </span>
+                      )}
                     </td>
                     <td className="min-w-[10rem] px-1 py-1">
                       <input
