@@ -134,3 +134,35 @@ export async function getWhatsappShare(id: string): Promise<WhatsappShareData | 
     photos: (photoRows ?? []).map((p) => ({ id: p.id as string, url: `/qc/inspections/${id}/photo/${p.id}` })),
   };
 }
+
+// Adds photos (already uploaded to the qc-photos bucket by the browser) to a saved inspection.
+export async function addInspectionPhotos(id: string, paths: string[]): Promise<{ error: string } | { ok: true }> {
+  if (paths.length === 0) return { ok: true };
+  const supabase = await createClient();
+  const { data: last } = await supabase
+    .from("qc_lot_photos")
+    .select("position")
+    .eq("inspection_id", id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const start = ((last?.position as number | undefined) ?? -1) + 1;
+  const { error } = await supabase
+    .from("qc_lot_photos")
+    .insert(paths.map((storage_path, i) => ({ inspection_id: id, storage_path, position: start + i })));
+  if (error) return { error: error.message };
+  revalidatePath("/qc/inspections");
+  return { ok: true };
+}
+
+// Takes one photo off an inspection (and out of storage).
+export async function removeInspectionPhoto(id: string, photoId: string): Promise<{ error: string } | { ok: true }> {
+  const supabase = await createClient();
+  const { data: row } = await supabase.from("qc_lot_photos").select("storage_path").eq("id", photoId).eq("inspection_id", id).maybeSingle();
+  if (!row) return { ok: true };
+  const { error } = await supabase.from("qc_lot_photos").delete().eq("id", photoId);
+  if (error) return { error: error.message };
+  await supabase.storage.from("qc-photos").remove([row.storage_path as string]);
+  revalidatePath("/qc/inspections");
+  return { ok: true };
+}

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import WhatsappShareButton from "@/components/WhatsappShare";
-import { emailInspectionReport, getInspectionDetail, type InspectionDetail } from "./reportActions";
+import { createClient } from "@/lib/supabase/client";
+import { resizeImage } from "@/lib/imageResize";
+import { addInspectionPhotos, emailInspectionReport, getInspectionDetail, removeInspectionPhoto, type InspectionDetail } from "./reportActions";
 
 const btn =
   "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10";
@@ -120,6 +122,8 @@ export default function InspectionPanel({
   const [detail, setDetail] = useState<InspectionDetail | null | undefined>(undefined);
   const [emailing, setEmailing] = useState(false);
   const printFrame = useRef<HTMLIFrameElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -132,6 +136,41 @@ export default function InspectionPanel({
   }, [inspectionId]);
 
   const reportUrl = `/qc/inspections/${inspectionId}/report`;
+
+  async function addPhotos(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const list = Array.from(files);
+    const supabase = createClient();
+    const paths: string[] = [];
+    try {
+      for (let i = 0; i < list.length; i++) {
+        setUploading(`Uploading photo ${i + 1} of ${list.length}...`);
+        const blob = await resizeImage(list[i]);
+        const path = `inspections/${inspectionId}/added-${crypto.randomUUID()}.jpg`;
+        const { error } = await supabase.storage.from("qc-photos").upload(path, blob, { contentType: "image/jpeg" });
+        if (error) throw new Error(error.message);
+        paths.push(path);
+      }
+      const saved = await addInspectionPhotos(inspectionId, paths);
+      if ("error" in saved) throw new Error(saved.error);
+      setDetail(await getInspectionDetail(inspectionId));
+    } catch (e) {
+      alert(`Couldn't add the photos: ${e instanceof Error ? e.message : "try again"}`);
+    } finally {
+      setUploading(null);
+      if (photoInput.current) photoInput.current.value = "";
+    }
+  }
+
+  async function removePhoto(photoId: string) {
+    if (!window.confirm("Remove this photo from the inspection?")) return;
+    const result = await removeInspectionPhoto(inspectionId, photoId);
+    if ("error" in result) {
+      alert(`Couldn't remove it: ${result.error}`);
+      return;
+    }
+    setDetail(await getInspectionDetail(inspectionId));
+  }
 
   function print() {
     const frame = printFrame.current;
@@ -202,17 +241,41 @@ export default function InspectionPanel({
         </div>
       )}
 
-      {detail.photos.length > 0 ? (
+      <div className="flex flex-wrap items-center gap-3">
+        <input ref={photoInput} type="file" accept="image/*" multiple onChange={(e) => addPhotos(e.target.files)} className="hidden" />
+        <button onClick={() => photoInput.current?.click()} disabled={!!uploading} className={btn}>
+          + Add photos
+        </button>
+        {uploading ? (
+          <span className="text-sm text-green-700 dark:text-green-400">{uploading}</span>
+        ) : detail.photos.length === 0 ? (
+          <span className="text-sm text-black/50 dark:text-white/50">No photos on this inspection.</span>
+        ) : (
+          <span className="text-sm text-black/50 dark:text-white/50">
+            {detail.photos.length} photo{detail.photos.length === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
+      {detail.photos.length > 0 && (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-8">
           {detail.photos.map((p) => (
-            <a key={p.id} href={p.url} target="_blank" rel="noreferrer">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={p.url} alt="Inspection photo" loading="lazy" className="aspect-square w-full rounded-md object-cover" />
-            </a>
+            <div key={p.id} className="relative">
+              <a href={p.url} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={p.url} alt="Inspection photo" loading="lazy" className="aspect-square w-full rounded-md object-cover" />
+              </a>
+              <button
+                type="button"
+                onClick={() => removePhoto(p.id)}
+                aria-label="Remove photo"
+                title="Remove this photo"
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-xs text-white hover:bg-red-600"
+              >
+                ✕
+              </button>
+            </div>
           ))}
         </div>
-      ) : (
-        <p className="text-sm text-black/50 dark:text-white/50">No photos on this inspection.</p>
       )}
 
       {emailing && <EmailModal inspectionId={inspectionId} onClose={() => setEmailing(false)} onSent={onEmailed} />}
