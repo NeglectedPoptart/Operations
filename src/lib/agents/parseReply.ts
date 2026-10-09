@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { ProposedBuyerUpdate, ProposedLoadUpdate } from "./types";
+import type { ProposedBuyerUpdate, ProposedLoadUpdate, ProposedOrderUpdate } from "./types";
 
 // Turns a free-text email reply ("truck's in Amarillo, should deliver
 // tomorrow 6am") into structured load updates. Claude only proposes -
@@ -220,4 +220,66 @@ export async function parseBuyersReply(input: {
   const text = response.content.find((b) => b.type === "text");
   if (!text || text.type !== "text") throw new Error("Claude returned no result.");
   return JSON.parse(text.text) as { summary: string; updates: Omit<ProposedBuyerUpdate, "item_id">[] };
+}
+
+// ---------------------------------------------------------------------------
+// Orders follow-up replies: a status per numbered order, "shipped", or "moving
+// to tomorrow".
+
+const ORDERS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary", "updates"],
+  properties: {
+    summary: { type: "string", description: "One short sentence: what the reply says." },
+    updates: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["order_number", "note", "shipped", "move_to_tomorrow", "confident"],
+        properties: {
+          order_number: { type: "integer", description: "The order's number in the original email's list." },
+          note: nullable("string"),
+          shipped: nullable("boolean"),
+          move_to_tomorrow: nullable("boolean"),
+          confident: { type: "boolean" },
+        },
+      },
+    },
+  },
+} as const;
+
+const ORDERS_SYSTEM = `You read email replies to an order follow-up sent by Harvest Best, a produce company. The email lists numbered pending customer orders (order number, customer, ship date, quantity); the reply, from the operations team, says where each stands.
+
+For each numbered order the reply gives information about, return one entry in "updates":
+- order_number: the order's number in the original email's list (the "1)", "2)" numbering, NOT the long order number).
+- note: a short status in the sender's words, e.g. "Loading at 3pm, truck Jear 118" or "Waiting on customer PO". Null if the reply gives no status beyond shipped / moved.
+- shipped: true only if the reply clearly says this order has shipped, left, been picked up or is loaded and gone. False/null for anything pending, loading, scheduled or "working on it".
+- move_to_tomorrow: true only if the reply clearly says this order will go out tomorrow / next day instead of today. Otherwise null.
+- confident: false if you had to guess which order is meant, the reply is ambiguous, or it is unclear whether the order has shipped.
+
+Replies may be written by several people; treat the whole reply as one status update. Leave out orders the reply says nothing about. If the reply is only an acknowledgment, out-of-office or unrelated, return an empty "updates" list. Never invent details.`;
+
+export async function parseOrdersReply(input: {
+  originalBody: string;
+  replyText: string;
+}): Promise<{ summary: string; updates: Omit<ProposedOrderUpdate, "order_id">[] }> {
+  const client = new Anthropic();
+  const response = await client.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 4000,
+    output_config: { format: { type: "json_schema", schema: ORDERS_SCHEMA } },
+    system: ORDERS_SYSTEM,
+    messages: [
+      {
+        role: "user",
+        content: `<original_email>\n${input.originalBody}\n</original_email>\n\n<reply>\n${input.replyText}\n</reply>`,
+      },
+    ],
+  });
+  if (response.stop_reason === "refusal") throw new Error("Claude declined to read this reply - review it by hand.");
+  const text = response.content.find((b) => b.type === "text");
+  if (!text || text.type !== "text") throw new Error("Claude returned no result.");
+  return JSON.parse(text.text) as { summary: string; updates: Omit<ProposedOrderUpdate, "order_id">[] };
 }

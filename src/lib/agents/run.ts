@@ -12,17 +12,19 @@ import {
   sendEmail,
   type InboxMessage,
 } from "./graph";
-import { claudeConfigured, parseBuyersReply, parseReply, verifyPod } from "./parseReply";
+import { claudeConfigured, parseBuyersReply, parseOrdersReply, parseReply, verifyPod } from "./parseReply";
 import { currentSlot, inWindow } from "./slots";
 import type {
   Agent,
   AgentReply,
   AgentThread,
   ProposedBuyerUpdate,
+  ProposedOrderUpdate,
   ProposedLoadUpdate,
   ReplyAttachment,
 } from "./types";
 import type { BuyersListItem } from "@/lib/types";
+import { qty, shortDay, type PendingOrder } from "@/lib/pendingOrders";
 
 // The HOPS Agents engine. Everything here takes the Supabase client as a
 // parameter so the same code runs from the Agents page (the signed-in
@@ -423,6 +425,88 @@ async function runBuyersList(db: SupabaseClient, agent: Agent, force: boolean): 
   return 1;
 }
 
+// The pending orders (Warehouse > Orders), numbered, to the operations team.
+// Greyed-out (shipped) orders and orders moved to a later day are left out.
+function ordersEmail(
+  orders: PendingOrder[],
+  tag: string,
+  readReplies: boolean,
+): { subject: string; body: string } {
+  const lines: string[] = ["Here are the orders still pending. Please send an update on each one.", ""];
+  let n = 0;
+  let lastDate: string | null | undefined;
+  for (const o of orders) {
+    if (o.ship_date !== lastDate) {
+      lastDate = o.ship_date;
+      lines.push(`Ship date ${shortDay(o.ship_date)}`);
+    }
+    n++;
+    const who = [o.customer_code, o.customer_name && o.customer_name !== o.customer_code ? o.customer_name : ""].filter(Boolean).join(" - ");
+    const extra = [
+      o.status,
+      `${qty(o.ordered)} ordered`,
+      o.terms && o.terms,
+      o.freight && `freight: ${o.freight}`,
+      o.notes && `notes: ${o.notes.replace(/\s+/g, " ").slice(0, 120)}`,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    lines.push(`${n}) Order ${o.order_no} - ${who}  (${extra})`);
+  }
+  lines.push(
+    "",
+    readReplies
+      ? 'Please reply with an update on each order by its number, e.g. "1 - loading at 3pm, truck 118. 2 - shipped. 3 - moving to tomorrow, waiting on product." HOPS reads your reply: your update goes into that order\'s notes, an order you say has shipped is greyed out, and one moving to tomorrow goes to the tomorrow list.'
+      : "Please reply with an update on each order by its number.",
+    "",
+    "- HOPS Agent",
+  );
+  return {
+    subject: `Orders update - ${n} pending order${n === 1 ? "" : "s"} [${tag}]`,
+    body: lines.join("\n"),
+  };
+}
+
+async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean): Promise<number> {
+  const slot = force ? null : currentSlot(new Date(), agent.config);
+  if (!force && !slot) return 0;
+
+  const today = todayISO();
+  const { data, error } = await db
+    .from("pending_orders")
+    .select("*")
+    .order("ship_date", { ascending: true })
+    .order("order_no", { ascending: true });
+  if (error) throw new Error(error.message);
+  const orders = ((data ?? []) as PendingOrder[]).filter((o) => !o.greyed && !(o.moved_to && o.moved_to > today));
+  if (orders.length === 0) return 0;
+
+  const to = await operationsRecipients(db, agent);
+  if (to.length === 0) {
+    await logEvent(db, agent.id, "skipped", "No recipients set for the Orders agent.");
+    return 0;
+  }
+
+  const threads = await recentThreads(db, agent.id);
+  if (slot && threads.some((t) => new Date(t.created_at) >= slot)) return 0; // already this slot
+  const draft = threads.find((t) => t.status === "draft");
+  if (draft) {
+    if (force) return 0;
+    await db.from("agent_threads").update({ status: "discarded" }).eq("id", draft.id);
+    await logEvent(db, agent.id, "discarded", `Replaced unsent draft "${draft.subject}" with the new slot's email`, draft.id);
+  }
+  for (const t of threads) {
+    if (t.status === "sent") await db.from("agent_threads").update({ status: "no_reply" }).eq("id", t.id);
+  }
+
+  const tag = newTag();
+  const email = ordersEmail(orders, tag, readsReplies(agent));
+  const thread = await createThread(db, agent, { tag, recordIds: orders.map((o) => o.id), to, ...email });
+  if (agent.mode === "auto") await sendThread(db, thread.id);
+  else await draftCreated(db, agent, thread);
+  return 1;
+}
+
 // ---------------------------------------------------------------------------
 // Approve by email. A draft waiting for approval is also emailed to the
 // owner; replying APPROVE sends it, SKIP throws it away (see
@@ -453,7 +537,17 @@ async function draftCreated(db: SupabaseClient, agent: Agent, thread: AgentThrea
 }
 
 async function operationsRecipients(db: SupabaseClient, agent: Agent): Promise<string[]> {
-  if (agent.config.recipients && agent.config.recipients.length > 0) return agent.config.recipients;
+  const emails = new Set((agent.config.recipients ?? []).map((e) => e.trim()).filter((e) => e.includes("@")));
+  const roles = agent.config.recipient_roles ?? [];
+  if (roles.length > 0) {
+    const { data } = await db.from("profiles").select("email").in("role", roles);
+    for (const p of data ?? []) {
+      const email = ((p.email as string | null) ?? "").trim();
+      if (email.includes("@")) emails.add(email);
+    }
+  }
+  if (emails.size > 0) return [...emails];
+  // Nobody chosen: every Operations login.
   const { data } = await db.from("profiles").select("email").eq("role", "operations");
   return (data ?? []).map((p) => (p.email as string | null) ?? "").filter((e) => e.includes("@"));
 }
@@ -502,7 +596,7 @@ export async function runAgents(
   let created = 0;
   const skipped: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
-    if (agent.key !== "load_eta" && agent.key !== "buyers_list" && !opts.ignoreHours && !withinActiveHours(agent)) {
+    if (agent.key !== "load_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
       continue;
     }
@@ -510,6 +604,7 @@ export async function runAgents(
       if (agent.key === "load_eta") created += await runLoadEta(db, agent, opts.ignoreHours === true);
       else if (agent.key === "load_pending") created += await runLoadPending(db, agent);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
+      else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true);
       await db.from("agents").update({ last_run_at: new Date().toISOString() }).eq("id", agent.id);
     } catch (err) {
       await logEvent(db, agent.id, "error", `Run failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -670,6 +765,11 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
     // Notify-only agent - the reply stays unread in the mailbox for a person.
     if (agent && !readsReplies(agent)) continue;
     processed++;
+
+    if (agent?.key === "orders_pending") {
+      await handleOrdersReply(db, agent, thread, msg);
+      continue;
+    }
 
     if (agent?.key === "buyers_list") {
       await handleBuyersReply(db, agent, thread, msg);
@@ -897,6 +997,113 @@ export async function applyBuyersReply(
     const { error: updateError } = await db.from("buyers_list_items").update(patch).eq("id", u.item_id);
     if (updateError) throw new Error(updateError.message);
     applied.push(`${name}: ${Object.keys(patch).map((k) => (k === "notes" ? "note" : "qty")).join(" + ")}`);
+  }
+
+  await db
+    .from("agent_replies")
+    .update({ status, proposed: updates, applied_at: new Date().toISOString() })
+    .eq("id", replyId);
+  await logEvent(
+    db,
+    reply.agent_threads?.agent_id ?? null,
+    status,
+    `${status === "auto_applied" ? "Auto-applied" : "Applied"} reply from ${reply.from_email}: ${applied.join("; ") || "nothing to change"}`,
+    reply.thread_id,
+  );
+}
+
+// Orders follow-up replies: Claude proposes a note / "shipped" / "moving to
+// tomorrow" per numbered order. Same Approve vs Auto rules as the Buyers List.
+async function handleOrdersReply(db: SupabaseClient, agent: Agent, thread: AgentThread, msg: InboxMessage) {
+  let summary: string | null = null;
+  let proposed: ProposedOrderUpdate[] = [];
+  let parseError: string | null = null;
+  if (!claudeConfigured()) {
+    parseError = "Claude isn't set up (ANTHROPIC_API_KEY) - read and apply this one by hand.";
+  } else {
+    try {
+      const result = await parseOrdersReply({ originalBody: thread.body, replyText: msg.text });
+      summary = result.summary;
+      proposed = result.updates.map((u) => {
+        const orderId = thread.record_ids[u.order_number - 1] ?? "";
+        return { ...u, order_id: orderId, confident: u.confident && orderId !== "" };
+      });
+    } catch (err) {
+      parseError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const { data: reply, error: insertError } = await db
+    .from("agent_replies")
+    .insert({
+      thread_id: thread.id,
+      graph_message_id: msg.id,
+      from_email: msg.fromEmail,
+      received_at: msg.receivedAt,
+      body_text: msg.text,
+      summary,
+      proposed,
+      error: parseError,
+      status: !parseError && proposed.length === 0 ? "no_update" : "pending_review",
+    })
+    .select()
+    .single<AgentReply>();
+  if (insertError || !reply) return;
+
+  // Stays "sent" so the second and third person's replies to the same email are read too.
+  await db.from("agent_threads").update({ last_reply_at: msg.receivedAt }).eq("id", thread.id);
+  await markRead(msg.id).catch(() => {});
+
+  const autoOk = appliesRepliesAutomatically(agent) && !parseError && proposed.length > 0 && proposed.every((u) => u.confident);
+  if (autoOk) {
+    await applyOrdersReply(db, reply.id, proposed, "auto_applied");
+  } else if (reply.status === "pending_review") {
+    await logEvent(db, agent.id, "reply", `Reply from ${msg.fromEmail} needs review: ${summary ?? parseError}`, thread.id);
+    await notifyOwner(db, "HOPS Agents", `Orders reply to review: ${summary ?? msg.subject}`);
+  } else {
+    await logEvent(db, agent.id, "reply", `Reply from ${msg.fromEmail} had no order updates: ${summary ?? ""}`, thread.id);
+  }
+}
+
+export async function applyOrdersReply(
+  db: SupabaseClient,
+  replyId: string,
+  updates: ProposedOrderUpdate[],
+  status: "applied" | "auto_applied" = "applied",
+): Promise<void> {
+  const { data: reply, error } = await db
+    .from("agent_replies")
+    .select("*, agent_threads(agent_id)")
+    .eq("id", replyId)
+    .single<AgentReply & { agent_threads: { agent_id: string } | null }>();
+  if (error || !reply) throw new Error(error?.message ?? "Reply not found.");
+
+  const stamp = shortDate(todayISO());
+  const applied: string[] = [];
+  for (const u of updates) {
+    if (!u.order_id) continue;
+    const { data: order } = await db.from("pending_orders").select("*").eq("id", u.order_id).maybeSingle<PendingOrder>();
+    if (!order) continue; // removed since the email went out
+
+    const patch: Record<string, unknown> = {};
+    const did: string[] = [];
+    if (u.note) {
+      patch.notes = [order.notes, `[Agent ${stamp}] ${u.note}`].filter(Boolean).join("\n");
+      did.push("note");
+    }
+    if (u.shipped === true) {
+      patch.greyed = true;
+      did.push("shipped");
+    }
+    if (u.move_to_tomorrow === true && u.shipped !== true) {
+      patch.moved_to = addDays(todayISO(), 1);
+      did.push("moved to tomorrow");
+    }
+    if (Object.keys(patch).length === 0) continue;
+    patch.updated_at = new Date().toISOString();
+    const { error: updateError } = await db.from("pending_orders").update(patch).eq("id", u.order_id);
+    if (updateError) throw new Error(updateError.message);
+    applied.push(`${order.order_no}: ${did.join(" + ")}`);
   }
 
   await db

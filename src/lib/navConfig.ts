@@ -67,6 +67,7 @@ export const NAV: NavCategory[] = [
     label: "Warehouse",
     tab: "warehouse",
     items: [
+      { href: "/warehouse/orders", label: "Orders" },
       { href: "/warehouse/am-holdovers", label: "AM Holdovers" },
       { href: "/warehouse/repack-inventory", label: "Repack Inventory" },
       { href: "/warehouse/cold-inventory", label: "Cold Inventory" },

@@ -1,4 +1,4 @@
-export type AgentKey = "load_eta" | "load_pending" | "buyers_list";
+export type AgentKey = "load_eta" | "load_pending" | "buyers_list" | "orders_pending";
 export type AgentMode = "approve" | "auto";
 
 export interface Agent {
@@ -13,6 +13,9 @@ export interface Agent {
   active_end_hour: number;
   config: {
     recipients?: string[];
+    // Everyone with one of these HOPS roles (role keys, e.g. "operations") is
+    // also sent to, on top of any recipients listed by email.
+    recipient_roles?: string[];
     days_ahead?: number;
     // false = notify-only: emails still go out, but replies are never read
     // or applied (no Claude needed). Unset means true.
@@ -77,6 +80,20 @@ export interface ProposedBuyerUpdate {
   qty_needed: number | null;
   // The buyer says this line is already bought - the line is removed.
   purchased: boolean | null;
+  confident: boolean;
+}
+
+// What the Orders follow-up agent proposes for one numbered order (stored in
+// agent_replies.proposed like the other agents' updates).
+export interface ProposedOrderUpdate {
+  order_id: string;
+  order_number: number;
+  // Short status, appended to the order's notes.
+  note: string | null;
+  // The reply says this order has shipped - it is greyed out.
+  shipped: boolean | null;
+  // The reply says this order is going out tomorrow instead.
+  move_to_tomorrow: boolean | null;
   confident: boolean;
 }
 

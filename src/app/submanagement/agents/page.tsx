@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupremeUser } from "@/lib/roles";
 import { setupStatus } from "@/lib/agents/run";
+import { loadRoles } from "@/lib/roleAccess";
 import type { Agent, AgentEvent, AgentReply, AgentThread } from "@/lib/agents/types";
 import AgentsClient, { type CarrierRow, type ReviewItem } from "./AgentsClient";
 
@@ -45,7 +46,8 @@ export default async function AgentsPage() {
 
   // Friendly labels for each load a reply proposes to change.
   const isBuyers = (r: (typeof replies)[number]) => r.agent_threads?.agents?.key === "buyers_list";
-  const loadIds = [...new Set(replies.filter((r) => !isBuyers(r)).flatMap((r) => r.agent_threads?.record_ids ?? []))];
+  const isOrders = (r: (typeof replies)[number]) => r.agent_threads?.agents?.key === "orders_pending";
+  const loadIds = [...new Set(replies.filter((r) => !isBuyers(r) && !isOrders(r)).flatMap((r) => r.agent_threads?.record_ids ?? []))];
   const labels: Record<string, string> = {};
 
   // Buyers List lines get a label too (their ids are buyers_list_items).
@@ -57,6 +59,20 @@ export default async function AgentsPage() {
       .in("id", itemIds);
     for (const i of items ?? []) {
       labels[i.id] = [[i.comm, i.variety, i.pstyle, i.size, i.label].filter(Boolean).join(" - "), `need ${i.qty_needed}`].join(" · ");
+    }
+  }
+
+  // Orders follow-up lines (their ids are pending_orders).
+  const orderIds = [...new Set(replies.filter(isOrders).flatMap((r) => r.agent_threads?.record_ids ?? []))];
+  if (orderIds.length > 0) {
+    const { data: orders } = await supabase
+      .from("pending_orders")
+      .select("id, order_no, customer_code, customer_name, ship_date, ordered")
+      .in("id", orderIds);
+    for (const o of orders ?? []) {
+      labels[o.id] = [`Order ${o.order_no}`, [o.customer_code, o.customer_name].filter(Boolean).join(" - "), o.ship_date && `ship ${o.ship_date}`]
+        .filter(Boolean)
+        .join(" · ");
     }
   }
 
@@ -94,8 +110,20 @@ export default async function AgentsPage() {
     attachmentUrls,
   }));
 
+  // Who the Orders email can go to: whole roles, or individual people.
+  const [roleRows, profileRows] = await Promise.all([
+    loadRoles(supabase),
+    supabase.from("profiles").select("email, role").order("email", { ascending: true }),
+  ]);
+  const roleOptions = roleRows.map((r) => ({ key: r.key, label: r.label }));
+  const people = ((profileRows.data ?? []) as { email: string | null; role: string }[])
+    .filter((p) => (p.email ?? "").includes("@"))
+    .map((p) => ({ email: p.email as string, role: p.role }));
+
   return (
     <AgentsClient
+      roleOptions={roleOptions}
+      people={people}
       status={setupStatus()}
       agents={(agentsRes.data ?? []) as Agent[]}
       drafts={(draftsRes.data ?? []) as AgentThread[]}

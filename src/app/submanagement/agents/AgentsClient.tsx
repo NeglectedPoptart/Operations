@@ -8,10 +8,12 @@ import type {
   AgentThread,
   ProposedBuyerUpdate,
   ProposedLoadUpdate,
+  ProposedOrderUpdate,
   ReplyAttachment,
 } from "@/lib/agents/types";
 import {
   applyBuyerReplyUpdates,
+  applyOrderReplyUpdates,
   applyReplyUpdates,
   approveDraft,
   checkInboxNow,
@@ -27,6 +29,16 @@ export interface CarrierRow {
   name: string;
   followup_email: string | null;
   active: boolean;
+}
+
+export interface RoleOption {
+  key: string;
+  label: string;
+}
+
+export interface PersonOption {
+  email: string;
+  role: string;
 }
 
 export interface ReviewItem {
@@ -89,14 +101,20 @@ function SetupChecklist({ status }: { status: { outlook: boolean; claude: boolea
   );
 }
 
-function AgentCard({ agent }: { agent: Agent }) {
+function AgentCard({ agent, roleOptions, people }: { agent: Agent; roleOptions: RoleOption[]; people: PersonOption[] }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const [recipients, setRecipients] = useState((agent.config.recipients ?? []).join(", "));
+  const [recipients, setRecipients] = useState(() => {
+    const list = agent.config.recipients ?? [];
+    // The Orders agent ticks HOPS users above, so the box only holds the extras.
+    if (agent.key !== "orders_pending") return list.join(", ");
+    const known = new Set(people.map((p) => p.email.toLowerCase()));
+    return list.filter((e) => !known.has(e.toLowerCase())).join(", ");
+  });
   const [replyTo, setReplyTo] = useState((agent.config.reply_to ?? []).join(", "));
   const readReplies = agent.config.read_replies !== false;
   const [sendTimes, setSendTimes] = useState((agent.config.send_times ?? []).join(", "));
-  const isSlotAgent = agent.key === "load_eta" || agent.key === "buyers_list";
+  const isSlotAgent = agent.key === "load_eta" || agent.key === "buyers_list" || agent.key === "orders_pending";
 
   const save = (patch: Parameters<typeof updateAgent>[1]) => start(() => updateAgent(agent.id, patch));
 
@@ -245,6 +263,76 @@ function AgentCard({ agent }: { agent: Agent }) {
         )}
       </div>
 
+      {agent.key === "orders_pending" && (
+        <div className="space-y-2 text-xs">
+          <p className="font-medium">Send to</p>
+          <div>
+            <span className="block text-black/60 dark:text-white/60">Everyone with these roles</span>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              {roleOptions.map((r) => {
+                const on = (agent.config.recipient_roles ?? []).includes(r.key);
+                return (
+                  <label key={r.key} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={pending}
+                      onChange={(e) => {
+                        const current = agent.config.recipient_roles ?? [];
+                        save({ recipient_roles: e.target.checked ? [...current, r.key] : current.filter((k) => k !== r.key) });
+                      }}
+                    />
+                    {r.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <span className="block text-black/60 dark:text-white/60">And these people</span>
+            <div className="mt-1 flex max-h-40 flex-wrap gap-x-4 gap-y-1 overflow-y-auto">
+              {people.map((p) => {
+                const on = (agent.config.recipients ?? []).map((e) => e.toLowerCase()).includes(p.email.toLowerCase());
+                return (
+                  <label key={p.email} className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={pending}
+                      onChange={(e) => {
+                        const current = agent.config.recipients ?? [];
+                        save({
+                          recipients: e.target.checked ? [...current, p.email] : current.filter((x) => x.toLowerCase() !== p.email.toLowerCase()),
+                        });
+                      }}
+                    />
+                    {p.email}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <label className="block space-y-0.5">
+            <span className="block text-black/60 dark:text-white/60">Other email addresses (not HOPS users)</span>
+            <input
+              className={field}
+              value={recipients}
+              placeholder="someone@example.com"
+              onChange={(e) => setRecipients(e.target.value)}
+              onBlur={() => {
+                // Keep the ticked HOPS users; replace only the typed-in extras.
+                const known = new Set(people.map((p) => p.email.toLowerCase()));
+                const ticked = (agent.config.recipients ?? []).filter((e) => known.has(e.toLowerCase()));
+                save({ recipients: [...ticked, ...splitList(recipients).filter((e) => !known.has(e.toLowerCase()))] });
+              }}
+            />
+          </label>
+          {(agent.config.recipient_roles ?? []).length === 0 && (agent.config.recipients ?? []).length === 0 && (
+            <p className="text-amber-600">Nobody chosen - it will go to every Operations login.</p>
+          )}
+        </div>
+      )}
+
       {(agent.key === "load_pending" || agent.key === "buyers_list") && (
         <label className="block space-y-0.5 text-xs">
           <span className="block text-black/60 dark:text-white/60">
@@ -366,6 +454,63 @@ function BuyerReviewCard({ item }: { item: ReviewItem }) {
       <div className="flex gap-2">
         <button className={primary} disabled={pending || updates.length === 0} onClick={() => start(() => applyBuyerReplyUpdates(item.reply.id, updates))}>
           {pending ? "Applying..." : "Apply to Buyers List"}
+        </button>
+        <button className={secondary} disabled={pending} onClick={() => start(() => dismissReply(item.reply.id))}>
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Orders follow-up replies: a note, "shipped" (greys the order out) or "moving to tomorrow".
+function OrderReviewCard({ item }: { item: ReviewItem }) {
+  const [pending, start] = useTransition();
+  const [updates, setUpdates] = useState<ProposedOrderUpdate[]>(item.reply.proposed as unknown as ProposedOrderUpdate[]);
+  const set = (i: number, patch: Partial<ProposedOrderUpdate>) =>
+    setUpdates((prev) => prev.map((u, j) => (j === i ? { ...u, ...patch } : u)));
+
+  return (
+    <div className="space-y-2 rounded-lg border border-black/10 p-3 text-sm dark:border-white/10">
+      <div className="text-xs text-black/60 dark:text-white/60">
+        {item.reply.from_email} · {when(item.reply.received_at)} · re: {item.subject}
+      </div>
+      <blockquote className="max-h-40 overflow-y-auto whitespace-pre-wrap border-l-4 border-green-600 bg-black/5 px-2 py-1 text-xs dark:bg-white/5">
+        {item.reply.body_text}
+      </blockquote>
+      {item.reply.summary && <p className="font-medium">{item.reply.summary}</p>}
+      {item.reply.error && <p className="text-xs text-red-600">{item.reply.error}</p>}
+
+      {updates.map((u, i) => (
+        <div key={i} className={`space-y-1 rounded border p-2 text-xs ${u.confident ? "border-black/10 dark:border-white/10" : "border-amber-400"}`}>
+          <p className="font-semibold">
+            #{u.order_number}: {item.loadLabels[u.order_id] ?? "that order is no longer on the list"}
+            {!u.confident && <span className="ml-2 text-amber-600">check this one</span>}
+          </p>
+          <label className="block">
+            Add to the order&apos;s notes
+            <input className={field} value={u.note ?? ""} onChange={(e) => set(i, { note: e.target.value || null })} />
+          </label>
+          <div className="flex flex-wrap items-center gap-4">
+            <label className={`flex items-center gap-1 font-medium ${u.shipped ? "text-red-600" : ""}`}>
+              <input type="checkbox" checked={u.shipped === true} onChange={(e) => set(i, { shipped: e.target.checked ? true : null })} />
+              Shipped - grey it out
+            </label>
+            <label className="flex items-center gap-1 font-medium">
+              <input
+                type="checkbox"
+                checked={u.move_to_tomorrow === true}
+                onChange={(e) => set(i, { move_to_tomorrow: e.target.checked ? true : null })}
+              />
+              Move to tomorrow
+            </label>
+          </div>
+        </div>
+      ))}
+
+      <div className="flex gap-2">
+        <button className={primary} disabled={pending || updates.length === 0} onClick={() => start(() => applyOrderReplyUpdates(item.reply.id, updates))}>
+          {pending ? "Applying..." : "Apply to Orders"}
         </button>
         <button className={secondary} disabled={pending} onClick={() => start(() => dismissReply(item.reply.id))}>
           Dismiss
@@ -546,6 +691,8 @@ export default function AgentsClient({
   reviewItems,
   events,
   carriers,
+  roleOptions,
+  people,
 }: {
   status: { outlook: boolean; claude: boolean; scheduler: boolean; mailbox: string | null };
   agents: Agent[];
@@ -553,6 +700,8 @@ export default function AgentsClient({
   reviewItems: ReviewItem[];
   events: AgentEvent[];
   carriers: CarrierRow[];
+  roleOptions: RoleOption[];
+  people: PersonOption[];
 }) {
   const [pending, start] = useTransition();
   const [inboxMsg, setInboxMsg] = useState<string | null>(null);
@@ -588,6 +737,8 @@ export default function AgentsClient({
           reviewItems.map((item) =>
             item.agentKey === "buyers_list" ? (
               <BuyerReviewCard key={item.reply.id} item={item} />
+            ) : item.agentKey === "orders_pending" ? (
+              <OrderReviewCard key={item.reply.id} item={item} />
             ) : (
               <ReviewCard key={item.reply.id} item={item} />
             ),
@@ -609,7 +760,7 @@ export default function AgentsClient({
       <Section title="Agents">
         <div className="space-y-3">
           {agents.map((a) => (
-            <AgentCard key={a.id} agent={a} />
+            <AgentCard key={a.id} agent={a} roleOptions={roleOptions} people={people} />
           ))}
         </div>
       </Section>

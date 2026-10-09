@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isSupremeUser } from "@/lib/roles";
-import { applyBuyersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
-import type { AgentMode, ProposedBuyerUpdate, ProposedLoadUpdate, ReplyAttachment } from "@/lib/agents/types";
+import { applyBuyersReply, applyOrdersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
+import type { AgentMode, ProposedBuyerUpdate, ProposedLoadUpdate, ProposedOrderUpdate, ReplyAttachment } from "@/lib/agents/types";
 
 // middleware.ts already locks /supreme to the owner account; checked again
 // here since these actions can send email on the company's behalf.
@@ -32,6 +32,7 @@ export async function updateAgent(
     active_start_hour?: number;
     active_end_hour?: number;
     recipients?: string[];
+    recipient_roles?: string[];
     read_replies?: boolean;
     auto_apply_replies?: boolean;
     reply_to?: string[];
@@ -41,10 +42,10 @@ export async function updateAgent(
   },
 ) {
   const supabase = await ownerClient();
-  const { recipients, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, ...columns } = patch;
+  const { recipients, recipient_roles, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, ...columns } = patch;
   const update: Record<string, unknown> = { ...columns };
   const configPatch = Object.fromEntries(
-    Object.entries({ recipients, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end }).filter(
+    Object.entries({ recipients, recipient_roles, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end }).filter(
       ([, v]) => v !== undefined,
     ),
   );
@@ -117,4 +118,11 @@ export async function saveCarrierEmail(brokerId: string, email: string) {
     .eq("id", brokerId);
   if (error) throw new Error(error.message);
   revalidatePath("/submanagement/agents");
+}
+
+export async function applyOrderReplyUpdates(replyId: string, updates: ProposedOrderUpdate[]) {
+  const supabase = await ownerClient();
+  await applyOrdersReply(supabase, replyId, updates, "applied");
+  revalidateAll();
+  revalidatePath("/warehouse/orders");
 }
