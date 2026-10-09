@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { isoDateOf } from "@/lib/dates";
 import { extractLotpathRows } from "@/lib/lotpathExtract";
 import { centralToIso, configFromParsed, extendConfig, mapToPlan } from "@/lib/lotpathImport";
-import { parseLotpathCsv } from "@/lib/lotpathCsv";
 import { norm, normalizeResult, parseLotpathRows, type ParsedLotpath } from "@/lib/lotpathParse";
 import { splitPoLot } from "@/lib/qcLot";
 import { canEditQcPlans } from "@/lib/roles";
@@ -114,12 +113,6 @@ export async function previewLotpath(path: string): Promise<LotpathPreview | { o
   const { supabase } = await managerContext();
   const parsed = await readParsed(supabase, path);
   if ("error" in parsed) return { ok: false, error: parsed.error };
-  return previewFromParsed(supabase, parsed);
-}
-
-// The same, for an inspection already read from a CSV.
-export async function previewParsed(parsed: ParsedLotpath): Promise<LotpathPreview> {
-  const { supabase } = await managerContext();
   return previewFromParsed(supabase, parsed);
 }
 
@@ -240,29 +233,6 @@ export async function importLotpath(path: string): Promise<LotpathImportResult> 
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : String(e) };
   }
-}
-
-// The same, for one inspection read from a CSV.
-export async function importParsed(parsed: ParsedLotpath): Promise<LotpathImportResult> {
-  try {
-    const { supabase } = await managerContext();
-    return await saveParsed(supabase, parsed);
-  } catch (e) {
-    return { status: "error", error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-// Reads a LotPath CSV export into its inspections (nothing is saved yet). The
-// file doesn't say what the plan is called or who inspected, so those come from
-// the importer.
-export async function readLotpathCsv(
-  text: string,
-  planName: string,
-  inspector: string,
-): Promise<{ inspections: ParsedLotpath[]; warnings: string[] } | { error: string }> {
-  await managerContext();
-  if (!planName.trim()) return { error: "Enter the plan this export is for (for example \"Bell Peppers - Grower\")." };
-  return parseLotpathCsv(text, planName.trim(), inspector.trim());
 }
 
 // The uploaded PDFs are only needed while importing.

@@ -4,13 +4,9 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatTimestamp } from "@/lib/dates";
-import type { ParsedLotpath } from "@/lib/lotpathParse";
 import {
   importLotpath,
-  importParsed,
   previewLotpath,
-  previewParsed,
-  readLotpathCsv,
   removeImportFiles,
   type LotpathPreview,
 } from "./actions";
@@ -23,8 +19,6 @@ interface Item {
   // A PDF still to upload and read...
   file: File | null;
   path: string | null;
-  // ...or an inspection already read out of a CSV.
-  parsed: ParsedLotpath | null;
   status: Status;
   message: string | null;
   preview: LotpathPreview | null;
@@ -43,7 +37,6 @@ const STATUS_TEXT: Record<Status, string> = {
 };
 
 const btn = "rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50";
-const field = "rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black";
 
 // Runs `worker` over the items with a few going at once.
 async function pool<T>(items: T[], size: number, worker: (item: T) => Promise<void>) {
@@ -62,52 +55,17 @@ export default function ImportClient() {
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
   const pdfInput = useRef<HTMLInputElement>(null);
-  const csvInput = useRef<HTMLInputElement>(null);
-  const [csvPlan, setCsvPlan] = useState("");
-  const [csvInspector, setCsvInspector] = useState("Edgar Cantu");
-  const [csvNote, setCsvNote] = useState<string | null>(null);
 
   const patch = (id: string, p: Partial<Item>) => setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...p } : i)));
-  const blank = (name: string): Omit<Item, "id" | "file" | "parsed"> => ({ name, path: null, status: "queued", message: null, preview: null, planCreated: false });
+  const blank = (name: string): Omit<Item, "id" | "file"> => ({ name, path: null, status: "queued", message: null, preview: null, planCreated: false });
 
   function addPdfs(files: FileList | null) {
     if (!files) return;
     const added: Item[] = Array.from(files)
       .filter((f) => f.name.toLowerCase().endsWith(".pdf"))
-      .map((file) => ({ id: crypto.randomUUID(), file, parsed: null, ...blank(file.name) }));
+      .map((file) => ({ id: crypto.randomUUID(), file, ...blank(file.name) }));
     setItems((prev) => [...prev, ...added]);
     if (pdfInput.current) pdfInput.current.value = "";
-  }
-
-  async function addCsv(files: FileList | null) {
-    const file = files?.[0];
-    if (csvInput.current) csvInput.current.value = "";
-    if (!file) return;
-    // "Bell Peppers - Grower.csv" -> the plan it belongs to.
-    const planName = csvPlan.trim() || file.name.replace(/\.csv$/i, "").replace(/\s*\(\d+\)$/, "").trim();
-    setCsvPlan(planName);
-    setCsvNote("Reading...");
-    try {
-      const result = await readLotpathCsv(await file.text(), planName, csvInspector);
-      if ("error" in result) {
-        setCsvNote(result.error);
-        return;
-      }
-      setItems((prev) => [
-        ...prev,
-        ...result.inspections.map(
-          (parsed): Item => ({
-            id: crypto.randomUUID(),
-            file: null,
-            parsed,
-            ...blank(`${file.name} - ${parsed.headerFields.find((h) => h.label.toLowerCase().startsWith("lot number"))?.value || "inspection"}`),
-          }),
-        ),
-      ]);
-      setCsvNote(`Read ${result.inspections.length} inspection${result.inspections.length === 1 ? "" : "s"} from ${file.name}.${result.warnings.length ? ` ${result.warnings.join(" ")}` : ""}`);
-    } catch {
-      setCsvNote("Couldn't read that file - try again.");
-    }
   }
 
   // mode "preview": read each and show what would happen, saving nothing.
@@ -137,13 +95,13 @@ export default function ImportClient() {
 
         if (mode === "preview") {
           patch(item.id, { status: "reading" });
-          const result = item.parsed ? await previewParsed(item.parsed) : await previewLotpath(savedPath as string);
+          const result = await previewLotpath(savedPath as string);
           if (!result.ok) patch(item.id, { status: "error", message: result.error });
           else patch(item.id, { status: result.duplicate ? "duplicate" : "preview", preview: result });
         } else {
           importChain = importChain.then(async () => {
             patch(item.id, { status: "importing" });
-            const result = item.parsed ? await importParsed(item.parsed) : await importLotpath(savedPath as string);
+            const result = await importLotpath(savedPath as string);
             if (result.status === "imported") patch(item.id, { status: "imported", planCreated: result.planCreated });
             else if (result.status === "duplicate") patch(item.id, { status: "duplicate" });
             else patch(item.id, { status: "error", message: result.error });
@@ -177,7 +135,7 @@ export default function ImportClient() {
         <div>
           <h1 className="text-2xl font-bold">Import LotPath Inspections</h1>
           <p className="text-sm text-black/60 dark:text-white/60">
-            Bring in LotPath report PDFs or a LotPath CSV export. Each inspection lands in Inspection History - data only,
+            Bring in LotPath report PDFs. Each inspection lands in Inspection History - data only,
             no photos. A plan that doesn&apos;t exist yet is created from the data; one that does is extended if the data
             has something it lacks. Anything already in HOPS is skipped, so adding the same file twice is safe.
           </p>
@@ -187,7 +145,7 @@ export default function ImportClient() {
         </Link>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="grid gap-3">
         <div className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
           <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Report PDFs</h2>
           <p className="text-xs text-black/60 dark:text-white/60">One PDF per inspection. Add as many as you like.</p>
@@ -197,28 +155,6 @@ export default function ImportClient() {
           </button>
         </div>
 
-        <div className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
-          <h2 className="text-sm font-bold text-green-700 dark:text-green-400">CSV export</h2>
-          <p className="text-xs text-black/60 dark:text-white/60">
-            LotPath&apos;s export for one plan (one row per sample). It doesn&apos;t say which plan it is or who inspected,
-            so fill those in.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <label className="text-xs">
-              Plan name
-              <input value={csvPlan} onChange={(e) => setCsvPlan(e.target.value)} placeholder="Bell Peppers - Grower" className={`${field} mt-0.5 w-full`} />
-            </label>
-            <label className="text-xs">
-              Inspector
-              <input value={csvInspector} onChange={(e) => setCsvInspector(e.target.value)} placeholder="Edgar Cantu" className={`${field} mt-0.5 w-full`} />
-            </label>
-          </div>
-          <input ref={csvInput} type="file" accept=".csv,text/csv" onChange={(e) => addCsv(e.target.files)} className="hidden" />
-          <button onClick={() => csvInput.current?.click()} disabled={busy} className={`${btn} border border-black/20 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10`}>
-            + Add CSV
-          </button>
-          {csvNote && <p className="text-xs text-black/70 dark:text-white/70">{csvNote}</p>}
-        </div>
       </div>
 
       {items.length > 0 && (
