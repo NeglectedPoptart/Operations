@@ -209,7 +209,7 @@ export default function NewInspectionClient({
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5 pb-24">
+    <div className="w-full space-y-4 pb-24">
       <div>
         <h1 className="text-2xl font-bold">New Inspection</h1>
         {done && (
@@ -219,7 +219,7 @@ export default function NewInspectionClient({
         )}
       </div>
 
-      <label className={label}>
+      <label className={`${label} block max-w-md`}>
         Inspection plan
         <select value={planId} onChange={(e) => setPlanId(e.target.value)} className={`${input} mt-1`}>
           {plans.map((p) => (
@@ -232,7 +232,7 @@ export default function NewInspectionClient({
 
       {plan && config && (
         <>
-          <section className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+          <section className="grid grid-cols-1 items-start gap-x-4 gap-y-3 rounded-lg border border-black/10 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 dark:border-white/10">
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div>
                 <span className="block text-black/50 dark:text-white/50">Commodity</span>
@@ -283,7 +283,7 @@ export default function NewInspectionClient({
               Notes #1
               <input value={notes1} onChange={(e) => setNotes1(e.target.value)} className={`${input} mt-1`} />
             </label>
-            <label className={label}>
+            <label className={`${label} sm:col-span-full`}>
               Notes #2
               <textarea value={notes2} onChange={(e) => setNotes2(e.target.value)} rows={3} className={`${input} mt-1`} />
             </label>
@@ -303,7 +303,7 @@ export default function NewInspectionClient({
           {config.defects.length > 0 && (
             <section className="space-y-4 rounded-lg border border-black/10 p-4 dark:border-white/10">
               <h2 className="text-lg font-bold">Defects</h2>
-              <label className={label}>
+              <label className={`${label} block max-w-[12rem]`}>
                 Sample size
                 <input
                   type="number"
@@ -314,8 +314,10 @@ export default function NewInspectionClient({
                   className={`${input} mt-1`}
                 />
               </label>
-              {defectSection("serious", "Serious defects")}
-              {defectSection("non_serious", "Non-serious defects")}
+              <div className="grid grid-cols-1 gap-x-8 gap-y-4 lg:grid-cols-2">
+                {defectSection("serious", "Serious defects")}
+                {defectSection("non_serious", "Non-serious defects")}
+              </div>
               <div className="grid grid-cols-[1fr_5rem_4.5rem] items-center gap-2 border-t-2 border-black/30 pt-2 text-base font-bold dark:border-white/30">
                 <span>Total defects</span>
                 <span className="text-center">{totals.total}</span>
@@ -324,9 +326,10 @@ export default function NewInspectionClient({
             </section>
           )}
 
+          <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
           {samples.map((sample, i) => (
-            <section key={i} className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
-              <h2 className="text-lg font-bold">Sample {i + 1}</h2>
+            <section key={i} className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
+              <h2 className="col-span-2 text-lg font-bold">Sample {i + 1}</h2>
               {config.sampleFields.map((f) => (
                 <label key={f.key} className={label}>
                   {f.label}
@@ -358,6 +361,7 @@ export default function NewInspectionClient({
               ))}
             </section>
           ))}
+          </div>
 
           <section className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
             <h2 className="text-lg font-bold">Photos</h2>
@@ -370,7 +374,7 @@ export default function NewInspectionClient({
               + Take or add photos
             </button>
             {photos.length > 0 && (
-              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-8">
                 {photos.map((p) => (
                   <div key={p.id} className="relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -393,7 +397,7 @@ export default function NewInspectionClient({
           {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
 
           <div className="fixed inset-x-0 bottom-0 z-10 border-t border-black/10 bg-white p-3 dark:border-white/10 dark:bg-neutral-900 lg:left-60">
-            <div className="mx-auto flex max-w-2xl flex-wrap items-center justify-between gap-3">
+            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-1 lg:px-8">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} className="h-4 w-4" />
                 Create another inspection
