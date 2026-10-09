@@ -1,22 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { niceTicks } from "@/lib/qcCharts";
+import { niceTicks, type ChartPoint, type ChartSeries } from "@/lib/qcCharts";
 
-export interface ChartPoint {
-  t: number; // ms since epoch
-  y: number;
-  label: string; // shown in the hover tooltip
-  href?: string; // clicking the point opens this
-}
-
-export interface ChartSeries {
-  name: string;
-  color: string;
-  points: ChartPoint[];
-  // Faint dots behind the line (e.g. each individual sample).
-  dots?: { t: number; y: number }[];
-}
+export type { ChartPoint, ChartSeries };
 
 const W = 900;
 const H = 340;

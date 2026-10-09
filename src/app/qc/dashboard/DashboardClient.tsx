@@ -1,22 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import LineChart, { type ChartSeries } from "@/components/LineChart";
+import LineChart from "@/components/LineChart";
 import { addDays, todayISO } from "@/lib/dates";
-import {
-  SERIES_COLORS,
-  groupName,
-  metricOptions,
-  metricValue,
-  summarize,
-  type ChartInspection,
-  type GroupBy,
-} from "@/lib/qcCharts";
+import { MAX_SERIES, buildSeries, metricOptions, resultCounts, type ChartInspection, type GroupBy } from "@/lib/qcCharts";
 import type { QcPlan } from "@/lib/qcPlans";
 import { getChartData } from "./actions";
 
 const field = "rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black";
-const MAX_SERIES = 8;
 
 function fmt(n: number | null, unit: string): string {
   if (n === null) return "-";
@@ -35,6 +26,12 @@ export default function DashboardClient({ plans }: { plans: QcPlan[] }) {
   const [rows, setRows] = useState<ChartInspection[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The plan and dates of the search that is on screen - the export uses these,
+  // not whatever has been typed into the boxes since.
+  const [applied, setApplied] = useState<{ planId: string; from: string; to: string } | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [withTable, setWithTable] = useState(false);
 
   const metric = metrics.find((m) => m.id === metricId) ?? metrics[0] ?? null;
 
@@ -47,8 +44,10 @@ export default function DashboardClient({ plans }: { plans: QcPlan[] }) {
       if ("error" in result) {
         setError(result.error);
         setRows([]);
+        setApplied(null);
       } else {
         setRows(result.rows);
+        setApplied({ planId: forPlan, from: f, to: t });
       }
     } catch {
       setError("Couldn't load the chart data - try again.");
@@ -71,49 +70,42 @@ export default function DashboardClient({ plans }: { plans: QcPlan[] }) {
     const first = next ? metricOptions(next.config)[0] : null;
     setMetricId(first?.id ?? "defect_total");
     setRows(null);
+    setApplied(null);
   }
 
-  const chart = useMemo(() => {
-    if (!rows || !metric) return null;
-    const groups = new Map<string, ChartSeries>();
-    const flat: { t: number; y: number }[] = [];
-    for (const r of rows) {
-      const v = metricValue(r, metric.id);
-      if (!v) continue;
-      const t = new Date(r.inspection_time).getTime();
-      flat.push({ t, y: v.value });
-      const name = groupName(r, groupBy);
-      if (!groups.has(name)) groups.set(name, { name, color: "", points: [], dots: [] });
-      const s = groups.get(name)!;
-      s.points.push({
-        t,
-        y: v.value,
-        href: `/qc/inspections/${r.id}/report`,
-        label: [
-          new Date(r.inspection_time).toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "numeric", day: "numeric", year: "numeric" }),
-          r.lot_number,
-          r.grower,
-          r.result,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      });
-      if (showEach && groupBy === "none") for (const y of v.each) s.dots!.push({ t, y });
-    }
-    // Most inspections first when there are too many groups to read.
-    const series = [...groups.values()].sort((a, b) => b.points.length - a.points.length).slice(0, MAX_SERIES);
-    series.forEach((s, i) => (s.color = SERIES_COLORS[i % SERIES_COLORS.length]));
-    return { series, stats: summarize(flat), groupCount: groups.size };
-  }, [rows, metric, groupBy, showEach]);
+  const appliedPlan = applied ? plans.find((p) => p.id === applied.planId) ?? null : null;
+  const appliedMetrics = useMemo(() => (appliedPlan ? metricOptions(appliedPlan.config) : []), [appliedPlan]);
 
-  const results = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of rows ?? []) {
-      const k = r.result?.trim() || "(no result)";
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [rows]);
+  function openExport() {
+    // The chart on screen starts ticked.
+    setPicked(metric && appliedMetrics.some((m) => m.id === metric.id) ? [metric.id] : appliedMetrics.slice(0, 1).map((m) => m.id));
+    setExportOpen(true);
+  }
+
+  function togglePicked(id: string) {
+    setPicked((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function runExport() {
+    if (!applied || picked.length === 0) return;
+    const order = appliedMetrics.filter((m) => picked.includes(m.id)).map((m) => m.id);
+    const q = new URLSearchParams({
+      plan: applied.planId,
+      from: applied.from,
+      to: applied.to,
+      group: groupBy,
+      dots: showEach ? "1" : "0",
+      data: withTable ? "1" : "0",
+      metrics: order.join(","),
+    });
+    // A normal navigation to an attachment downloads the file and stays on this page.
+    window.location.href = `/qc/dashboard/export?${q.toString()}`;
+    setExportOpen(false);
+  }
+
+  const chart = useMemo(() => (rows && metric ? buildSeries(rows, metric.id, groupBy, showEach) : null), [rows, metric, groupBy, showEach]);
+
+  const results = useMemo(() => resultCounts(rows ?? []), [rows]);
 
   if (plans.length === 0) {
     return (
@@ -194,7 +186,89 @@ export default function DashboardClient({ plans }: { plans: QcPlan[] }) {
         >
           {loading ? "Loading..." : "Apply"}
         </button>
+        <button
+          onClick={openExport}
+          disabled={loading || !applied || !rows || rows.length === 0}
+          title="Export the charts for the plan and dates you last applied as a PDF"
+          className="rounded-md border border-green-600 px-4 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 disabled:opacity-50 dark:text-green-400 dark:hover:bg-green-900/20"
+        >
+          Export PDF
+        </button>
       </div>
+
+      {exportOpen && applied && appliedPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setExportOpen(false)}>
+          <div
+            className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-lg bg-white text-black shadow-xl dark:bg-neutral-900 dark:text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-black/10 p-4 dark:border-white/10">
+              <h2 className="text-lg font-bold">Export PDF</h2>
+              <p className="text-sm text-black/60 dark:text-white/60">
+                {appliedPlan.name} · {applied.from} to {applied.to} · {rows?.length ?? 0} inspections
+              </p>
+              <p className="text-xs text-black/50 dark:text-white/50">Pick the charts to include.</p>
+            </div>
+            <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              <div className="flex flex-wrap gap-2 text-xs">
+                <button onClick={() => setPicked(appliedMetrics.map((m) => m.id))} className="rounded border border-black/20 px-2 py-1 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  Select all
+                </button>
+                <button onClick={() => setPicked(appliedMetrics.filter((m) => m.group === "Specs").map((m) => m.id))} className="rounded border border-black/20 px-2 py-1 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  All specs
+                </button>
+                <button
+                  onClick={() => setPicked(appliedMetrics.filter((m) => ["defect_total", "defect_serious", "defect_non_serious"].includes(m.id)).map((m) => m.id))}
+                  className="rounded border border-black/20 px-2 py-1 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+                >
+                  Defect totals
+                </button>
+                <button onClick={() => setPicked([])} className="rounded border border-black/20 px-2 py-1 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  Clear
+                </button>
+              </div>
+              {(["Specs", "Defects"] as const).map((g) => {
+                const list = appliedMetrics.filter((m) => m.group === g);
+                if (list.length === 0) return null;
+                return (
+                  <div key={g}>
+                    <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-green-700 dark:text-green-400">
+                      {g === "Specs" ? "Specs (average of the samples)" : "Defects (% of sample size)"}
+                    </h3>
+                    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                      {list.map((m) => (
+                        <label key={m.id} className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={picked.includes(m.id)} onChange={() => togglePicked(m.id)} />
+                          {m.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <label className="flex items-center gap-2 border-t border-black/10 pt-3 text-sm dark:border-white/10">
+                <input type="checkbox" checked={withTable} onChange={(e) => setWithTable(e.target.checked)} />
+                Also include a data table (one row per inspection)
+              </label>
+              <p className="text-xs text-black/50 dark:text-white/50">
+                Uses the Compare by setting on screen ({groupBy === "none" ? "one line" : groupBy}).
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-black/10 p-4 dark:border-white/10">
+              <button onClick={() => setExportOpen(false)} className="rounded-md border border-black/20 px-4 py-1.5 text-sm hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                Cancel
+              </button>
+              <button
+                onClick={runExport}
+                disabled={picked.length === 0}
+                className="rounded-md bg-green-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                Export {picked.length} chart{picked.length === 1 ? "" : "s"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 

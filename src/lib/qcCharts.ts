@@ -118,3 +118,70 @@ export function summarize(values: { t: number; y: number }[]): SummaryStats {
     latest,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Series for a chart - shared by the on-screen dashboard and the PDF export so
+// the two always show the same numbers.
+
+export interface ChartPoint {
+  t: number; // ms since epoch
+  y: number;
+  label: string; // shown in the hover tooltip
+  href?: string; // clicking the point opens this
+}
+
+export interface ChartSeries {
+  name: string;
+  color: string;
+  points: ChartPoint[];
+  // Faint dots behind the line (e.g. each individual sample).
+  dots?: { t: number; y: number }[];
+}
+
+export const MAX_SERIES = 8;
+
+export function buildSeries(
+  rows: ChartInspection[],
+  metricId: string,
+  groupBy: GroupBy,
+  showEach: boolean,
+): { series: ChartSeries[]; stats: SummaryStats; groupCount: number } {
+  const groups = new Map<string, ChartSeries>();
+  const flat: { t: number; y: number }[] = [];
+  for (const r of rows) {
+    const v = metricValue(r, metricId);
+    if (!v) continue;
+    const t = new Date(r.inspection_time).getTime();
+    flat.push({ t, y: v.value });
+    const name = groupName(r, groupBy);
+    if (!groups.has(name)) groups.set(name, { name, color: "", points: [], dots: [] });
+    const s = groups.get(name)!;
+    s.points.push({
+      t,
+      y: v.value,
+      href: "/qc/inspections/" + r.id + "/report",
+      label: [
+        new Date(r.inspection_time).toLocaleDateString("en-US", { timeZone: "America/Chicago", month: "numeric", day: "numeric", year: "numeric" }),
+        r.lot_number,
+        r.grower,
+        r.result,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    });
+    if (showEach && groupBy === "none") for (const y of v.each) s.dots!.push({ t, y });
+  }
+  // Most inspections first when there are too many groups to read.
+  const series = [...groups.values()].sort((a, b) => b.points.length - a.points.length).slice(0, MAX_SERIES);
+  series.forEach((s, i) => (s.color = SERIES_COLORS[i % SERIES_COLORS.length]));
+  return { series, stats: summarize(flat), groupCount: groups.size };
+}
+
+export function resultCounts(rows: ChartInspection[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const r of rows) {
+    const k = r.result?.trim() || "(no result)";
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
