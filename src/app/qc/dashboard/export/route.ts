@@ -58,7 +58,7 @@ export async function GET(request: Request) {
   // Logo from the site's own public folder; plain text header if it can't be read.
   let logo: Uint8Array | null = null;
   try {
-    const res = await fetch(`${url.origin}/logo-harvest-best.png`);
+    const res = await fetch(`${url.origin}/logo-hbi-2025.png`);
     if (res.ok) logo = new Uint8Array(await res.arrayBuffer());
   } catch {
     logo = null;

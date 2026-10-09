@@ -10,7 +10,7 @@ const PAGE_W = 612;
 const PAGE_H = 792;
 const MARGIN = 40;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const TOP = PAGE_H - 92; // below the running header
+const TOP = PAGE_H - 102; // below the running header
 const BOTTOM = 52;
 const TEXT = rgb(0.07, 0.07, 0.07);
 const MUTED = rgb(0.45, 0.45, 0.45);
@@ -101,16 +101,16 @@ export async function buildDashboardPdf(input: DashboardPdfInput): Promise<Uint8
     page = pdf.addPage([PAGE_W, PAGE_H]);
     // running header: logo left, report title + date right
     if (logo) {
-      const h = 38;
+      const h = 52;
       const w = (logo.width / logo.height) * h;
-      page.drawImage(logo, { x: MARGIN, y: PAGE_H - 36 - h, width: w, height: h });
+      page.drawImage(logo, { x: MARGIN, y: PAGE_H - 28 - h, width: w, height: h });
     } else {
       text("Harvest Best Inc.", MARGIN, PAGE_H - 52, 16, bold, GREEN);
     }
-    textRight("Quality Report", PAGE_W - MARGIN, PAGE_H - 44, 16, bold);
-    textRight(`Report date: ${stamp(input.exportedAt)}`, PAGE_W - MARGIN, PAGE_H - 58, 8.5, regular, MUTED);
-    textRight(`Exported by: ${input.exportedBy}`, PAGE_W - MARGIN, PAGE_H - 69, 8.5, regular, MUTED);
-    page.drawLine({ start: { x: MARGIN, y: PAGE_H - 78 }, end: { x: PAGE_W - MARGIN, y: PAGE_H - 78 }, thickness: 1.5, color: GREEN });
+    textRight("Quality Report", PAGE_W - MARGIN, PAGE_H - 46, 16, bold);
+    textRight(`Report date: ${stamp(input.exportedAt)}`, PAGE_W - MARGIN, PAGE_H - 60, 8.5, regular, MUTED);
+    textRight(`Exported by: ${input.exportedBy}`, PAGE_W - MARGIN, PAGE_H - 71, 8.5, regular, MUTED);
+    page.drawLine({ start: { x: MARGIN, y: PAGE_H - 86 }, end: { x: PAGE_W - MARGIN, y: PAGE_H - 86 }, thickness: 1.5, color: GREEN });
     y = TOP;
   }
   function ensure(h: number) {
