@@ -82,7 +82,7 @@ function columns(row: LotpathRow): Cols {
   };
 }
 
-function parseDateTime(text: string): ParsedLotpath["inspection"] {
+export function parseDateTime(text: string): ParsedLotpath["inspection"] {
   const m = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (!m) return null;
   let h = Number(m[4]) % 12;
@@ -91,7 +91,7 @@ function parseDateTime(text: string): ParsedLotpath["inspection"] {
 }
 
 // "24.3 Pounds" -> 24.3 / Pounds, "3" -> 3, "ICEBERG CELLO" -> text only.
-function parseSampleValue(text: string): { number: number | null; unit: string | null } {
+export function parseSampleValue(text: string): { number: number | null; unit: string | null } {
   const m = text.match(/^(-?\d+(?:\.\d+)?)\s*(\S.*)?$/);
   if (!m) return { number: null, unit: null };
   const unit = m[2]?.trim() ?? null;
@@ -100,7 +100,7 @@ function parseSampleValue(text: string): { number: number | null; unit: string |
 }
 
 // Notes #2 starts with a stray tab character (shown as ??) - drop leading junk.
-function cleanNote(text: string): string {
+export function cleanNote(text: string): string {
   return text.replace(/^[^A-Za-z0-9(]+/, "").replace(/\s+/g, " ").trim();
 }
 
