@@ -64,7 +64,7 @@ export default function ImportClient() {
   const pdfInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
   const [csvPlan, setCsvPlan] = useState("");
-  const [csvInspector, setCsvInspector] = useState("");
+  const [csvInspector, setCsvInspector] = useState("Edgar Cantu");
   const [csvNote, setCsvNote] = useState<string | null>(null);
 
   const patch = (id: string, p: Partial<Item>) => setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...p } : i)));
@@ -209,7 +209,7 @@ export default function ImportClient() {
               <input value={csvPlan} onChange={(e) => setCsvPlan(e.target.value)} placeholder="Bell Peppers - Grower" className={`${field} mt-0.5 w-full`} />
             </label>
             <label className="text-xs">
-              Inspector (optional)
+              Inspector
               <input value={csvInspector} onChange={(e) => setCsvInspector(e.target.value)} placeholder="Edgar Cantu" className={`${field} mt-0.5 w-full`} />
             </label>
           </div>
