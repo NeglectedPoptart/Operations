@@ -94,6 +94,17 @@ function commodityIdsOf(row: MxArrival): (string | null)[] {
   return COMMODITY_SLOT_KEYS.map((key) => row[key]);
 }
 
+// The commodities Arrivals can pick: a plain commodity name on its own (e.g.
+// "Cauliflower") is left out when that commodity has varieties - only the
+// commodity + variety entries ("Cauliflower 12ct") are offered. A commodity
+// with no varieties at all stays selectable.
+function pickableCommodities(commodities: MxCommodity[]): MxCommodity[] {
+  const groupOf = (c: MxCommodity) => (c.commodity_group ?? c.name).trim().toLowerCase();
+  const hasVariety = (c: MxCommodity) => !!c.variety && c.variety.trim() !== "";
+  const groupsWithVarieties = new Set(commodities.filter(hasVariety).map(groupOf));
+  return commodities.filter((c) => hasVariety(c) || !groupsWithVarieties.has(groupOf(c)));
+}
+
 function commodityName(id: string | null, commodities: MxCommodity[]): string {
   if (!id) return "";
   return commodities.find((c) => c.id === id)?.name ?? "";
@@ -158,6 +169,7 @@ export default function ArrivalsClient({
   const confirm = useConfirm();
   const router = useRouter();
   const [weekStart, setWeekStart] = useState(initialWeekStart);
+  const pickable = useMemo(() => pickableCommodities(commodities), [commodities]);
   const [cache, setCache] = useState<Record<string, WeekData>>(() => ({
     [initialWeekStart]: { arrivals: initialArrivals },
   }));
@@ -658,7 +670,8 @@ export default function ArrivalsClient({
                                   className={cellField}
                                 >
                                   <option value="">--</option>
-                                  {commodities.map((c) => (
+                                  {/* A row already using a plain commodity name keeps showing it. */}
+                                  {commodities.filter((c) => pickable.includes(c) || c.id === row[COMMODITY_SLOT_KEYS[i]]).map((c) => (
                                     <option key={c.id} value={c.id}>
                                       {c.name}
                                     </option>
