@@ -62,3 +62,9 @@ body {
     color: #000 !important;
   }
 }
+
+/* A page opened in its own pop-out window (see NavBar's pop-out button and
+   the script in layout.tsx) shows just the page: no menu, no pop-ups. */
+html[data-popout] .popout-hide {
+  display: none !important;
+}

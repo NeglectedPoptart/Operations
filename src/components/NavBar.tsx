@@ -180,6 +180,26 @@ function ChevronIcon({ open }: { open: boolean }) {
   );
 }
 
+function PopoutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+      <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+    </svg>
+  );
+}
+
+// Opens a page in its own browser window (no menu - see layout.tsx), so it can
+// sit beside the page being worked on. The same page reuses its window.
+function openPopout(href: string) {
+  const w = Math.min(1280, window.screen.availWidth - 120);
+  const h = Math.min(900, window.screen.availHeight - 120);
+  const left = Math.max(0, window.screenX + 60);
+  const top = Math.max(0, window.screenY + 60);
+  const win = window.open(href, `hops-popout:${href}`, `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+  if (!win) alert("Your browser blocked the new window - allow pop-ups for this site and try again.");
+  else win.focus();
+}
+
 function MenuIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="h-5 w-5">
@@ -332,17 +352,26 @@ export default function NavBar({
                   {items.map((item) => {
                     const itemActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
                     return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`block rounded-md px-2.5 py-1.5 text-sm ${
-                          itemActive
-                            ? "font-medium text-white"
-                            : "text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
-                        }`}
-                      >
-                        {item.label}
-                      </Link>
+                      <div key={item.href} className="group flex items-center">
+                        <Link
+                          href={item.href}
+                          className={`block min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-sm ${
+                            itemActive
+                              ? "font-medium text-white"
+                              : "text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                        <button
+                          onClick={() => openPopout(item.href)}
+                          title={`Open ${item.label} in its own window`}
+                          aria-label={`Open ${item.label} in its own window`}
+                          className="ml-1 hidden shrink-0 rounded p-1 text-sidebar-text-muted opacity-0 hover:bg-sidebar-hover hover:text-white focus:opacity-100 group-hover:opacity-100 lg:block"
+                        >
+                          <PopoutIcon />
+                        </button>
+                      </div>
                     );
                   })}
                 </div>

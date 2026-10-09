@@ -87,15 +87,23 @@ export default async function RootLayout({
   const isBrokerCarrier = role === "broker_carrier";
 
   return (
-    <html lang="en" className={`${rajdhani.variable} h-full antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${rajdhani.variable} h-full antialiased`}>
+      <head>
+        {/* Marks a pop-out window before the page paints, so the menu never flashes. */}
+        <script dangerouslySetInnerHTML={{ __html: `try{if(window.name.indexOf("hops-popout")===0)document.documentElement.setAttribute("data-popout","1")}catch(e){}` }} />
+      </head>
       <body className="min-h-full">
         <ConfirmProvider>
           {user ? (
             <div className="flex h-screen flex-col lg:flex-row print:h-auto">
-              <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} />
+              <div className="popout-hide contents">
+                <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} />
+              </div>
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
-                {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
-                {!isBrokerCarrier && <NotificationPopup />}
+                <div className="popout-hide contents">
+                  {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
+                  {!isBrokerCarrier && <NotificationPopup />}
+                </div>
                 {!isBrokerCarrier && <PushRegistration />}
                 <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
                 <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:px-0 print:py-0">
