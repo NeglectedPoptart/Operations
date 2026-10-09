@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import {
@@ -380,6 +381,9 @@ export default function PlansClient({ initialPlans }: { initialPlans: QcPlan[] }
           >
             + New plan
           </button>
+          <Link href="/qc/plans/import" className={`${smallBtn} block w-full text-center`}>
+            Import LotPath PDFs
+          </Link>
           <div className="space-y-1">
             {plans.map((p) => (
               <button

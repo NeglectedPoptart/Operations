@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isoDateOf } from "@/lib/dates";
+import { splitPoLot } from "@/lib/qcLot";
 import {
   initialsFor,
   productText,
@@ -23,16 +24,6 @@ export interface SubmitInspectionInput {
   result: string;
   // Photos the browser already uploaded to the qc-photos bucket, in order.
   photoPaths: string[];
-}
-
-// "PO 15719 | LOT FCON-28" -> po 15719, lot FCON-28 (the history sheet keeps
-// them in separate columns); anything else goes in Lot whole.
-function splitPoLot(lotNumber: string): { po: string; lot: string } {
-  const text = lotNumber.trim();
-  const po = text.match(/\bPO\s*#?\s*([A-Za-z0-9-]+)/i)?.[1] ?? "";
-  const lot = text.match(/\bLOT\s*#?\s*(.+)$/i)?.[1]?.trim();
-  if (po || lot) return { po, lot: lot ?? "" };
-  return { po: "", lot: text };
 }
 
 export async function submitInspection(input: SubmitInspectionInput): Promise<{ id: string }> {
