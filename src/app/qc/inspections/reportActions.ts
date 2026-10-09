@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { graphConfigured, sendEmail } from "@/lib/agents/graph";
 import { buildReportForInspection } from "@/lib/qcReportData";
+import { buildWhatsappText } from "@/lib/qcWhatsapp";
 import { defectTotals, percentText, type QcLotInspection, type QcLotPhoto } from "@/lib/qcPlans";
 
 export interface InspectionDetail {
@@ -109,4 +110,27 @@ export async function emailInspectionReport(
   await supabase.from("qc_inspections").update({ mail: true }).eq("lot_inspection_id", id);
   revalidatePath("/qc/inspections");
   return { ok: true, sentTo: to };
+}
+
+export interface WhatsappShareData {
+  text: string;
+  // Same-origin addresses of the photos, in order.
+  photos: { id: string; url: string }[];
+}
+
+// The WhatsApp message for an inspection (in the team's usual format) and where
+// to fetch its photos from.
+export async function getWhatsappShare(id: string): Promise<WhatsappShareData | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("qc_lot_inspections").select("*").eq("id", id).maybeSingle();
+  if (!data) return null;
+  const { data: photoRows } = await supabase
+    .from("qc_lot_photos")
+    .select("id")
+    .eq("inspection_id", id)
+    .order("position", { ascending: true });
+  return {
+    text: buildWhatsappText(data as QcLotInspection),
+    photos: (photoRows ?? []).map((p) => ({ id: p.id as string, url: `/qc/inspections/${id}/photo/${p.id}` })),
+  };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { resizeImage } from "@/lib/imageResize";
@@ -11,6 +11,7 @@ import {
   type QcPlan,
 } from "@/lib/qcPlans";
 import PickListField from "@/components/PickListField";
+import WhatsappShareButton from "@/components/WhatsappShare";
 import { submitInspection } from "./actions";
 
 // Big inputs (16px text) so a phone doesn't zoom in on focus.
@@ -39,7 +40,6 @@ export default function NewInspectionClient({
   fieldOptions: Record<string, string[]>;
   listsReady: boolean;
 }) {
-  const router = useRouter();
   const [planId, setPlanId] = useState(plans[0]?.id ?? "");
   const plan = plans.find((p) => p.id === planId) ?? null;
   const config = plan?.config ?? null;
@@ -59,6 +59,10 @@ export default function NewInspectionClient({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [reason, setReason] = useState("");
+  // The last inspection that was submitted, for the Send to WhatsApp button.
+  const [lastId, setLastId] = useState<string | null>(null);
+  const [finished, setFinished] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   // Starting a plan (or switching plans) resets everything that belongs to it.
@@ -70,6 +74,7 @@ export default function NewInspectionClient({
     setNotes1("");
     setNotes2("");
     setResult("");
+    setReason("");
     setPhotos((prev) => {
       prev.forEach((p) => URL.revokeObjectURL(p.preview));
       return [];
@@ -140,7 +145,7 @@ export default function NewInspectionClient({
       const defectCounts: Record<string, number> = {};
       for (const r of rows) defectCounts[r.d.key] = r.count;
 
-      await submitInspection({
+      const saved = await submitInspection({
         planId: plan.id,
         inspectionTime: new Date(inspectionTime).toISOString(),
         header,
@@ -151,15 +156,19 @@ export default function NewInspectionClient({
         notes2,
         result,
         photoPaths,
+        reason,
       });
 
+      setLastId(saved.id);
       if (another) {
         resetForPlan(plan, true);
         setDone(true);
-        window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
-        router.push("/qc/inspections");
+        // Stay here with the WhatsApp button and the next steps, instead of jumping away.
+        setFinished(true);
+        resetForPlan(plan, false);
       }
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't submit the inspection - try again.");
     } finally {
@@ -212,14 +221,41 @@ export default function NewInspectionClient({
     <div className="w-full space-y-4 pb-24">
       <div>
         <h1 className="text-2xl font-bold">New Inspection</h1>
-        {done && (
-          <p className="mt-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
-            Inspection submitted - it&apos;s in Inspection History. The next one is ready below.
-          </p>
+        {done && !finished && (
+          <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
+            <span>Inspection submitted - it&apos;s in Inspection History. The next one is ready below.</span>
+            {lastId && <WhatsappShareButton inspectionId={lastId} label="Send the last one to WhatsApp" className="rounded-md bg-green-600 px-3 py-1 text-sm font-medium text-white hover:bg-green-700" />}
+          </div>
         )}
       </div>
 
-      <label className={`${label} block max-w-md`}>
+      {finished && lastId && (
+        <div className="space-y-4 rounded-lg border-2 border-green-600 p-6">
+          <p className="text-lg font-bold text-green-700 dark:text-green-400">Inspection submitted</p>
+          <p className="text-sm text-black/70 dark:text-white/70">It&apos;s saved and in Inspection History.</p>
+          <WhatsappShareButton
+            inspectionId={lastId}
+            label="Send to WhatsApp"
+            className="w-full rounded-md bg-green-600 px-6 py-3 text-lg font-semibold text-white hover:bg-green-700 sm:w-auto"
+          />
+          <div className="flex flex-wrap gap-3 text-sm">
+            <button
+              onClick={() => {
+                setFinished(false);
+                setDone(false);
+              }}
+              className="rounded-md border border-black/20 px-4 py-2 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              New inspection
+            </button>
+            <Link href="/qc/inspections" className="rounded-md border border-black/20 px-4 py-2 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+              Inspection History
+            </Link>
+          </div>
+        </div>
+      )}
+
+      <label className={`${label} block max-w-md ${finished ? "hidden" : ""}`}>
         Inspection plan
         <select value={planId} onChange={(e) => setPlanId(e.target.value)} className={`${input} mt-1`}>
           {plans.map((p) => (
@@ -230,7 +266,7 @@ export default function NewInspectionClient({
         </select>
       </label>
 
-      {plan && config && (
+      {plan && config && !finished && (
         <>
           <section className="grid grid-cols-1 items-start gap-x-4 gap-y-3 rounded-lg border border-black/10 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 dark:border-white/10">
             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -282,6 +318,10 @@ export default function NewInspectionClient({
             <label className={label}>
               Notes #1
               <input value={notes1} onChange={(e) => setNotes1(e.target.value)} className={`${input} mt-1`} />
+            </label>
+            <label className={`${label} sm:col-span-2`}>
+              Reason for the result <span className="text-black/40 dark:text-white/40">(goes in the WhatsApp message: &quot;CAUTION DUE TO ...&quot;)</span>
+              <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="mixed weights and low packed ice" className={`${input} mt-1`} />
             </label>
             <label className={`${label} sm:col-span-full`}>
               Notes #2

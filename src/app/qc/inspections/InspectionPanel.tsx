@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import WhatsappShareButton from "@/components/WhatsappShare";
 import { emailInspectionReport, getInspectionDetail, type InspectionDetail } from "./reportActions";
 
 const btn =
@@ -160,6 +161,7 @@ export default function InspectionPanel({
         <button onClick={() => setEmailing(true)} className={`${btn} bg-green-600 text-white hover:bg-green-700`}>
           Email report
         </button>
+        <WhatsappShareButton inspectionId={inspectionId} className={`${btn} bg-green-600 text-white hover:bg-green-700`} />
         <iframe ref={printFrame} title="Print report" className="hidden" />
       </div>
 

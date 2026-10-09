@@ -22,6 +22,9 @@ export interface SubmitInspectionInput {
   notes1: string;
   notes2: string;
   result: string;
+  // Why the result is what it is, e.g. "mixed weights and low packed ice" - the
+  // "CAUTION DUE TO ..." in the WhatsApp message. Kept with the header values.
+  reason?: string;
   // Photos the browser already uploaded to the qc-photos bucket, in order.
   photoPaths: string[];
 }
@@ -50,6 +53,7 @@ export async function submitInspection(input: SubmitInspectionInput): Promise<{ 
 
   const header: Record<string, string> = {};
   for (const f of config.headerFields) header[f.key] = (input.header[f.key] ?? "").trim();
+  if (input.reason?.trim()) header.reason = input.reason.trim();
 
   const defects: DefectCount[] = config.defects.map((d) => ({
     key: d.key,
