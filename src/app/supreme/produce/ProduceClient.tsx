@@ -10,13 +10,66 @@ import {
   updateCommodityVariety,
 } from "@/app/mexico/growers/actions";
 import type { CartonType, MxCommodity } from "@/lib/types";
-import { addCartonType, deleteCartonType } from "./actions";
+import { addCartonType, deleteCartonType, renameCartonType } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
+// The carton's name, editable in place: type a new name and press Enter or
+// click away. Everything that uses the carton keeps it (they refer to it by
+// id), so only the label changes.
+function CartonNameCell({ item, onRename }: { item: CartonType; onRename: (id: string, name: string) => Promise<void> }) {
+  const [text, setText] = useState(item.name);
+  const [saving, setSaving] = useState(false);
+
+  async function commit() {
+    const name = text.trim();
+    if (name === item.name) return;
+    if (!name) {
+      setText(item.name);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onRename(item.id, name);
+    } catch {
+      alert(`Couldn't rename it to "${name}" - a carton type with that name may already exist.`);
+      setText(item.name);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <input
+      value={text}
+      disabled={saving}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") {
+          setText(item.name);
+          e.currentTarget.blur();
+        }
+      }}
+      className="w-full min-w-[12rem] rounded border border-transparent bg-transparent px-1.5 py-1 hover:border-gray-300 focus:border-green-600 focus:bg-white focus:text-black focus:outline-none"
+    />
+  );
+}
+
 // Position-ordered add/delete list - same shape as Repack Inventory's item
 // list (src/app/warehouse/repack-inventory/RepackInventoryClient.tsx).
-function CartonTypesPanel({ items, onAdd, onDelete }: { items: CartonType[]; onAdd: (name: string) => Promise<void>; onDelete: (id: string) => void }) {
+function CartonTypesPanel({
+  items,
+  onAdd,
+  onDelete,
+  onRename,
+}: {
+  items: CartonType[];
+  onAdd: (name: string) => Promise<void>;
+  onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => Promise<void>;
+}) {
   const confirm = useConfirm();
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
@@ -54,7 +107,9 @@ function CartonTypesPanel({ items, onAdd, onDelete }: { items: CartonType[]; onA
           <tbody>
             {items.map((c) => (
               <tr key={c.id} className="border-t border-black/10 dark:border-white/10">
-                <td className="px-2 py-1.5">{c.name}</td>
+                <td className="px-2 py-1">
+                  <CartonNameCell item={c} onRename={onRename} />
+                </td>
                 <td className="px-2 py-1.5">
                   <button onClick={() => handleDelete(c.id, c.name)} className="text-xs font-medium text-red-600 hover:underline">
                     Delete
@@ -393,6 +448,11 @@ export default function ProduceClient({
     setCartonTypes((prev) => [...prev, row]);
   }
 
+  async function handleRenameCartonType(id: string, name: string) {
+    await renameCartonType(id, name);
+    setCartonTypes((prev) => prev.map((c) => (c.id === id ? { ...c, name: name.trim() } : c)));
+  }
+
   async function handleDeleteCartonType(id: string) {
     setCartonTypes((prev) => prev.filter((c) => c.id !== id));
     await deleteCartonType(id).catch(() => {});
@@ -450,7 +510,7 @@ export default function ProduceClient({
         onRenameGroup={handleRenameGroup}
         onTempsChange={handleTempsChange}
       />
-      <CartonTypesPanel items={cartonTypes} onAdd={handleAddCartonType} onDelete={handleDeleteCartonType} />
+      <CartonTypesPanel items={cartonTypes} onAdd={handleAddCartonType} onDelete={handleDeleteCartonType} onRename={handleRenameCartonType} />
     </div>
   );
 }
