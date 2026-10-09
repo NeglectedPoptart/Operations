@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
+import PickListField from "@/components/PickListField";
 import {
   emptyPlanConfig,
   keyFromLabel,
@@ -64,11 +65,15 @@ function PlanEditor({
   onSaved,
   onDuplicated,
   onDeleted,
+  commodities,
+  onCommodityAdded,
 }: {
   plan: QcPlan | null;
   onSaved: (plan: QcPlan) => void;
   onDuplicated: (plan: QcPlan) => void;
   onDeleted: (id: string) => void;
+  commodities: string[];
+  onCommodityAdded: (value: string) => void;
 }) {
   const confirm = useConfirm();
   const [name, setName] = useState(plan?.name ?? "");
@@ -211,7 +216,7 @@ function PlanEditor({
         </label>
         <label className="text-sm">
           Commodity
-          <input value={commodity} onChange={(e) => setCommodity(e.target.value)} placeholder="Lettuce" className={`${field} mt-1`} />
+          <PickListField fieldKey="commodity" value={commodity} options={commodities} onChange={setCommodity} onAdded={onCommodityAdded} inputClass={field} placeholder="Lettuce" />
         </label>
         <label className="text-sm">
           Control point
@@ -353,7 +358,8 @@ function PlanEditor({
   );
 }
 
-export default function PlansClient({ initialPlans }: { initialPlans: QcPlan[] }) {
+export default function PlansClient({ initialPlans, commodityOptions }: { initialPlans: QcPlan[]; commodityOptions: string[] }) {
+  const [commodities, setCommodities] = useState(commodityOptions);
   const [plans, setPlans] = useState(initialPlans);
   // A plan id, or "new" for a blank one.
   const [selected, setSelected] = useState<string | null>(initialPlans[0]?.id ?? null);
@@ -411,6 +417,8 @@ export default function PlansClient({ initialPlans }: { initialPlans: QcPlan[] }
             <PlanEditor
               key={selected ?? "none"}
               plan={current}
+              commodities={commodities}
+              onCommodityAdded={(v) => setCommodities((prev) => [...prev.filter((c) => c !== v), v].sort((a, b) => a.localeCompare(b)))}
               onSaved={(p) => {
                 upsert(p);
                 setSelected(p.id);

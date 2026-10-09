@@ -28,5 +28,7 @@ export default async function QcPlansPage() {
       </p>
     );
   }
-  return <PlansClient initialPlans={(data ?? []) as QcPlan[]} />;
+  // The shared Commodity pick-list (see migration 138/139); typed entry still works without it.
+  const { data: commodityRows } = await supabase.from("qc_field_options").select("value").eq("field_key", "commodity").order("value", { ascending: true });
+  return <PlansClient initialPlans={(data ?? []) as QcPlan[]} commodityOptions={(commodityRows ?? []).map((r) => r.value as string)} />;
 }
