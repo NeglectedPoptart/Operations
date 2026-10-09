@@ -9,7 +9,7 @@ export default function AppHeader() {
     <div className="border-b border-black/10 bg-white px-4 py-2 print:hidden dark:border-white/10 dark:bg-black">
       <div className="mx-auto flex max-w-5xl items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element -- static brand asset, not a photo needing optimization */}
-        <img src="/logo-harvest-best.png" alt="Harvest Best" className="h-12 w-auto shrink-0" />
+        <img src="/logo-hbi-2025.png" alt="Harvest Best" className="h-12 w-auto shrink-0" />
         <div className="leading-tight">
           <p
             className="bg-clip-text text-2xl font-extrabold tracking-wide text-transparent"

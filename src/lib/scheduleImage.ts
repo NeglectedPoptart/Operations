@@ -43,7 +43,7 @@ export async function renderScheduleImagePng(opts: {
   scale?: number;
 }): Promise<Blob> {
   const { heading, subheading, dayLabels, weeks, staticHours, scale = 2 } = opts;
-  const logo = await loadImage("/logo-harvest-best-white.png").catch(() => null);
+  const logo = await loadImage("/logo-hbi-2025-white.png").catch(() => null);
 
   const isCalendar = !!weeks && weeks.length > 0;
   const tableWidth = WEEK_COL_W + DAY_COL_W * dayLabels.length;

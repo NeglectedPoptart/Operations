@@ -268,7 +268,7 @@ export default function NavBar({
     <>
       <div className="border-b border-sidebar-border px-4 py-4">
         <img
-          src="/logo-harvest-best.png"
+          src="/logo-hbi-2025.png"
           alt="Harvest Best"
           className="mx-auto h-16 w-auto object-contain"
         />
@@ -388,7 +388,7 @@ export default function NavBar({
       <div className="flex items-center justify-between border-b border-sidebar-border bg-sidebar px-4 py-3 lg:hidden print:hidden">
         <div className="flex items-center gap-2">
           <img
-            src="/logo-harvest-best.png"
+            src="/logo-hbi-2025.png"
             alt="Harvest Best"
             className="h-8 w-auto object-contain"
           />

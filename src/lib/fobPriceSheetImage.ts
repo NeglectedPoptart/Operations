@@ -466,7 +466,7 @@ export async function renderBrandedPriceSheetPng(opts: {
   ctx.fillRect(0, 0, canvasWidth, HEADER_H);
 
   try {
-    const logo = await loadImage("/logo-harvest-best-white.png");
+    const logo = await loadImage("/logo-hbi-2025-white.png");
     const logoH = 56;
     const logoW = logoH * (logo.width / logo.height);
     ctx.drawImage(logo, MARGIN, 20, logoW, logoH);
