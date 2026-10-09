@@ -470,7 +470,7 @@ function ordersEmail(
   };
 }
 
-async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean): Promise<number> {
+async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean, notes: string[]): Promise<number> {
   const slot = force ? null : currentSlot(new Date(), agent.config);
   if (!force && !slot) return 0;
 
@@ -485,14 +485,28 @@ async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean
   const { data: legendRows } = await db.from("order_legend").select("id, name");
   const labelNames = new Map((legendRows ?? []).map((l) => [l.id as string, l.name as string]));
   const wanted = agent.config.order_labels ? new Set(agent.config.order_labels) : null;
-  const orders = ((data ?? []) as PendingOrder[])
-    .filter((o) => !o.greyed && !(o.moved_to && o.moved_to > today))
-    .filter((o) => !wanted || wanted.has(o.legend_id && labelNames.has(o.legend_id) ? o.legend_id : "none"));
-  if (orders.length === 0) return 0;
+  const all = (data ?? []) as PendingOrder[];
+  const live = all.filter((o) => !o.greyed && !(o.moved_to && o.moved_to > today));
+  const orders = live.filter((o) => !wanted || wanted.has(o.legend_id && labelNames.has(o.legend_id) ? o.legend_id : "none"));
+  // Said out loud on a manual "Run now", so it's clear why nothing was made.
+  const skip = async (why: string) => {
+    if (!force) return;
+    notes.push(why);
+    await logEvent(db, agent.id, "skipped", why);
+  };
+  if (orders.length === 0) {
+    await skip(
+      all.length === 0
+        ? "There are no orders on the Orders page - upload the report first."
+        : `No orders to send: ${all.length} on the page, ${all.length - live.length} greyed out or moved to tomorrow, ${live.length - orders.length} left out by the label tick boxes.`,
+    );
+    return 0;
+  }
 
   const to = await operationsRecipients(db, agent);
   if (to.length === 0) {
     await logEvent(db, agent.id, "skipped", "No recipients set for the Orders agent.");
+    if (force) notes.push("No recipients - tick a role or person under Send to.");
     return 0;
   }
 
@@ -500,7 +514,10 @@ async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean
   if (slot && threads.some((t) => new Date(t.created_at) >= slot)) return 0; // already this slot
   const draft = threads.find((t) => t.status === "draft");
   if (draft) {
-    if (force) return 0;
+    if (force) {
+      await skip(`An email is already waiting for approval ("${draft.subject}") - approve or discard it first.`);
+      return 0;
+    }
     await db.from("agent_threads").update({ status: "discarded" }).eq("id", draft.id);
     await logEvent(db, agent.id, "discarded", `Replaced unsent draft "${draft.subject}" with the new slot's email`, draft.id);
   }
@@ -604,6 +621,7 @@ export async function runAgents(
 
   let created = 0;
   const skipped: string[] = [];
+  const notes: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
     if (agent.key !== "load_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
@@ -613,17 +631,19 @@ export async function runAgents(
       if (agent.key === "load_eta") created += await runLoadEta(db, agent, opts.ignoreHours === true);
       else if (agent.key === "load_pending") created += await runLoadPending(db, agent);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
-      else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true);
+      else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
       await db.from("agents").update({ last_run_at: new Date().toISOString() }).eq("id", agent.id);
     } catch (err) {
-      await logEvent(db, agent.id, "error", `Run failed: ${err instanceof Error ? err.message : String(err)}`);
+      const failure = `Run failed: ${err instanceof Error ? err.message : String(err)}`;
+      await logEvent(db, agent.id, "error", failure);
+      if (opts.ignoreHours) notes.push(failure);
     }
   }
 
   if (created > 0 && (agents ?? []).some((a) => (a as Agent).mode === "approve")) {
     await notifyOwner(db, "HOPS Agents", `${created} follow-up email${created === 1 ? "" : "s"} ready to review.`);
   }
-  return { created, skipped };
+  return { created, skipped: [...skipped, ...notes] };
 }
 
 // ---------------------------------------------------------------------------

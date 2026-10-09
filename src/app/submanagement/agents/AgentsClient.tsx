@@ -393,7 +393,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           onClick={() =>
             start(async () => {
               const r = await runAgentNow(agent.id);
-              setMessage(r.created > 0 ? `${r.created} email${r.created === 1 ? "" : "s"} created.` : "Nothing needed a follow-up right now.");
+              setMessage(r.created > 0 ? `${r.created} email${r.created === 1 ? "" : "s"} created - check Emails to approve.` : r.skipped.length > 0 ? r.skipped.join(" ") : "Nothing needed a follow-up right now.");
             })
           }
         >
