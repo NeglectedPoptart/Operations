@@ -763,7 +763,20 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
 
     const { data: agent } = await db.from("agents").select("*").eq("id", thread.agent_id).single<Agent>();
     // Notify-only agent - the reply stays unread in the mailbox for a person.
-    if (agent && !readsReplies(agent)) continue;
+    if (agent && !readsReplies(agent)) {
+      // Still note who answered and when (no message text kept) so the
+      // Activity Log can show who responded to each email.
+      await db.from("agent_replies").insert({
+        thread_id: thread.id,
+        graph_message_id: msg.id,
+        from_email: msg.fromEmail,
+        received_at: msg.receivedAt,
+        proposed: [],
+        status: "no_update",
+      });
+      await db.from("agent_threads").update({ last_reply_at: msg.receivedAt }).eq("id", thread.id);
+      continue;
+    }
     processed++;
 
     if (agent?.key === "orders_pending") {
