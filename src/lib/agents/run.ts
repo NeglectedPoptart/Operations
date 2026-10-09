@@ -431,6 +431,7 @@ function ordersEmail(
   orders: PendingOrder[],
   tag: string,
   readReplies: boolean,
+  labelNames: Map<string, string>,
 ): { subject: string; body: string } {
   const lines: string[] = ["Here are the orders still pending. Please send an update on each one.", ""];
   let n = 0;
@@ -442,7 +443,9 @@ function ordersEmail(
     }
     n++;
     const who = [o.customer_code, o.customer_name && o.customer_name !== o.customer_code ? o.customer_name : ""].filter(Boolean).join(" - ");
+    const label = o.legend_id ? labelNames.get(o.legend_id) : undefined;
     const extra = [
+      label && `[${label}]`,
       o.status,
       `${qty(o.ordered)} ordered`,
       o.terms && o.terms,
@@ -478,7 +481,13 @@ async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean
     .order("ship_date", { ascending: true })
     .order("order_no", { ascending: true });
   if (error) throw new Error(error.message);
-  const orders = ((data ?? []) as PendingOrder[]).filter((o) => !o.greyed && !(o.moved_to && o.moved_to > today));
+  // Only the Orders-legend labels ticked on the agent's card (unset = every order).
+  const { data: legendRows } = await db.from("order_legend").select("id, name");
+  const labelNames = new Map((legendRows ?? []).map((l) => [l.id as string, l.name as string]));
+  const wanted = agent.config.order_labels ? new Set(agent.config.order_labels) : null;
+  const orders = ((data ?? []) as PendingOrder[])
+    .filter((o) => !o.greyed && !(o.moved_to && o.moved_to > today))
+    .filter((o) => !wanted || wanted.has(o.legend_id && labelNames.has(o.legend_id) ? o.legend_id : "none"));
   if (orders.length === 0) return 0;
 
   const to = await operationsRecipients(db, agent);
@@ -500,7 +509,7 @@ async function runOrdersPending(db: SupabaseClient, agent: Agent, force: boolean
   }
 
   const tag = newTag();
-  const email = ordersEmail(orders, tag, readsReplies(agent));
+  const email = ordersEmail(orders, tag, readsReplies(agent), labelNames);
   const thread = await createThread(db, agent, { tag, recordIds: orders.map((o) => o.id), to, ...email });
   if (agent.mode === "auto") await sendThread(db, thread.id);
   else await draftCreated(db, agent, thread);

@@ -41,6 +41,13 @@ export interface PersonOption {
   role: string;
 }
 
+export interface OrderLabelOption {
+  id: string;
+  name: string;
+  color: string;
+  opacity: number;
+}
+
 export interface ReviewItem {
   reply: AgentReply;
   subject: string;
@@ -101,7 +108,7 @@ function SetupChecklist({ status }: { status: { outlook: boolean; claude: boolea
   );
 }
 
-function AgentCard({ agent, roleOptions, people }: { agent: Agent; roleOptions: RoleOption[]; people: PersonOption[] }) {
+function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; roleOptions: RoleOption[]; people: PersonOption[]; orderLabels: OrderLabelOption[] }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [recipients, setRecipients] = useState(() => {
@@ -262,6 +269,37 @@ function AgentCard({ agent, roleOptions, people }: { agent: Agent; roleOptions: 
           <p className="text-amber-600">Replies going to someone else won&apos;t reach the agent, so HOPS won&apos;t be updated from them.</p>
         )}
       </div>
+
+      {agent.key === "orders_pending" && (
+        <div className="space-y-1 text-xs">
+          <p className="font-medium">Include orders with these labels</p>
+          <p className="text-black/60 dark:text-white/60">Only orders with a ticked label go in the email. Tick them all to send every pending order.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {[...orderLabels.map((l) => ({ key: l.id, name: l.name, color: l.color, opacity: l.opacity })), { key: "none", name: "No label", color: "", opacity: 0 }].map((l) => {
+              const allKeys = [...orderLabels.map((x) => x.id), "none"];
+              const current = agent.config.order_labels ?? allKeys;
+              const on = current.includes(l.key);
+              return (
+                <label key={l.key} className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={pending}
+                    onChange={(e) => save({ order_labels: e.target.checked ? [...current, l.key] : current.filter((k) => k !== l.key) })}
+                  />
+                  {l.color && (
+                    <span
+                      className="inline-block h-3.5 w-6 rounded border border-black/30"
+                      style={{ backgroundColor: `rgba(${parseInt(l.color.slice(1, 3), 16)}, ${parseInt(l.color.slice(3, 5), 16)}, ${parseInt(l.color.slice(5, 7), 16)}, ${l.opacity})` }}
+                    />
+                  )}
+                  {l.name}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {agent.key === "orders_pending" && (
         <div className="space-y-2 text-xs">
@@ -693,6 +731,7 @@ export default function AgentsClient({
   carriers,
   roleOptions,
   people,
+  orderLabels,
 }: {
   status: { outlook: boolean; claude: boolean; scheduler: boolean; mailbox: string | null };
   agents: Agent[];
@@ -702,6 +741,7 @@ export default function AgentsClient({
   carriers: CarrierRow[];
   roleOptions: RoleOption[];
   people: PersonOption[];
+  orderLabels: OrderLabelOption[];
 }) {
   const [pending, start] = useTransition();
   const [inboxMsg, setInboxMsg] = useState<string | null>(null);
@@ -760,7 +800,7 @@ export default function AgentsClient({
       <Section title="Agents">
         <div className="space-y-3">
           {agents.map((a) => (
-            <AgentCard key={a.id} agent={a} roleOptions={roleOptions} people={people} />
+            <AgentCard key={a.id} agent={a} roleOptions={roleOptions} people={people} orderLabels={orderLabels} />
           ))}
         </div>
       </Section>

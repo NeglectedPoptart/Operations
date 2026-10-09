@@ -60,6 +60,8 @@ export interface OrderLegendItem {
   color: string; // #rrggbb
   opacity: number; // 0.05 - 1
   position: number;
+  // One of the always-there labels: can't be deleted or renamed.
+  is_preset?: boolean;
 }
 
 export interface OrderReportMeta {

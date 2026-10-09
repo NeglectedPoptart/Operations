@@ -223,7 +223,10 @@ export async function saveLegendItem(input: {
   const opacity = Math.min(1, Math.max(0.05, Number.isFinite(input.opacity) ? input.opacity : 0.45));
   const row = { name: input.name.trim() || "Untitled", color, opacity };
   if (input.id) {
-    const { error } = await supabase.from("order_legend").update(row).eq("id", input.id);
+    // An always-there label keeps its name; only its color and opacity change.
+    const { data: current } = await supabase.from("order_legend").select("is_preset").eq("id", input.id).maybeSingle();
+    const update = current?.is_preset ? { color, opacity } : row;
+    const { error } = await supabase.from("order_legend").update(update).eq("id", input.id);
     if (error) return { error: error.message };
     revalidateAll();
     return { id: input.id };
@@ -240,6 +243,8 @@ export async function saveLegendItem(input: {
 
 export async function deleteLegendItem(id: string): Promise<{ error: string } | { ok: true }> {
   const supabase = await createClient();
+  const { data: row } = await supabase.from("order_legend").select("is_preset").eq("id", id).maybeSingle();
+  if (row?.is_preset) return { error: "That is one of the always-there labels, so it can't be deleted." };
   const { error } = await supabase.from("order_legend").delete().eq("id", id);
   if (error) return { error: error.message };
   revalidateAll();

@@ -120,8 +120,13 @@ export default async function AgentsPage() {
     .filter((p) => (p.email ?? "").includes("@"))
     .map((p) => ({ email: p.email as string, role: p.role }));
 
+  // The Orders legend labels the Orders email can be limited to.
+  const { data: legendRows } = await supabase.from("order_legend").select("id, name, color, opacity").order("position", { ascending: true }).order("created_at", { ascending: true });
+  const orderLabels = (legendRows ?? []) as { id: string; name: string; color: string; opacity: number }[];
+
   return (
     <AgentsClient
+      orderLabels={orderLabels}
       roleOptions={roleOptions}
       people={people}
       status={setupStatus()}

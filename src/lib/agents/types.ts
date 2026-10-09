@@ -16,6 +16,9 @@ export interface Agent {
     // Everyone with one of these HOPS roles (role keys, e.g. "operations") is
     // also sent to, on top of any recipients listed by email.
     recipient_roles?: string[];
+    // orders_pending: only orders carrying one of these Orders-legend labels
+    // (ids; "none" = orders with no label) go in the email. Unset = all.
+    order_labels?: string[];
     days_ahead?: number;
     // false = notify-only: emails still go out, but replies are never read
     // or applied (no Claude needed). Unset means true.

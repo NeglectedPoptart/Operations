@@ -33,6 +33,7 @@ export async function updateAgent(
     active_end_hour?: number;
     recipients?: string[];
     recipient_roles?: string[];
+    order_labels?: string[];
     read_replies?: boolean;
     auto_apply_replies?: boolean;
     reply_to?: string[];
@@ -42,10 +43,10 @@ export async function updateAgent(
   },
 ) {
   const supabase = await ownerClient();
-  const { recipients, recipient_roles, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, ...columns } = patch;
+  const { recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, ...columns } = patch;
   const update: Record<string, unknown> = { ...columns };
   const configPatch = Object.fromEntries(
-    Object.entries({ recipients, recipient_roles, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end }).filter(
+    Object.entries({ recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end }).filter(
       ([, v]) => v !== undefined,
     ),
   );

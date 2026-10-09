@@ -396,9 +396,10 @@ export default function OrdersClient({
               <span className="h-8 w-20 rounded border border-black/30" style={{ backgroundColor: rgbaOf(l.color, l.opacity) }} />
               <input
                 value={l.name}
+                readOnly={l.is_preset}
                 onChange={(e) => editLegend(l, { name: e.target.value })}
                 placeholder="Name"
-                className="w-44 rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black"
+                className={`w-44 rounded border border-gray-300 px-2 py-1 text-sm text-black ${l.is_preset ? "bg-gray-100" : "bg-white"}`}
               />
               <label className="flex items-center gap-1.5 text-xs">
                 Color
@@ -414,9 +415,13 @@ export default function OrdersClient({
                 <input type="range" min={5} max={100} value={Math.round(l.opacity * 100)} onChange={(e) => editLegend(l, { opacity: Number(e.target.value) / 100 })} className="w-32" />
                 <span className="w-9 text-right">{Math.round(l.opacity * 100)}%</span>
               </label>
-              <button onClick={() => removeLegend(l)} className="ml-auto text-xs text-red-600 hover:underline">
-                Delete
-              </button>
+              {l.is_preset ? (
+                <span className="ml-auto text-xs text-black/40 dark:text-white/40">Always there</span>
+              ) : (
+                <button onClick={() => removeLegend(l)} className="ml-auto text-xs text-red-600 hover:underline">
+                  Delete
+                </button>
+              )}
             </div>
           ))}
         </div>
