@@ -10,7 +10,7 @@ import {
   type PlanDefect,
   type QcPlan,
 } from "@/lib/qcPlans";
-import { submitInspection } from "./actions";
+import { addFieldOption, submitInspection } from "./actions";
 
 // Big inputs (16px text) so a phone doesn't zoom in on focus.
 const input = "w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-black";
@@ -29,7 +29,106 @@ function nowLocalInput(): string {
   return d.toISOString().slice(0, 16);
 }
 
-export default function NewInspectionClient({ plans }: { plans: QcPlan[] }) {
+// A header field you pick from a list. A missing entry is added from the
+// bottom of the list ("+ Add new...") and is then there for everyone.
+function ListField({
+  fieldKey,
+  value,
+  options,
+  onChange,
+  onAdded,
+}: {
+  fieldKey: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  onAdded: (value: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  // A value carried over (or typed before) that isn't in the list yet still shows.
+  const shown = value && !options.includes(value) ? [...options, value] : options;
+
+  async function add() {
+    setSaving(true);
+    setProblem(null);
+    const result = await addFieldOption(fieldKey, draft);
+    setSaving(false);
+    if ("error" in result) {
+      setProblem(result.error);
+      return;
+    }
+    onAdded(result.value);
+    onChange(result.value);
+    setAdding(false);
+    setDraft("");
+  }
+
+  if (adding) {
+    return (
+      <div className="mt-1 space-y-1">
+        <div className="flex gap-2">
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (draft.trim() && !saving) void add();
+              }
+            }}
+            placeholder="New entry"
+            className={input}
+          />
+          <button type="button" onClick={add} disabled={saving || !draft.trim()} className="shrink-0 rounded-md bg-green-600 px-4 text-sm font-medium text-white disabled:opacity-50">
+            {saving ? "..." : "Add"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAdding(false);
+              setDraft("");
+              setProblem(null);
+            }}
+            className="shrink-0 rounded-md border border-gray-300 px-3 text-sm text-black/70 dark:text-white/70"
+          >
+            Cancel
+          </button>
+        </div>
+        {problem && <p className="text-xs text-red-600">{problem}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => (e.target.value === "__add__" ? setAdding(true) : onChange(e.target.value))}
+      className={`${input} mt-1`}
+    >
+      <option value=""></option>
+      {shown.map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+      <option value="__add__">+ Add new...</option>
+    </select>
+  );
+}
+
+export default function NewInspectionClient({
+  plans,
+  fieldOptions,
+  listsReady,
+}: {
+  plans: QcPlan[];
+  fieldOptions: Record<string, string[]>;
+  listsReady: boolean;
+}) {
   const router = useRouter();
   const [planId, setPlanId] = useState(plans[0]?.id ?? "");
   const plan = plans.find((p) => p.id === planId) ?? null;
@@ -37,6 +136,8 @@ export default function NewInspectionClient({ plans }: { plans: QcPlan[] }) {
 
   const [inspectionTime, setInspectionTime] = useState(nowLocalInput);
   const [header, setHeader] = useState<Record<string, string>>({});
+  // The pick-lists, which grow as entries are added from the form.
+  const [lists, setLists] = useState(fieldOptions);
   const [sampleSize, setSampleSize] = useState("");
   const [counts, setCounts] = useState<Record<string, string>>({});
   const [samples, setSamples] = useState<Record<string, string>[]>([]);
@@ -249,9 +350,17 @@ export default function NewInspectionClient({ plans }: { plans: QcPlan[] }) {
                       </option>
                     ))}
                   </select>
+                ) : listsReady && f.type === "text" && !/lot|date|note/.test(f.key) ? (
+                  <ListField
+                    fieldKey={f.key}
+                    value={header[f.key] ?? ""}
+                    options={lists[f.key] ?? []}
+                    onChange={(v) => setHeader((h) => ({ ...h, [f.key]: v }))}
+                    onAdded={(v) => setLists((prev) => ({ ...prev, [f.key]: [...(prev[f.key] ?? []).filter((o) => o !== v), v].sort((a, b) => a.localeCompare(b)) }))}
+                  />
                 ) : (
                   <input
-                    type={f.type === "date" ? "date" : "text"}
+                    type={f.type === "date" || /date/.test(f.key) ? "date" : "text"}
                     value={header[f.key] ?? ""}
                     onChange={(e) => setHeader((h) => ({ ...h, [f.key]: e.target.value }))}
                     className={`${input} mt-1`}

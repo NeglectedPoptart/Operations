@@ -132,3 +132,18 @@ export async function submitInspection(input: SubmitInspectionInput): Promise<{ 
   revalidatePath("/qc/inspections");
   return { id: inserted.id as string };
 }
+
+// Adds a missing entry to a pick-list on the New Inspection form (shared by
+// every plan). If the same entry already exists (any capitalization), that one
+// is returned instead of adding a duplicate.
+export async function addFieldOption(fieldKey: string, value: string): Promise<{ value: string } | { error: string }> {
+  const supabase = await createClient();
+  const text = value.trim().replace(/\s+/g, " ");
+  if (!fieldKey || !text) return { error: "Type the entry to add." };
+  const { data: existing } = await supabase.from("qc_field_options").select("value").eq("field_key", fieldKey);
+  const same = (existing ?? []).find((o) => (o.value as string).toLowerCase() === text.toLowerCase());
+  if (same) return { value: same.value as string };
+  const { error } = await supabase.from("qc_field_options").insert({ field_key: fieldKey, value: text });
+  if (error) return { error: error.message };
+  return { value: text };
+}
