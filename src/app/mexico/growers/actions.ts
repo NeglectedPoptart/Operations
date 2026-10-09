@@ -64,8 +64,8 @@ export async function deleteLabel(id: string) {
 
 // Commodities ----------------------------------------------------------------------
 
-function combinedCommodityName(commodityGroup: string, variety: string | null): string {
-  return [commodityGroup.trim(), (variety ?? "").trim()].filter(Boolean).join(" ");
+function combinedCommodityName(commodityGroup: string, variety: string | null, size?: string | null): string {
+  return [commodityGroup.trim(), (variety ?? "").trim(), (size ?? "").trim()].filter(Boolean).join(" ");
 }
 
 export async function createCommodity(
@@ -91,6 +91,54 @@ export async function createCommodity(
   return data;
 }
 
+// Adds several sizes under one variety at once (e.g. JBO, XLG, LGE, MED). A
+// size that already exists is skipped. Returns just the rows that were added.
+export async function addCommoditySizes(
+  commodityGroup: string,
+  variety: string,
+  sizes: string[],
+  temps: { low: number | null; high: number | null },
+) {
+  const supabase = await createClient();
+  const group = commodityGroup.trim();
+  const v = variety.trim();
+  const wanted = [...new Set(sizes.map((s) => s.trim().replace(/\s+/g, " ")).filter(Boolean))];
+  if (wanted.length === 0) return [];
+
+  const { data: existing, error: readError } = await supabase.from("mx_commodities").select("name");
+  if (readError) throw new Error(readError.message);
+  const have = new Set((existing ?? []).map((r) => (r.name as string).toLowerCase()));
+  const rows = wanted
+    .filter((size) => !have.has(combinedCommodityName(group, v, size).toLowerCase()))
+    .map((size) => ({
+      commodity_group: group,
+      variety: v || null,
+      size,
+      name: combinedCommodityName(group, v, size),
+      temp_low: temps.low,
+      temp_high: temps.high,
+    }));
+  if (rows.length === 0) return [];
+  const { data, error } = await supabase.from("mx_commodities").insert(rows).select();
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  revalidatePath("/supreme/produce");
+  return data ?? [];
+}
+
+export async function renameCommoditySize(id: string, commodityGroup: string, variety: string | null, size: string) {
+  const supabase = await createClient();
+  const trimmed = size.trim().replace(/\s+/g, " ");
+  if (!trimmed) throw new Error("Type a size.");
+  const { error } = await supabase
+    .from("mx_commodities")
+    .update({ size: trimmed, name: combinedCommodityName(commodityGroup, variety, trimmed) })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidateAll();
+  revalidatePath("/supreme/produce");
+}
+
 export async function updateCommodityGroupTemps(commodityGroup: string, low: number | null, high: number | null) {
   const supabase = await createClient();
   const { error } = await supabase
@@ -109,33 +157,58 @@ export async function deleteCommodity(id: string) {
   revalidatePath("/supreme/produce");
 }
 
-export async function updateCommodityVariety(id: string, commodityGroup: string, variety: string | null) {
+// Removes a variety and all of its sizes. (Arrivals already using them keep
+// their value - it just isn't selectable any more.)
+export async function deleteCommodityVariety(commodityGroup: string, variety: string) {
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("mx_commodities")
-    .update({ variety: variety?.trim() || null, name: combinedCommodityName(commodityGroup, variety) })
-    .eq("id", id);
+  const { error } = await supabase.from("mx_commodities").delete().eq("commodity_group", commodityGroup).eq("variety", variety);
   if (error) throw new Error(error.message);
   revalidateAll();
   revalidatePath("/supreme/produce");
 }
 
-// Renames a whole Commodity Group at once (every variety under it) rather
-// than one row at a time - matched by its current group name since that's
-// the only thing identifying the group (there's no separate group table).
+// Renames a variety everywhere it appears in the group - its plain entry and
+// every size under it - so each one's combined name follows.
+export async function renameCommodityVariety(commodityGroup: string, oldVariety: string, newVariety: string) {
+  const supabase = await createClient();
+  const trimmed = newVariety.trim();
+  if (!trimmed) throw new Error("Type a variety name.");
+  const { data: rows, error: fetchError } = await supabase
+    .from("mx_commodities")
+    .select("id, size")
+    .eq("commodity_group", commodityGroup)
+    .eq("variety", oldVariety);
+  if (fetchError) throw new Error(fetchError.message);
+  for (const row of rows ?? []) {
+    const { error } = await supabase
+      .from("mx_commodities")
+      .update({ variety: trimmed, name: combinedCommodityName(commodityGroup, trimmed, row.size as string | null) })
+      .eq("id", row.id);
+    if (error) throw new Error(error.message);
+  }
+  revalidateAll();
+  revalidatePath("/supreme/produce");
+}
+
+// Renames a whole Commodity Group at once (every variety and size under it)
+// rather than one row at a time - matched by its current group name since
+// that's the only thing identifying the group (there's no separate group table).
 export async function renameCommodityGroup(oldGroupName: string, newGroupName: string) {
   const supabase = await createClient();
   const trimmedNew = newGroupName.trim();
   const { data: rows, error: fetchError } = await supabase
     .from("mx_commodities")
-    .select("id, variety")
+    .select("id, variety, size")
     .eq("commodity_group", oldGroupName);
   if (fetchError) throw new Error(fetchError.message);
 
   for (const row of rows ?? []) {
     const { error } = await supabase
       .from("mx_commodities")
-      .update({ commodity_group: trimmedNew, name: combinedCommodityName(trimmedNew, row.variety as string | null) })
+      .update({
+        commodity_group: trimmedNew,
+        name: combinedCommodityName(trimmedNew, row.variety as string | null, row.size as string | null),
+      })
       .eq("id", row.id);
     if (error) throw new Error(error.message);
   }

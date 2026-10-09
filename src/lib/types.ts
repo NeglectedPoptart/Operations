@@ -1029,6 +1029,8 @@ export interface MxCommodity {
   name: string;
   commodity_group: string | null;
   variety: string | null;
+  // Optional pack size under the variety (e.g. JBO, 20lb, 24ct Liner); each size is its own row.
+  size: string | null;
   // Commodity-level temperature range - identical on every row of a group.
   temp_low: number | null;
   temp_high: number | null;

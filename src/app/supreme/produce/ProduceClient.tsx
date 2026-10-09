@@ -7,10 +7,14 @@ import {
   deleteCommodity,
   renameCommodityGroup,
   updateCommodityGroupTemps,
-  updateCommodityVariety,
+  addCommoditySizes,
+  deleteCommodityVariety,
+  renameCommoditySize,
+  renameCommodityVariety,
 } from "@/app/mexico/growers/actions";
 import type { CartonType, MxCommodity } from "@/lib/types";
 import { addCartonType, deleteCartonType, renameCartonType } from "./actions";
+import VarietyBlock from "./VarietyBlock";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -146,6 +150,13 @@ function CartonTypesPanel({
   );
 }
 
+interface VarietyActions {
+  onRenameVariety: (groupName: string, oldVariety: string, newVariety: string) => void;
+  onDeleteVariety: (groupName: string, variety: string) => void;
+  onAddSizes: (group: CommodityGroupRows, variety: string, sizes: string[]) => Promise<void>;
+  onRenameSize: (product: MxCommodity, size: string) => void;
+}
+
 interface CommodityGroupRows {
   groupName: string;
   products: MxCommodity[];
@@ -190,14 +201,14 @@ function CommodityTile({
   group,
   onAddVariety,
   onDelete,
-  onVarietyChange,
+  actions,
   onRenameGroup,
   onTempsChange,
 }: {
   group: CommodityGroupRows;
   onAddVariety: (group: CommodityGroupRows, variety: string) => Promise<void>;
   onDelete: (id: string) => void;
-  onVarietyChange: (product: MxCommodity, variety: string) => void;
+  actions: VarietyActions;
   onRenameGroup: (oldName: string, newName: string) => void;
   onTempsChange: (groupName: string, low: number | null, high: number | null) => void;
 }) {
@@ -209,6 +220,7 @@ function CommodityTile({
 
   const base = group.products.find((p) => !p.variety);
   const varieties = group.products.filter((p) => p.variety);
+  const varietyNames = [...new Set(varieties.map((p) => p.variety as string))];
 
   function saveTemps() {
     const nextLow = parseTemp(low);
@@ -290,17 +302,18 @@ function CommodityTile({
             </button>
           </div>
         )}
-        {varieties.map((p) => (
-          <div key={p.id} className="flex items-center gap-1.5">
-            <input defaultValue={p.variety ?? ""} onBlur={(e) => onVarietyChange(p, e.target.value)} className={field} />
-            <button
-              onClick={() => handleDelete(p)}
-              className="shrink-0 px-1 text-sm font-medium text-red-600 hover:text-red-700"
-              title="Remove this variety"
-            >
-              ✕
-            </button>
-          </div>
+        {varietyNames.map((v) => (
+          <VarietyBlock
+            key={v}
+            groupName={group.groupName}
+            variety={v}
+            rows={varieties.filter((p) => p.variety === v)}
+            onRenameVariety={(oldV, newV) => actions.onRenameVariety(group.groupName, oldV, newV)}
+            onDeleteVariety={(variety) => actions.onDeleteVariety(group.groupName, variety)}
+            onAddSizes={(variety, sizes) => actions.onAddSizes(group, variety, sizes)}
+            onRenameSize={actions.onRenameSize}
+            onDeleteProduct={(p) => onDelete(p.id)}
+          />
         ))}
         <div className="flex items-center gap-1.5">
           <input
@@ -329,14 +342,14 @@ function ProductsPanel({
   items,
   onAdd,
   onDelete,
-  onVarietyChange,
+  actions,
   onRenameGroup,
   onTempsChange,
 }: {
   items: MxCommodity[];
   onAdd: (commodityGroup: string, variety: string | null, temps: { low: number | null; high: number | null }) => Promise<void>;
   onDelete: (id: string) => void;
-  onVarietyChange: (product: MxCommodity, variety: string) => void;
+  actions: VarietyActions;
   onRenameGroup: (oldName: string, newName: string) => void;
   onTempsChange: (groupName: string, low: number | null, high: number | null) => void;
 }) {
@@ -421,7 +434,7 @@ function ProductsPanel({
             group={g}
             onAddVariety={handleAddVariety}
             onDelete={onDelete}
-            onVarietyChange={onVarietyChange}
+            actions={actions}
             onRenameGroup={onRenameGroup}
             onTempsChange={onTempsChange}
           />
@@ -468,20 +481,59 @@ export default function ProduceClient({
     await deleteCommodity(id).catch(() => {});
   }
 
-  function handleVarietyChange(product: MxCommodity, variety: string) {
-    const trimmed = variety.trim();
-    if (trimmed === (product.variety ?? "")) return;
-    const commodityGroup = product.commodity_group ?? product.name;
-    const name = [commodityGroup, trimmed].filter(Boolean).join(" ");
-    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, variety: trimmed || null, name } : p)));
-    updateCommodityVariety(product.id, commodityGroup, trimmed || null).catch(() => {});
+
+  const nameOf = (group: string, variety: string | null, size: string | null) =>
+    [group, variety ?? "", size ?? ""].map((s) => s.trim()).filter(Boolean).join(" ");
+
+  async function handleAddSizes(group: CommodityGroupRows, variety: string, sizes: string[]) {
+    const rows = (await addCommoditySizes(group.groupName, variety, sizes, { low: group.tempLow, high: group.tempHigh })) as MxCommodity[];
+    setProducts((prev) => [...prev, ...rows]);
   }
+
+  function handleRenameSize(product: MxCommodity, size: string) {
+    const group = product.commodity_group ?? product.name;
+    const trimmed = size.trim().replace(/\s+/g, " ");
+    const before = products;
+    setProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, size: trimmed, name: nameOf(group, product.variety, trimmed) } : p)));
+    renameCommoditySize(product.id, group, product.variety, trimmed).catch(() => {
+      alert(`Couldn't rename it to "${trimmed}" - that size may already exist.`);
+      setProducts(before);
+    });
+  }
+
+  function handleRenameVariety(groupName: string, oldVariety: string, newVariety: string) {
+    const trimmed = newVariety.trim();
+    const before = products;
+    setProducts((prev) =>
+      prev.map((p) =>
+        (p.commodity_group ?? p.name) === groupName && p.variety === oldVariety
+          ? { ...p, variety: trimmed, name: nameOf(groupName, trimmed, p.size) }
+          : p,
+      ),
+    );
+    renameCommodityVariety(groupName, oldVariety, trimmed).catch(() => {
+      alert(`Couldn't rename it to "${trimmed}" - that name may already exist.`);
+      setProducts(before);
+    });
+  }
+
+  function handleDeleteVariety(groupName: string, variety: string) {
+    setProducts((prev) => prev.filter((p) => !((p.commodity_group ?? p.name) === groupName && p.variety === variety)));
+    deleteCommodityVariety(groupName, variety).catch(() => {});
+  }
+
+  const varietyActions: VarietyActions = {
+    onRenameVariety: handleRenameVariety,
+    onDeleteVariety: handleDeleteVariety,
+    onAddSizes: handleAddSizes,
+    onRenameSize: handleRenameSize,
+  };
 
   function handleRenameGroup(oldName: string, newName: string) {
     setProducts((prev) =>
       prev.map((p) => {
         if ((p.commodity_group ?? p.name) !== oldName) return p;
-        return { ...p, commodity_group: newName, name: [newName, p.variety ?? ""].filter(Boolean).join(" ") };
+        return { ...p, commodity_group: newName, name: nameOf(newName, p.variety, p.size) };
       }),
     );
     renameCommodityGroup(oldName, newName).catch(() => {});
@@ -506,7 +558,7 @@ export default function ProduceClient({
         items={products}
         onAdd={handleAddProduct}
         onDelete={handleDeleteProduct}
-        onVarietyChange={handleVarietyChange}
+        actions={varietyActions}
         onRenameGroup={handleRenameGroup}
         onTempsChange={handleTempsChange}
       />

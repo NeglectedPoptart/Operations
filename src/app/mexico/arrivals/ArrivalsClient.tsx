@@ -98,11 +98,20 @@ function commodityIdsOf(row: MxArrival): (string | null)[] {
 // "Cauliflower") is left out when that commodity has varieties - only the
 // commodity + variety entries ("Cauliflower 12ct") are offered. A commodity
 // with no varieties at all stays selectable.
+// The same goes one level down: a variety that has sizes (e.g. "Bell Peppers
+// 11lb" with JBO, XLG...) is only offered with its size.
 function pickableCommodities(commodities: MxCommodity[]): MxCommodity[] {
   const groupOf = (c: MxCommodity) => (c.commodity_group ?? c.name).trim().toLowerCase();
   const hasVariety = (c: MxCommodity) => !!c.variety && c.variety.trim() !== "";
+  const hasSize = (c: MxCommodity) => !!c.size && c.size.trim() !== "";
+  const varietyKey = (c: MxCommodity) => `${groupOf(c)}|${(c.variety ?? "").trim().toLowerCase()}`;
   const groupsWithVarieties = new Set(commodities.filter(hasVariety).map(groupOf));
-  return commodities.filter((c) => hasVariety(c) || !groupsWithVarieties.has(groupOf(c)));
+  const varietiesWithSizes = new Set(commodities.filter(hasSize).map(varietyKey));
+  return commodities.filter((c) => {
+    if (hasSize(c)) return true;
+    if (hasVariety(c)) return !varietiesWithSizes.has(varietyKey(c));
+    return !groupsWithVarieties.has(groupOf(c));
+  });
 }
 
 function commodityName(id: string | null, commodities: MxCommodity[]): string {
