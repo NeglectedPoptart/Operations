@@ -6,7 +6,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { QC_RESULTS, type QcInspection } from "@/lib/types";
 import GroupPanel from "./GroupPanel";
 import InspectionPanel from "./InspectionPanel";
-import { addQcInspectionRow, deleteQcInspectionRow, updateQcInspectionRow } from "./actions";
+import { addQcInspectionRow, deleteQcInspectionRow, resetInspectionColumnWidths, saveInspectionColumnWidths, updateQcInspectionRow } from "./actions";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -29,11 +29,51 @@ const COLUMNS = [
 ] as const;
 type ColKey = (typeof COLUMNS)[number]["key"];
 
+// The table columns, left to right, with their starting widths (pixels). An
+// Admin can resize them (Edit layout) and the sizes are saved for everyone.
+const COL_DEFS = [
+  { key: "expand", label: "", center: false },
+  { key: "entry_date", label: "Date", center: false },
+  { key: "po", label: "PO", center: false },
+  { key: "lot", label: "Lot", center: false },
+  { key: "product", label: "Product", center: false },
+  { key: "qc", label: "QC", center: false },
+  { key: "chat", label: "Chat", center: true },
+  { key: "report", label: "Report", center: true },
+  { key: "status", label: "Status", center: false },
+  { key: "result", label: "Result", center: false },
+  { key: "notes", label: "Notes", center: false },
+  { key: "actions", label: "", center: false },
+] as const;
+const DEFAULT_WIDTHS: Record<string, number> = {
+  expand: 36,
+  entry_date: 140,
+  po: 90,
+  lot: 110,
+  product: 220,
+  qc: 60,
+  chat: 60,
+  report: 70,
+  status: 110,
+  result: 150,
+  notes: 320,
+  actions: 70,
+};
+const MIN_COL_WIDTH = 28;
+
 type FlatRow =
   | { kind: "row"; item: QcInspection; nested: boolean }
   | { kind: "group"; key: string; items: QcInspection[]; open: boolean };
 
-export default function QcInspectionsClient({ initialItems }: { initialItems: QcInspection[] }) {
+export default function QcInspectionsClient({
+  initialItems,
+  savedWidths,
+  canEditLayout,
+}: {
+  initialItems: QcInspection[];
+  savedWidths: Record<string, number> | null;
+  canEditLayout: boolean;
+}) {
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [adding, setAdding] = useState(false);
@@ -44,6 +84,12 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  // Column widths: what an Admin saved, or the defaults.
+  const [widths, setWidths] = useState<Record<string, number>>({ ...DEFAULT_WIDTHS, ...(savedWidths ?? {}) });
+  const [editing, setEditing] = useState(false);
+  const [layoutBusy, setLayoutBusy] = useState(false);
+  const widthsBeforeEdit = useRef<Record<string, number>>({});
+  const totalWidth = COL_DEFS.reduce((sum, c) => sum + (widths[c.key] ?? DEFAULT_WIDTHS[c.key]), 0);
   const cellRefs = useRef<Map<string, HTMLInputElement | HTMLSelectElement>>(new Map());
 
   function cellKey(rowIndex: number, col: ColKey) {
@@ -210,6 +256,61 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
     await deleteQcInspectionRow(id).catch(() => {});
   }
 
+  // Drag the right edge of a heading to change that column's width.
+  function startResize(key: string, e: React.PointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = widths[key] ?? DEFAULT_WIDTHS[key];
+    const move = (ev: PointerEvent) =>
+      setWidths((w) => ({ ...w, [key]: Math.max(MIN_COL_WIDTH, Math.round(startWidth + ev.clientX - startX)) }));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
+  function startEditingLayout() {
+    widthsBeforeEdit.current = widths;
+    setEditing(true);
+  }
+
+  function cancelEditingLayout() {
+    setWidths(widthsBeforeEdit.current);
+    setEditing(false);
+  }
+
+  async function saveLayout() {
+    setLayoutBusy(true);
+    try {
+      const result = await saveInspectionColumnWidths(widths);
+      if ("error" in result) {
+        alert(`Couldn't save the layout: ${result.error}`);
+        return;
+      }
+      setEditing(false);
+    } finally {
+      setLayoutBusy(false);
+    }
+  }
+
+  async function resetLayout() {
+    if (!(await confirm("Put every column back to its original width, for everyone?"))) return;
+    setLayoutBusy(true);
+    try {
+      const result = await resetInspectionColumnWidths();
+      if ("error" in result) {
+        alert(`Couldn't reset the layout: ${result.error}`);
+        return;
+      }
+      setWidths({ ...DEFAULT_WIDTHS });
+      setEditing(false);
+    } finally {
+      setLayoutBusy(false);
+    }
+  }
+
   // The single line for a PO / lot with several commodities.
   function renderGroup(g: Extract<FlatRow, { kind: "group" }>) {
     const first = g.items[0];
@@ -272,6 +373,14 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
             >
               + New Inspection
             </Link>
+            {canEditLayout && !editing && (
+              <button
+                onClick={startEditingLayout}
+                className="rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+              >
+                Edit layout
+              </button>
+            )}
             <button
               onClick={handleAddRow}
               disabled={adding}
@@ -341,22 +450,45 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
           )}
         </div>
 
+        {editing && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border-2 border-green-600 bg-green-50 p-3 text-sm dark:bg-green-950/20">
+            <span className="font-medium">
+              Editing the layout: drag the green edge of a column heading to make it wider or narrower (double-click an edge to reset that column).
+            </span>
+            <button onClick={saveLayout} disabled={layoutBusy} className="rounded-md bg-green-600 px-3 py-1.5 font-medium text-white hover:bg-green-700 disabled:opacity-60">
+              {layoutBusy ? "Saving..." : "Save layout (for everyone)"}
+            </button>
+            <button onClick={cancelEditingLayout} disabled={layoutBusy} className="rounded-md border border-black/20 px-3 py-1.5 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+              Cancel
+            </button>
+            <button onClick={resetLayout} disabled={layoutBusy} className="text-red-600 hover:underline">
+              Reset to original
+            </button>
+          </div>
+        )}
+
         <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-          <table className="w-full text-sm">
+          <table className="text-sm" style={{ tableLayout: "fixed", width: totalWidth }}>
+            <colgroup>
+              {COL_DEFS.map((c) => (
+                <col key={c.key} style={{ width: widths[c.key] }} />
+              ))}
+            </colgroup>
             <thead className="bg-black/5 text-left dark:bg-white/5">
               <tr>
-                <th className="w-8 px-1 py-2" />
-                <th className="px-2 py-2">Date</th>
-                <th className="px-2 py-2">PO</th>
-                <th className="px-2 py-2">Lot</th>
-                <th className="px-2 py-2">Product</th>
-                <th className="px-2 py-2">QC</th>
-                <th className="px-2 py-2 text-center">Chat</th>
-                <th className="px-2 py-2 text-center">Report</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Result</th>
-                <th className="px-2 py-2">Notes</th>
-                <th className="w-16 px-2 py-2" />
+                {COL_DEFS.map((c) => (
+                  <th key={c.key} className={`relative py-2 ${c.key === "expand" || c.key === "actions" ? "px-1" : "px-2"} ${c.center ? "text-center" : ""}`}>
+                    {c.label}
+                    {editing && (
+                      <span
+                        onPointerDown={(e) => startResize(c.key, e)}
+                        onDoubleClick={() => setWidths((w) => ({ ...w, [c.key]: DEFAULT_WIDTHS[c.key] }))}
+                        title="Drag to resize - double-click to reset this column"
+                        className="absolute right-0 top-0 z-10 h-full w-2 cursor-col-resize bg-green-500/30 hover:bg-green-600/60"
+                      />
+                    )}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>

@@ -254,3 +254,9 @@ export function logisticsOversightPathAllowed(pathname: string): boolean {
   if (pathname === "/logistics/customer-lumpers" || pathname.startsWith("/logistics/customer-lumpers/")) return true;
   return false;
 }
+
+// Who may lay a page out for everyone (e.g. resize the columns on QC Inspection
+// History) - also enforced in the database.
+export function canEditLayouts(role: Role | null, email: string | null): boolean {
+  return role === "admin" || isSupremeUser(email);
+}
