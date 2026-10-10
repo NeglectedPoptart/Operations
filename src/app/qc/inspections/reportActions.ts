@@ -114,8 +114,9 @@ export async function emailInspectionReport(
 
 export interface WhatsappShareData {
   text: string;
-  // Same-origin addresses of the photos, in order.
-  photos: { id: string; url: string }[];
+  // Each photo: a same-origin address (always works) and a direct signed
+  // address (much faster - tried first).
+  photos: { id: string; url: string; signedUrl: string | null }[];
 }
 
 // The WhatsApp message for an inspection (in the team's usual format) and where
@@ -126,12 +127,15 @@ export async function getWhatsappShare(id: string): Promise<WhatsappShareData | 
   if (!data) return null;
   const { data: photoRows } = await supabase
     .from("qc_lot_photos")
-    .select("id")
+    .select("id, storage_path")
     .eq("inspection_id", id)
     .order("position", { ascending: true });
+  const rows = (photoRows ?? []) as { id: string; storage_path: string }[];
+  const { data: signed } = rows.length > 0 ? await supabase.storage.from("qc-photos").createSignedUrls(rows.map((r) => r.storage_path), 3600) : { data: [] };
+  const signedByPath = new Map((signed ?? []).map((s) => [s.path as string, (s.signedUrl as string | null) ?? null]));
   return {
     text: buildWhatsappText(data as QcLotInspection),
-    photos: (photoRows ?? []).map((p) => ({ id: p.id as string, url: `/qc/inspections/${id}/photo/${p.id}` })),
+    photos: rows.map((p) => ({ id: p.id, url: `/qc/inspections/${id}/photo/${p.id}`, signedUrl: signedByPath.get(p.storage_path) ?? null })),
   };
 }
 

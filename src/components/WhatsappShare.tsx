@@ -1,28 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getWhatsappShare } from "@/app/qc/inspections/reportActions";
+import { useEffect, useRef, useState } from "react";
+import { getWhatsappShare, type WhatsappShareData } from "@/app/qc/inspections/reportActions";
 
 // "Send to WhatsApp" for an inspection: the message in the team's format
-// (editable) plus the photos. On a phone the share sheet opens with the photos
-// and text attached - pick WhatsApp, then the chat. On a computer WhatsApp is
-// opened with the text filled in and the photos put on the clipboard as one
-// picture to paste (or downloaded).
+// (editable) plus the photos you pick. On a phone the share sheet opens with the
+// photos and text attached - pick WhatsApp, then the chat. On a computer
+// WhatsApp is opened with the text filled in and the photos put on the
+// clipboard as one picture to paste (or downloaded).
 
-interface PhotoFile {
-  id: string;
-  file: File;
-  preview: string;
-}
+type PhotoInfo = WhatsappShareData["photos"][number];
+
+// Photos per share.
+const MAX_SELECT = 100; // most photos that can be picked
+const COLLAGE_MAX = 12; // more than this is too small to see as one picture
+const BATCH = 30; // WhatsApp takes up to 30 photos in one message, so more go as extra messages
+const PARALLEL = 6;
 
 const modalBtn = "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-50";
+
+// The photo's bytes: straight from storage when allowed (fast), otherwise
+// through our own server.
+async function fetchPhoto(info: PhotoInfo, name: string): Promise<File | null> {
+  for (const url of [info.signedUrl, info.url]) {
+    if (!url) continue;
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      return new File([await res.blob()], name, { type: "image/jpeg" });
+    } catch {
+      // try the next address
+    }
+  }
+  return null;
+}
 
 // All the photos as one picture (a grid), for pasting into WhatsApp on a computer.
 async function makeCollage(files: File[]): Promise<Blob> {
   const bitmaps = await Promise.all(files.map((f) => createImageBitmap(f)));
-  const cols = bitmaps.length <= 1 ? 1 : bitmaps.length <= 4 ? 2 : 3;
+  const cols = bitmaps.length <= 1 ? 1 : bitmaps.length <= 4 ? 2 : bitmaps.length <= 12 ? 3 : 5;
   const rows = Math.ceil(bitmaps.length / cols);
-  const cell = bitmaps.length === 1 ? 1200 : 700;
+  const cell = bitmaps.length === 1 ? 1200 : bitmaps.length <= 12 ? 600 : 360;
   const canvas = document.createElement("canvas");
   canvas.width = cols * cell;
   canvas.height = rows * cell;
@@ -43,6 +61,7 @@ async function makeCollage(files: File[]): Promise<Blob> {
     ctx.clip();
     ctx.drawImage(bmp, x + (cell - w) / 2, y + (cell - h) / 2, w, h);
     ctx.restore();
+    bmp.close();
   });
   return await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't make the picture"))), "image/png"));
 }
@@ -51,8 +70,17 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [photos, setPhotos] = useState<PhotoFile[]>([]);
+  const [photos, setPhotos] = useState<PhotoInfo[]>([]);
+  // The photos that will go, in order.
+  const [selected, setSelected] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
+  // Photo files fetched so far, and the ones that couldn't be.
+  const [fileById, setFileById] = useState<Record<string, File>>({});
+  const [failedIds, setFailedIds] = useState<string[]>([]);
+  // Which photos are already fetched / being fetched (used only by the fetching below).
+  const started = useRef<Set<string>>(new Set());
+  // Parts (of BATCH photos each) already handed to WhatsApp.
+  const [sentParts, setSentParts] = useState<number[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,19 +88,10 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
       try {
         const data = await getWhatsappShare(inspectionId);
         if (!data) throw new Error("That inspection wasn't found.");
-        // Fetched now so the Share click can use them straight away (a phone only
-        // allows sharing right after a tap).
-        const loaded: PhotoFile[] = [];
-        for (let i = 0; i < data.photos.length; i++) {
-          const res = await fetch(data.photos[i].url);
-          if (!res.ok) continue;
-          const blob = await res.blob();
-          const file = new File([blob], `inspection-${String(i + 1).padStart(2, "0")}.jpg`, { type: "image/jpeg" });
-          loaded.push({ id: data.photos[i].id, file, preview: URL.createObjectURL(blob) });
-        }
         if (cancelled) return;
         setText(data.text);
-        setPhotos(loaded);
+        setPhotos(data.photos);
+        setSelected(data.photos.slice(0, MAX_SELECT).map((p) => p.id));
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load the message.");
       } finally {
@@ -84,31 +103,70 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
     };
   }, [inspectionId]);
 
-  const files = photos.map((p) => p.file);
-  const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function" && files.length > 0 && navigator.canShare({ files });
-  const canShareText = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  // Fetch the chosen photos in the background (a few at a time), so the Share
+  // tap can use them straight away - a phone only allows sharing right after a tap.
+  useEffect(() => {
+    const queue = selected.filter((id) => !started.current.has(id));
+    for (const id of queue) started.current.add(id);
+    async function worker() {
+      for (;;) {
+        const id = queue.shift();
+        if (!id) return;
+        const info = photos.find((p) => p.id === id);
+        const file = info ? await fetchPhoto(info, `inspection-${id.slice(0, 8)}.jpg`) : null;
+        if (file) setFileById((prev) => ({ ...prev, [id]: file }));
+        else setFailedIds((prev) => [...prev, id]);
+      }
+    }
+    void Promise.all(Array.from({ length: Math.min(PARALLEL, queue.length) }, worker));
+  }, [selected, photos]);
 
-  function flash(message: string) {
-    setStatus(message);
+  const files = selected.map((id) => fileById[id]).filter((f): f is File => !!f);
+  const failedCount = selected.filter((id) => failedIds.includes(id)).length;
+  const waiting = selected.length - files.length - failedCount;
+  const ready = waiting === 0;
+
+  // The photos in groups of BATCH (WhatsApp takes 30 per message).
+  const parts: File[][] = [];
+  for (let i = 0; i < files.length; i += BATCH) parts.push(files.slice(i, i + BATCH));
+
+  const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function" && parts.length > 0 && navigator.canShare({ files: parts[0] });
+  const canShareText = typeof navigator !== "undefined" && typeof navigator.share === "function";
+  const useShareSheet = canShareFiles || (selected.length === 0 && canShareText);
+
+  function toggle(id: string) {
+    setStatus(null);
+    setSelected((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= MAX_SELECT) {
+        setStatus(`You can pick up to ${MAX_SELECT} photos - take one off first.`);
+        return prev;
+      }
+      return [...prev, id];
+    });
   }
 
   async function copyText() {
     try {
       await navigator.clipboard.writeText(text);
-      flash("Text copied.");
+      setStatus("Text copied.");
     } catch {
-      flash("Couldn't copy - select the text and copy it by hand.");
+      setStatus("Couldn't copy - select the text and copy it by hand.");
     }
   }
 
-  async function share() {
+  // Hands one group of photos (30 at most) to the phone's share sheet. The
+  // message goes with the first group only.
+  async function share(partIndex: number) {
+    const batch = parts[partIndex] ?? [];
     // Also copy the text, in case WhatsApp only takes the photos from the share.
-    navigator.clipboard?.writeText(text).catch(() => {});
+    if (partIndex === 0) navigator.clipboard?.writeText(text).catch(() => {});
     try {
-      await navigator.share(canShareFiles ? { text, files } : { text });
+      await navigator.share(batch.length === 0 ? { text } : partIndex === 0 ? { text, files: batch } : { files: batch });
+      setSentParts((prev) => (prev.includes(partIndex) ? prev : [...prev, partIndex]));
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return; // they closed the share sheet
-      flash("Couldn't open the share sheet - use the buttons below instead.");
+      setStatus("Couldn't open the share sheet - use the buttons below instead.");
     }
   }
 
@@ -116,15 +174,19 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
     // Opened first, straight from the click, so the browser doesn't block it.
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
     if (files.length === 0) {
-      flash("WhatsApp is opening - pick the chat and send.");
+      setStatus("WhatsApp is opening - pick the chat and send.");
+      return;
+    }
+    if (files.length > COLLAGE_MAX) {
+      setStatus(`WhatsApp is opening with the text. That's a lot of photos for one picture - use Download photos and drag them into the chat (${BATCH} at a time).`);
       return;
     }
     try {
       const png = await makeCollage(files);
       await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-      flash("WhatsApp is opening with the text. Pick the chat, then press Ctrl+V to add the photos (copied as one picture).");
+      setStatus("WhatsApp is opening with the text. Pick the chat, then press Ctrl+V to add the photos (copied as one picture).");
     } catch {
-      flash("WhatsApp is opening with the text. The photos couldn't be copied - use Download photos and drag them in.");
+      setStatus("WhatsApp is opening with the text. The photos couldn't be copied - use Download photos and drag them in.");
     }
   }
 
@@ -132,22 +194,24 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
     try {
       const png = await makeCollage(files);
       await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
-      flash("Photos copied as one picture - paste them into the chat with Ctrl+V.");
+      setStatus("Photos copied as one picture - paste them into the chat with Ctrl+V.");
     } catch {
-      flash("Couldn't copy the photos - use Download photos instead.");
+      setStatus("Couldn't copy the photos - use Download photos instead.");
     }
   }
 
   function downloadPhotos() {
-    for (const p of photos) {
+    for (const file of files) {
+      const url = URL.createObjectURL(file);
       const a = document.createElement("a");
-      a.href = p.preview;
-      a.download = p.file.name;
+      a.href = url;
+      a.download = file.name;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     }
-    flash(`${photos.length} photo${photos.length === 1 ? "" : "s"} downloaded - drag them into the chat.`);
+    setStatus(`${files.length} photo${files.length === 1 ? "" : "s"} downloaded - drag them into the chat.`);
   }
 
   return (
@@ -161,7 +225,7 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
-          {loading && <p className="text-sm text-black/60">Getting the message and photos...</p>}
+          {loading && <p className="text-sm text-black/60">Getting the message...</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
           {!loading && !error && (
             <>
@@ -170,32 +234,55 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  rows={14}
+                  rows={12}
                   className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 font-mono text-sm text-black"
                 />
               </label>
 
               {photos.length > 0 ? (
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">
-                    {photos.length} photo{photos.length === 1 ? "" : "s"} (tap ✕ to leave one out)
-                  </p>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {photos.map((p) => (
-                      <div key={p.id} className="relative">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={p.preview} alt="" className="aspect-square w-full rounded object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => setPhotos((prev) => prev.filter((x) => x.id !== p.id))}
-                          aria-label="Leave this photo out"
-                          className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px] text-white"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium">
+                      Photos: {selected.length} of {photos.length} selected
+                      <span className="ml-1 font-normal text-black/50">(tap a photo to add or leave it out)</span>
+                    </p>
+                    <div className="flex gap-2 text-xs">
+                      <button onClick={() => setSelected(photos.slice(0, MAX_SELECT).map((p) => p.id))} className="text-green-700 hover:underline">
+                        {photos.length > MAX_SELECT ? `First ${MAX_SELECT}` : "All"}
+                      </button>
+                      <button onClick={() => setSelected([])} className="text-black/60 hover:underline">
+                        None
+                      </button>
+                    </div>
                   </div>
+                  <div className="grid max-h-56 grid-cols-5 gap-1.5 overflow-y-auto">
+                    {photos.map((p) => {
+                      const on = selected.includes(p.id);
+                      return (
+                        <button key={p.id} type="button" onClick={() => toggle(p.id)} className="relative" aria-pressed={on}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={p.signedUrl ?? p.url}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className={`aspect-square w-full rounded object-cover ${on ? "ring-2 ring-green-600" : "opacity-40"}`}
+                          />
+                          {on && (
+                            <span className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-[11px] text-white">
+                              {selected.indexOf(p.id) + 1}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selected.length > 0 && !ready && (
+                    <p className="text-xs text-black/60">
+                      Getting the photos ready: {files.length} of {selected.length - failedCount}...
+                    </p>
+                  )}
+                  {failedCount > 0 && <p className="text-xs text-red-600">{failedCount} photo{failedCount === 1 ? "" : "s"} couldn&apos;t be loaded and will be left out.</p>}
                 </div>
               ) : (
                 <p className="text-sm text-black/50">This inspection has no photos.</p>
@@ -208,37 +295,65 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
 
         {!loading && !error && (
           <div className="space-y-2 border-t border-black/10 p-4">
-            {(canShareFiles || (files.length === 0 && canShareText)) && (
-              <button onClick={share} className="w-full rounded-md bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700">
-                Share{files.length > 0 ? " photos + message" : " message"} - then pick WhatsApp and the chat
+            {useShareSheet && parts.length <= 1 && (
+              <button
+                onClick={() => share(0)}
+                disabled={!ready}
+                className="w-full rounded-md bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+              >
+                {!ready
+                  ? `Getting photos ready (${files.length}/${selected.length - failedCount})...`
+                  : `Share${files.length > 0 ? " photos + message" : " message"} - then pick WhatsApp and the chat`}
               </button>
+            )}
+            {useShareSheet && parts.length > 1 && (
+              <div className="space-y-1.5">
+                <p className="text-xs text-black/60">
+                  WhatsApp takes {BATCH} photos per message, so these go in {parts.length} messages. Send each one to the same chat.
+                </p>
+                {parts.map((batch, i) => {
+                  const from = i * BATCH + 1;
+                  const to = i * BATCH + batch.length;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => share(i)}
+                      disabled={!ready}
+                      className={`w-full rounded-md px-4 py-2.5 text-base font-semibold disabled:opacity-60 ${
+                        sentParts.includes(i) ? "border border-green-600 text-green-700" : "bg-green-600 text-white hover:bg-green-700"
+                      }`}
+                    >
+                      {!ready
+                        ? `Getting photos ready (${files.length}/${selected.length - failedCount})...`
+                        : `${sentParts.includes(i) ? "✓ " : ""}Part ${i + 1} of ${parts.length}: photos ${from}-${to}${i === 0 ? " + message" : ""}`}
+                    </button>
+                  );
+                })}
+              </div>
             )}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={openWhatsapp}
-                className={
-                  canShareFiles || (files.length === 0 && canShareText)
-                    ? modalBtn
-                    : "w-full rounded-md bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700"
-                }
+                disabled={!ready}
+                className={useShareSheet ? modalBtn : "w-full rounded-md bg-green-600 px-4 py-2.5 text-base font-semibold text-white hover:bg-green-700 disabled:opacity-60"}
               >
                 Open WhatsApp{files.length > 0 ? " (photos on clipboard)" : ""}
               </button>
               <button onClick={copyText} className={modalBtn}>
                 Copy text
               </button>
-              {photos.length > 0 && (
+              {files.length > 0 && (
                 <>
-                  <button onClick={copyPhotos} className={modalBtn}>
+                  <button onClick={copyPhotos} disabled={!ready || files.length > COLLAGE_MAX} title={files.length > COLLAGE_MAX ? "Too many photos for one picture - use Download photos" : undefined} className={modalBtn}>
                     Copy photos
                   </button>
-                  <button onClick={downloadPhotos} className={modalBtn}>
+                  <button onClick={downloadPhotos} disabled={!ready} className={modalBtn}>
                     Download photos
                   </button>
                 </>
               )}
             </div>
-            {!canShareFiles && files.length > 0 && (
+            {!useShareSheet && files.length > 0 && files.length <= COLLAGE_MAX && (
               <p className="text-xs text-black/50">
                 On a computer: click Open WhatsApp, pick the chat, then press Ctrl+V to paste the photos. The text is already in the message box.
               </p>
