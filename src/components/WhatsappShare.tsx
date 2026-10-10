@@ -14,7 +14,7 @@ type PhotoInfo = WhatsappShareData["photos"][number];
 // Photos per share.
 const MAX_SELECT = 100; // most photos that can be picked
 const COLLAGE_MAX = 12; // more than this is too small to see as one picture
-const DEFAULT_BATCH = 30; // photos per share; the phone/browser may only take fewer, so it can be lowered in the window
+const DEFAULT_BATCH = 10; // photos per share; the phone/browser may only take fewer, so it can be lowered in the window
 const PARALLEL = 6;
 
 const modalBtn = "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-50";
