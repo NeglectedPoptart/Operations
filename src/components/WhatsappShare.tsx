@@ -14,7 +14,7 @@ type PhotoInfo = WhatsappShareData["photos"][number];
 // Photos per share.
 const MAX_SELECT = 100; // most photos that can be picked
 const COLLAGE_MAX = 12; // more than this is too small to see as one picture
-const BATCH = 30; // WhatsApp takes up to 30 photos in one message, so more go as extra messages
+const BATCH = 10; // Chrome only hands about 10 files at a time to the share sheet, so more go as extra messages
 const PARALLEL = 6;
 
 const modalBtn = "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-50";
@@ -180,7 +180,7 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
       return;
     }
     if (files.length > COLLAGE_MAX) {
-      setStatus(`WhatsApp is opening with the text. That's a lot of photos for one picture - use Download photos and drag them into the chat (${BATCH} at a time).`);
+      setStatus(`WhatsApp is opening with the text. That's a lot of photos for one picture - use Download photos and drag them into the chat (up to 30 at a time).`);
       return;
     }
     try {
@@ -311,7 +311,7 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
             {useShareSheet && parts.length > 1 && (
               <div className="space-y-1.5">
                 <p className="text-xs text-black/60">
-                  WhatsApp takes {BATCH} photos per message, so these go in {parts.length} messages. Send each one to the same chat.
+                  The share sheet takes about {BATCH} photos at a time, so these go in {parts.length} messages. Send each one to the same chat.
                 </p>
                 {parts.map((batch, i) => {
                   const from = i * BATCH + 1;
