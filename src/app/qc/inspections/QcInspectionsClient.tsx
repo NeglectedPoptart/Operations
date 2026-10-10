@@ -62,8 +62,16 @@ const DEFAULT_WIDTHS: Record<string, number> = {
 const MIN_COL_WIDTH = 28;
 
 type FlatRow =
+  | { kind: "month"; key: string; label: string; count: number; open: boolean }
   | { kind: "row"; item: QcInspection; nested: boolean }
   | { kind: "group"; key: string; items: QcInspection[]; open: boolean };
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function monthLabel(key: string): string {
+  // key is "YYYY-MM"
+  const month = Number(key.slice(5, 7));
+  return key.length === 7 && month >= 1 && month <= 12 ? `${MONTH_NAMES[month - 1]} ${key.slice(0, 4)}` : "No date";
+}
 
 export default function QcInspectionsClient({
   initialItems,
@@ -84,6 +92,11 @@ export default function QcInspectionsClient({
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  // Months that are open - the newest one to start with; the rest are folded away.
+  const [openMonths, setOpenMonths] = useState<Set<string>>(() => {
+    const newest = initialItems.map((i) => (i.entry_date ?? "").slice(0, 7)).sort().pop();
+    return new Set(newest === undefined ? [] : [newest]);
+  });
   // Column widths: what an Admin saved, or the defaults.
   const [widths, setWidths] = useState<Record<string, number>>({ ...DEFAULT_WIDTHS, ...(savedWidths ?? {}) });
   const [editing, setEditing] = useState(false);
@@ -189,6 +202,8 @@ export default function QcInspectionsClient({
     return list;
   }, [sortedItems, dateFrom, dateTo, filterQc, filterResult, search]);
 
+  const filtering = !!(search || dateFrom || dateTo || filterQc || filterResult);
+
   // Rows of the same PO / lot on the same day - several commodities received
   // together, each inspected and reported on its own - are gathered under one
   // line. A group opens to show its rows and the "all reports" actions.
@@ -200,9 +215,24 @@ export default function QcInspectionsClient({
       const k = keyOf(i);
       if (k) members.set(k, [...(members.get(k) ?? []), i]);
     }
+    // Months, newest first, each with how many lines it holds.
+    const monthOf = (i: QcInspection) => (i.entry_date ?? "").slice(0, 7);
+    const monthCounts = new Map<string, number>();
+    for (const i of displayedItems) monthCounts.set(monthOf(i), (monthCounts.get(monthOf(i)) ?? 0) + 1);
+
     const out: FlatRow[] = [];
     const done = new Set<string>();
+    let currentMonth: string | null = null;
+    let monthOpen = true;
     for (const i of displayedItems) {
+      const month = monthOf(i);
+      if (month !== currentMonth) {
+        currentMonth = month;
+        // While searching or filtering every month with a match is open.
+        monthOpen = filtering || openMonths.has(month);
+        out.push({ kind: "month", key: month, label: monthLabel(month), count: monthCounts.get(month) ?? 0, open: monthOpen });
+      }
+      if (!monthOpen) continue;
       const k = keyOf(i);
       const group = k ? members.get(k) : undefined;
       if (k && group && group.length > 1) {
@@ -216,7 +246,18 @@ export default function QcInspectionsClient({
       }
     }
     return out;
-  }, [displayedItems, openGroups]);
+  }, [displayedItems, openGroups, openMonths, filtering]);
+
+  function toggleMonth(key: string) {
+    setOpenMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  const allMonths = useMemo(() => [...new Set(items.map((i) => (i.entry_date ?? "").slice(0, 7)))], [items]);
 
   function toggleGroup(key: string) {
     setOpenGroups((prev) => {
@@ -232,7 +273,6 @@ export default function QcInspectionsClient({
     () => [...new Set(items.map((i) => (i.qc ?? "").trim().toUpperCase()).filter(Boolean))].sort(),
     [items],
   );
-  const filtering = !!(search || dateFrom || dateTo || filterQc || filterResult);
 
   async function handleAddRow() {
     setAdding(true);
@@ -309,6 +349,29 @@ export default function QcInspectionsClient({
     } finally {
       setLayoutBusy(false);
     }
+  }
+
+  // The band that opens and closes a month.
+  function renderMonth(m: Extract<FlatRow, { kind: "month" }>) {
+    return (
+      <tr
+        key={`month-${m.key}`}
+        onClick={() => toggleMonth(m.key)}
+        className="cursor-pointer border-t-2 border-green-700/40 bg-green-700 text-white hover:bg-green-800"
+      >
+        <td colSpan={12} className="px-3 py-2">
+          <span className="flex items-center gap-2 text-sm font-bold">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={`h-4 w-4 transition-transform ${m.open ? "rotate-90" : ""}`}>
+              <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {m.label}
+            <span className="font-normal opacity-80">
+              {m.count} line{m.count === 1 ? "" : "s"}
+            </span>
+          </span>
+        </td>
+      </tr>
+    );
   }
 
   // The single line for a PO / lot with several commodities.
@@ -434,6 +497,13 @@ export default function QcInspectionsClient({
               ))}
             </select>
           </label>
+          <span className="mx-1 text-black/20 dark:text-white/20">|</span>
+          <button onClick={() => setOpenMonths(new Set(allMonths))} className="text-green-700 hover:underline dark:text-green-400">
+            Open all months
+          </button>
+          <button onClick={() => setOpenMonths(new Set())} className="text-black/60 hover:underline dark:text-white/60">
+            Close all
+          </button>
           {filtering && (
             <button
               onClick={() => {
@@ -493,6 +563,7 @@ export default function QcInspectionsClient({
             </thead>
             <tbody>
               {flat.map((r, rowIndex) => {
+                if (r.kind === "month") return renderMonth(r);
                 if (r.kind === "group") return renderGroup(r);
                 const item = r.item;
                 return (
