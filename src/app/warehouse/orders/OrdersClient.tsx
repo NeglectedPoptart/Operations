@@ -268,7 +268,18 @@ export default function OrdersClient({
                   </div>
                 )}
               </td>
-              <td className="whitespace-nowrap px-2 py-1.5 font-medium">{o.order_no}</td>
+              <td className="px-2 py-1.5 font-medium">
+                <span className="whitespace-nowrap">{o.order_no}</span>
+                {item && (
+                  <span
+                    className="mt-0.5 block w-fit max-w-[9rem] truncate rounded border border-black/30 px-1.5 py-px text-[11px] font-medium leading-tight text-black"
+                    style={{ backgroundColor: rgbaOf(item.color, Math.max(item.opacity, 0.35)) }}
+                    title={item.name}
+                  >
+                    {item.name}
+                  </span>
+                )}
+              </td>
               <td className="whitespace-nowrap px-2 py-1.5">{o.status}</td>
               <td className="px-2 py-1.5">
                 <span className="font-medium">{o.customer_code}</span>
