@@ -442,24 +442,13 @@ export default function OrdersClient({
           {review.warnings.length > 0 && <p className="text-sm text-amber-600">{review.warnings.join(" ")}</p>}
           {review.missing.length > 0 ? (
             <div className="space-y-1">
-              <p className="text-sm font-medium">These orders are on the page but not on this report - probably deleted. Tick the ones to remove:</p>
-              {review.missing.map((m) => (
-                <label key={m.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={removeIds.has(m.id)}
-                    onChange={(e) =>
-                      setRemoveIds((prev) => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(m.id);
-                        else next.delete(m.id);
-                        return next;
-                      })
-                    }
-                  />
-                  {m.order_no} - {m.customer} {m.ship_date ? `(ship ${shortDay(m.ship_date)})` : ""}
-                </label>
-              ))}
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">
+                {review.missing.length} order{review.missing.length === 1 ? " is" : "s are"} on the page but not on this report, so
+                {review.missing.length === 1 ? " it" : " they"} will be removed:
+              </p>
+              <p className="text-sm text-black/70 dark:text-white/70">
+                {review.missing.map((m) => `${m.order_no} ${m.customer}${m.ship_date ? ` (ship ${shortDay(m.ship_date)})` : ""}`).join(" · ")}
+              </p>
             </div>
           ) : (
             <p className="text-sm text-black/60 dark:text-white/60">Nothing on the page is missing from this report.</p>

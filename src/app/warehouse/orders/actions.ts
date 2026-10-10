@@ -31,16 +31,6 @@ export interface OrdersReadResult {
   missing: { id: string; order_no: string; customer: string; ship_date: string | null }[];
 }
 
-// The report's own filters ("From: 10/6/2026; To: 10/9/2026; WHse : All") so an
-// order outside them isn't mistaken for a deleted one.
-function reportScope(parameters: string): { from: string | null; to: string | null; whse: string | null } {
-  const iso = (m: RegExpMatchArray | null) => (m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : null);
-  const from = iso(parameters.match(/From\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i));
-  const to = iso(parameters.match(/To\s*:\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/i));
-  const w = parameters.match(/WHse\s*:\s*([^;]+)/i)?.[1]?.trim() ?? "";
-  return { from, to, whse: !w || /^all$/i.test(w) ? null : w };
-}
-
 // Reads the uploaded PDF and shows what loading it would change. Saves nothing.
 export async function readOrdersPdf(formData: FormData): Promise<{ error: string } | OrdersReadResult> {
   const file = formData.get("file");
@@ -92,16 +82,9 @@ export async function readOrdersPdf(formData: FormData): Promise<{ error: string
     if (!was && o.shipped > 0) newlyShipped.push(o.order_no);
   }
 
-  const scope = reportScope(parsed.parameters);
+  // Anything on the page that is not on the new report comes off the page.
   const missing = (existing ?? [])
     .filter((o) => !onReport.has(o.order_no as string))
-    .filter((o) => {
-      const d = o.ship_date as string | null;
-      if (scope.from && d && d < scope.from) return false;
-      if (scope.to && d && d > scope.to) return false;
-      if (scope.whse && o.warehouse && !(o.warehouse as string).toLowerCase().startsWith(scope.whse.toLowerCase())) return false;
-      return true;
-    })
     .map((o) => ({
       id: o.id as string,
       order_no: o.order_no as string,
