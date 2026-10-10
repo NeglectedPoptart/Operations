@@ -415,10 +415,7 @@ export default function OrdersClient({
                   {t.title}
                   {t.note && <span className="ml-1 font-normal text-black/40 dark:text-white/40">· {t.note}</span>}
                 </p>
-                <p className="text-xl font-bold">{qty(t.qty)}</p>
-                <p className="text-xs text-black/60 dark:text-white/60">
-                  {t.count} order{t.count === 1 ? "" : "s"}
-                </p>
+<p className="text-2xl font-bold">{t.count}</p>                <p className="text-xs text-black/60 dark:text-white/60">order{t.count === 1 ? "" : "s"}</p>
               </div>
             ))}
           </div>
@@ -429,17 +426,11 @@ export default function OrdersClient({
                 className="rounded border border-black/30 px-3 py-1.5 text-sm text-black"
                 style={{ backgroundColor: rgbaOf(l.item.color, Math.max(l.item.opacity, 0.3)) }}
               >
-                {l.item.name}: <span className="font-bold">{qty(l.qty)}</span>
-                <span className="ml-1 text-xs opacity-70">
-                  ({l.count} order{l.count === 1 ? "" : "s"})
-                </span>
+                {l.item.name}: <span className="font-bold">{l.count}</span>
               </span>
             ))}
             <span className="rounded border border-black/30 bg-white px-3 py-1.5 text-sm text-black">
-              No label: <span className="font-bold">{qty(summary.noLabel.qty)}</span>
-              <span className="ml-1 text-xs opacity-70">
-                ({summary.noLabel.count} order{summary.noLabel.count === 1 ? "" : "s"})
-              </span>
+              No label: <span className="font-bold">{summary.noLabel.count}</span>
             </span>
           </div>
         </div>
