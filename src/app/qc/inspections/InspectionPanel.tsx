@@ -10,12 +10,15 @@ const btn =
   "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10";
 const RECIPIENTS_KEY = "qc-report-recipients";
 
-function EmailModal({
-  inspectionId,
+export function EmailModal({
+  title = "Email report",
+  send,
   onClose,
   onSent,
 }: {
-  inspectionId: string;
+  title?: string;
+  // Sends the email; the modal supplies the recipients and the message.
+  send: (to: string, message: string) => Promise<{ ok: true; sentTo: string[] } | { error: string }>;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -31,11 +34,11 @@ function EmailModal({
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string[] | null>(null);
 
-  async function send() {
+  async function submit() {
     setBusy(true);
     setError(null);
     try {
-      const result = await emailInspectionReport(inspectionId, to, message);
+      const result = await send(to, message);
       if ("error" in result) setError(result.error);
       else {
         setSentTo(result.sentTo);
@@ -57,14 +60,14 @@ function EmailModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
       <div className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 text-black shadow-xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Email report</h2>
+          <h2 className="text-lg font-bold">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="text-black/50 hover:text-black">
             ✕
           </button>
         </div>
         {sentTo ? (
           <div className="space-y-3">
-            <p className="text-sm text-green-700">Sent to {sentTo.join(", ")} with the report attached.</p>
+            <p className="text-sm text-green-700">Sent to {sentTo.join(", ")} with the report attached (all of them, in one email).</p>
             <button onClick={onClose} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
               Done
             </button>
@@ -97,7 +100,7 @@ function EmailModal({
                 Cancel
               </button>
               <button
-                onClick={send}
+                onClick={submit}
                 disabled={busy || to.trim() === ""}
                 className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
               >
@@ -278,7 +281,7 @@ export default function InspectionPanel({
         </div>
       )}
 
-      {emailing && <EmailModal inspectionId={inspectionId} onClose={() => setEmailing(false)} onSent={onEmailed} />}
+      {emailing && <EmailModal send={(to, message) => emailInspectionReport(inspectionId, to, message)} onClose={() => setEmailing(false)} onSent={onEmailed} />}
     </div>
   );
 }

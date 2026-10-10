@@ -46,7 +46,7 @@ const COMMODITY_EMOJI: [RegExp, string][] = [
   [/squash|zucchini/i, "🥒"],
 ];
 
-function commodityEmoji(commodity: string): string {
+export function commodityEmoji(commodity: string): string {
   return COMMODITY_EMOJI.find(([re]) => re.test(commodity))?.[1] ?? "🌿";
 }
 

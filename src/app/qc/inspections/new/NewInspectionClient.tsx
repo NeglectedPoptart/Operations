@@ -24,6 +24,9 @@ interface PhotoItem {
   preview: string;
 }
 
+// Header values a new commodity on the same PO / lot starts with.
+const SHARED_HEADER_KEYS = ["facility", "grower", "lot_number", "receive_date", "pack_date"];
+
 // "2026-10-08T17:53" in the device's own clock, for the datetime-local box.
 function nowLocalInput(): string {
   const d = new Date();
@@ -64,9 +67,19 @@ export default function NewInspectionClient({
   const [lastId, setLastId] = useState<string | null>(null);
   const [finished, setFinished] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // What a new commodity on the same PO carries over from the one just submitted.
+  const carryRef = useRef<Record<string, string> | null>(null);
+  const [lastCarry, setLastCarry] = useState<Record<string, string>>({});
+
+  function carriedHeader(next: QcPlan | null): Record<string, string> {
+    const carry = carryRef.current;
+    if (!carry) return {};
+    const keys = new Set((next?.config.headerFields ?? []).map((f) => f.key));
+    return Object.fromEntries(Object.entries(carry).filter(([k, v]) => keys.has(k) && v));
+  }
 
   // Starting a plan (or switching plans) resets everything that belongs to it.
-  function resetForPlan(next: QcPlan | null, keepHeader: boolean) {
+  function resetForPlan(next: QcPlan | null) {
     const cfg = next?.config;
     setCounts({});
     setSamples(Array.from({ length: cfg?.sampleCount ?? 0 }, () => ({})));
@@ -79,14 +92,15 @@ export default function NewInspectionClient({
       prev.forEach((p) => URL.revokeObjectURL(p.preview));
       return [];
     });
-    if (!keepHeader) setHeader({});
+    // A new commodity on the same PO keeps the PO / lot, grower and facility.
+    setHeader(carriedHeader(next));
     setInspectionTime(nowLocalInput());
   }
 
   useEffect(() => {
     // Set up the form for whichever plan is selected first, and on every switch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    resetForPlan(plan, false);
+    resetForPlan(plan);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planId]);
 
@@ -158,15 +172,20 @@ export default function NewInspectionClient({
         photoPaths,
         reason,
       });
-
       setLastId(saved.id);
+      // What the next commodity on this PO / lot shares with this one.
+      const shared: Record<string, string> = {};
+      for (const k of SHARED_HEADER_KEYS) if (header[k]) shared[k] = header[k];
+      setLastCarry(shared);
       if (another) {
-        resetForPlan(plan, true);
+        carryRef.current = shared;
+        resetForPlan(plan);
         setDone(true);
       } else {
         // Stay here with the WhatsApp button and the next steps, instead of jumping away.
+        carryRef.current = null;
         setFinished(true);
-        resetForPlan(plan, false);
+        resetForPlan(plan);
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
@@ -223,7 +242,7 @@ export default function NewInspectionClient({
         <h1 className="text-2xl font-bold">New Inspection</h1>
         {done && !finished && (
           <div className="mt-2 flex flex-wrap items-center gap-3 rounded-md bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
-            <span>Inspection submitted - it&apos;s in Inspection History. The next one is ready below.</span>
+            <span>Inspection submitted - it&apos;s in Inspection History. Pick the next commodity below - the PO and lot are filled in.</span>
             {lastId && <WhatsappShareButton inspectionId={lastId} label="Send the last one to WhatsApp" className="rounded-md bg-green-600 px-3 py-1 text-sm font-medium text-white hover:bg-green-700" />}
           </div>
         )}
@@ -241,6 +260,20 @@ export default function NewInspectionClient({
           <div className="flex flex-wrap gap-3 text-sm">
             <button
               onClick={() => {
+                // Another commodity on the same PO / lot: its details are filled in.
+                carryRef.current = lastCarry;
+                resetForPlan(plan);
+                setFinished(false);
+                setDone(false);
+              }}
+              className="rounded-md bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
+            >
+              Add new commodity (same PO and lot)
+            </button>
+            <button
+              onClick={() => {
+                carryRef.current = null;
+                resetForPlan(plan);
                 setFinished(false);
                 setDone(false);
               }}
@@ -440,7 +473,7 @@ export default function NewInspectionClient({
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-1 lg:px-8">
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} className="h-4 w-4" />
-                Create another inspection
+                Add new commodity (same PO and lot)
               </label>
               <button
                 onClick={submit}

@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { graphConfigured, sendEmail } from "@/lib/agents/graph";
-import { buildReportForInspection } from "@/lib/qcReportData";
+import { buildReportForInspection, buildReportsForInspections } from "@/lib/qcReportData";
+import { groupReportSubject, reportSubject } from "@/lib/qcEmailSubject";
 import { buildWhatsappText } from "@/lib/qcWhatsapp";
 import { defectTotals, percentText, type QcLotInspection, type QcLotPhoto } from "@/lib/qcPlans";
 
@@ -96,7 +97,7 @@ export async function emailInspectionReport(
   try {
     await sendEmail({
       to,
-      subject: `Inspection Report - ${inspection.plan_name}${inspection.lot_number ? ` - ${inspection.lot_number}` : ""} (${day})`,
+      subject: reportSubject(inspection),
       body,
       // Replies go to the person who sent it, not the unattended HOP@ mailbox.
       replyTo: user.email ? [user.email] : undefined,
@@ -169,4 +170,55 @@ export async function removeInspectionPhoto(id: string, photoId: string): Promis
   await supabase.storage.from("qc-photos").remove([row.storage_path as string]);
   revalidatePath("/qc/inspections");
   return { ok: true };
+}
+
+// One email with every report of a PO / lot attached (a separate PDF per
+// commodity), from the shared HOP@ mailbox.
+export async function emailGroupReports(
+  ids: string[],
+  toText: string,
+  message: string,
+): Promise<{ ok: true; sentTo: string[] } | { error: string }> {
+  const to = parseRecipients(toText);
+  if (to.length === 0) return { error: "Enter at least one email address." };
+  if (ids.length === 0) return { error: "There are no reports to send." };
+  if (!graphConfigured()) return { error: "Outlook isn't set up for HOPS yet (see SubManagement > Agents)." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You're not signed in." };
+
+  const built = await buildReportsForInspections(supabase, ids);
+  if (!built) return { error: "Those inspections weren't found." };
+  const { reports } = built;
+
+  const day = new Date(reports[0].inspection.inspection_time).toLocaleDateString("en-US", { timeZone: "America/Chicago" });
+  const inspectors = [...new Set(reports.map((r) => r.inspection.inspector_name).filter(Boolean))];
+  const body = [
+    message.trim() || `Please find the quality inspection reports attached (${reports.length} commodities).`,
+    "",
+    ...reports.map((r) => `- ${r.inspection.commodity}${r.inspection.product_label ? ` ${r.inspection.product_label}` : ""}${r.inspection.result ? ` - ${r.inspection.result}` : ""}`),
+    "",
+    `Inspected ${day}${inspectors.length > 0 ? ` by ${inspectors.join(", ")}` : ""}`,
+    "",
+    "Harvest Best Quality Control",
+  ].join("\n");
+
+  try {
+    await sendEmail({
+      to,
+      subject: groupReportSubject(reports.map((r) => r.inspection)),
+      body,
+      replyTo: user.email ? [user.email] : undefined,
+      attachments: reports.map((r) => ({ name: r.fileName, contentType: "application/pdf", data: r.pdf })),
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't send the email." };
+  }
+
+  await supabase.from("qc_inspections").update({ mail: true }).in("lot_inspection_id", ids);
+  revalidatePath("/qc/inspections");
+  return { ok: true, sentTo: to };
 }

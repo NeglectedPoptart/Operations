@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { QC_RESULTS, type QcInspection } from "@/lib/types";
+import GroupPanel from "./GroupPanel";
 import InspectionPanel from "./InspectionPanel";
 import { addQcInspectionRow, deleteQcInspectionRow, updateQcInspectionRow } from "./actions";
 
@@ -28,6 +29,10 @@ const COLUMNS = [
 ] as const;
 type ColKey = (typeof COLUMNS)[number]["key"];
 
+type FlatRow =
+  | { kind: "row"; item: QcInspection; nested: boolean }
+  | { kind: "group"; key: string; items: QcInspection[]; open: boolean };
+
 export default function QcInspectionsClient({ initialItems }: { initialItems: QcInspection[] }) {
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
@@ -38,6 +43,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
   const [filterResult, setFilterResult] = useState("");
   const [search, setSearch] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const cellRefs = useRef<Map<string, HTMLInputElement | HTMLSelectElement>>(new Map());
 
   function cellKey(rowIndex: number, col: ColKey) {
@@ -52,7 +58,20 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
     };
   }
 
-  function focusCell(rowIndex: number, col: ColKey) {
+  // Moves to the cell in that row, or the next row in that direction that has
+  // one (a collapsed group has no cells to land on).
+  function focusCell(rowIndex: number, col: ColKey, step: 1 | -1 = 1) {
+    for (let i = rowIndex; i >= 0 && i < 5000; i += step) {
+      const el = cellRefs.current.get(cellKey(i, col));
+      if (el) {
+        el.focus();
+        return;
+      }
+      if (i > rowIndex + 500 || i < rowIndex - 500) return;
+    }
+  }
+
+  function focusCellExact(rowIndex: number, col: ColKey) {
     cellRefs.current.get(cellKey(rowIndex, col))?.focus();
   }
 
@@ -65,11 +84,11 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
       case "ArrowDown":
       case "Enter":
         e.preventDefault();
-        focusCell(rowIndex + 1, col);
+        focusCell(rowIndex + 1, col, 1);
         return;
       case "ArrowUp":
         e.preventDefault();
-        focusCell(rowIndex - 1, col);
+        focusCell(rowIndex - 1, col, -1);
         return;
       case "ArrowLeft": {
         if (isTextCol && target instanceof HTMLInputElement) {
@@ -78,7 +97,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
         const prev = COLUMNS[colIndex - 1];
         if (prev) {
           e.preventDefault();
-          focusCell(rowIndex, prev.key);
+          focusCellExact(rowIndex, prev.key);
         }
         return;
       }
@@ -89,7 +108,7 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
         const next = COLUMNS[colIndex + 1];
         if (next) {
           e.preventDefault();
-          focusCell(rowIndex, next.key);
+          focusCellExact(rowIndex, next.key);
         }
         return;
       }
@@ -124,6 +143,44 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
     return list;
   }, [sortedItems, dateFrom, dateTo, filterQc, filterResult, search]);
 
+  // Rows of the same PO / lot on the same day - several commodities received
+  // together, each inspected and reported on its own - are gathered under one
+  // line. A group opens to show its rows and the "all reports" actions.
+  const flat = useMemo(() => {
+    const norm = (s: string | null) => (s ?? "").replace(/\s+/g, "").toUpperCase();
+    const keyOf = (i: QcInspection) => (norm(i.po) || norm(i.lot) ? `${i.entry_date ?? ""}|${norm(i.po)}|${norm(i.lot)}` : null);
+    const members = new Map<string, QcInspection[]>();
+    for (const i of displayedItems) {
+      const k = keyOf(i);
+      if (k) members.set(k, [...(members.get(k) ?? []), i]);
+    }
+    const out: FlatRow[] = [];
+    const done = new Set<string>();
+    for (const i of displayedItems) {
+      const k = keyOf(i);
+      const group = k ? members.get(k) : undefined;
+      if (k && group && group.length > 1) {
+        if (done.has(k)) continue;
+        done.add(k);
+        const open = openGroups.has(k);
+        out.push({ kind: "group", key: k, items: group, open });
+        if (open) for (const m of group) out.push({ kind: "row", item: m, nested: true });
+      } else {
+        out.push({ kind: "row", item: i, nested: false });
+      }
+    }
+    return out;
+  }, [displayedItems, openGroups]);
+
+  function toggleGroup(key: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   // The initials that appear on the sheet, for the Inspector filter.
   const inspectors = useMemo(
     () => [...new Set(items.map((i) => (i.qc ?? "").trim().toUpperCase()).filter(Boolean))].sort(),
@@ -151,6 +208,56 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
     if (!(await confirm("Delete this row?"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deleteQcInspectionRow(id).catch(() => {});
+  }
+
+  // The single line for a PO / lot with several commodities.
+  function renderGroup(g: Extract<FlatRow, { kind: "group" }>) {
+    const first = g.items[0];
+    const products = g.items.map((i) => (i.product ?? "").trim()).filter(Boolean);
+    const qcs = [...new Set(g.items.map((i) => (i.qc ?? "").trim().toUpperCase()).filter(Boolean))];
+    const results = [...new Set(g.items.map((i) => (i.result ?? "").trim()).filter(Boolean))];
+    const reported = g.items.filter((i) => i.lot_inspection_id).length;
+    const mailed = g.items.filter((i) => i.mail).length;
+    return (
+      <Fragment key={`group-${g.key}`}>
+        <tr
+          onClick={() => toggleGroup(g.key)}
+          className="cursor-pointer border-t border-black/10 bg-green-50/60 font-medium hover:bg-green-50 dark:border-white/10 dark:bg-green-950/20 dark:hover:bg-green-950/30"
+        >
+          <td className="px-1 py-1.5 text-center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={`mx-auto h-4 w-4 text-green-700 transition-transform dark:text-green-400 ${g.open ? "rotate-90" : ""}`}>
+              <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </td>
+          <td className="whitespace-nowrap px-2 py-1.5">{first.entry_date ?? ""}</td>
+          <td className="px-2 py-1.5">{first.po}</td>
+          <td className="px-2 py-1.5">{first.lot}</td>
+          <td className="px-2 py-1.5">
+            <span className="mr-2 rounded-full bg-green-600 px-2 py-0.5 text-xs font-semibold text-white">{g.items.length} commodities</span>
+            {products.join(", ")}
+          </td>
+          <td className="px-2 py-1.5">{qcs.join(", ")}</td>
+          <td className="px-2 py-1.5 text-center text-xs text-black/60 dark:text-white/60" />
+          <td className="px-2 py-1.5 text-center text-xs text-black/60 dark:text-white/60">
+            {reported}/{g.items.length}
+          </td>
+          <td className="px-2 py-1.5 text-xs text-black/60 dark:text-white/60">{mailed > 0 ? `${mailed}/${g.items.length} emailed` : ""}</td>
+          <td className="px-2 py-1.5">{results.join(" / ")}</td>
+          <td className="px-2 py-1.5 text-xs text-black/50 dark:text-white/50">{g.open ? "Click to close" : "Click to open"}</td>
+          <td />
+        </tr>
+        {g.open && (
+          <tr className="border-t border-black/10 bg-green-50/40 dark:border-white/10 dark:bg-green-950/10">
+            <td colSpan={12}>
+              <GroupPanel
+                items={g.items}
+                onEmailed={(ids) => setItems((prev) => prev.map((i) => (i.lot_inspection_id && ids.includes(i.lot_inspection_id) ? { ...i, mail: true } : i)))}
+              />
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
   }
 
   return (
@@ -253,9 +360,12 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
               </tr>
             </thead>
             <tbody>
-              {displayedItems.map((item, rowIndex) => (
+              {flat.map((r, rowIndex) => {
+                if (r.kind === "group") return renderGroup(r);
+                const item = r.item;
+                return (
                 <Fragment key={item.id}>
-                <tr className="border-t border-black/10 dark:border-white/10">
+                <tr className={`border-t border-black/10 dark:border-white/10 ${r.nested ? "bg-black/[0.025] dark:bg-white/[0.03]" : ""}`}>
                   <td className="px-1 py-1 text-center">
                     {item.lot_inspection_id ? (
                       <button
@@ -389,8 +499,8 @@ export default function QcInspectionsClient({ initialItems }: { initialItems: Qc
                   </tr>
                 )}
                 </Fragment>
-              ))}
-              {displayedItems.length === 0 && (
+);              })}
+              {flat.length === 0 && (
                 <tr>
                   <td colSpan={12} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                     {filtering
