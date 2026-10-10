@@ -191,6 +191,8 @@ export default function ArrivalsClient({
   const [importing, setImporting] = useState(false);
   // Which arrival days are checked in the summary strip - empty means no
   // filter (show every day). Multiple days can be checked at once.
+  // Shown briefly after a row is moved to the next week.
+  const [movedNote, setMovedNote] = useState<string | null>(null);
   const [cartonPicker, setCartonPicker] = useState<{
     rowId: string;
     growerName: string;
@@ -231,6 +233,21 @@ export default function ArrivalsClient({
   function handleRowSave(id: string, patch: Partial<MxArrival>) {
     patchWeek({ arrivals: week.arrivals.map((a) => (a.id === id ? { ...a, ...patch } : a)) });
     updateArrivalRow(id, patch).catch(() => {});
+  }
+
+  // A Sunday arrival that is really going to come Monday: the row moves to
+  // Monday of the next week (it leaves this week's sheet and is on next week's).
+  function moveToNextWeekMonday(row: MxArrival) {
+    const target = nextWeekStart(weekStart);
+    const moved: MxArrival = { ...row, week_start_date: target, arrival_day: "monday" };
+    patchWeek({ arrivals: week.arrivals.filter((a) => a.id !== row.id) });
+    // If next week has already been opened, the row shows there straight away.
+    setCache((prev) => (target in prev ? { ...prev, [target]: { ...prev[target], arrivals: [...prev[target].arrivals, moved] } } : prev));
+    updateArrivalRow(row.id, { week_start_date: target, arrival_day: "monday" }).catch(() => {
+      setMovedNote("Couldn't move that row - reload the page and try again.");
+    });
+    setMovedNote(`Moved to Monday of Week ${weekNumberOf(target)}.`);
+    setTimeout(() => setMovedNote(null), 4000);
   }
 
   // Opens the carton popup for a row: only cartons this grower actually has
@@ -533,6 +550,7 @@ export default function ArrivalsClient({
           </button>
         )}
         {loading && <span className="text-xs text-black/40">loading...</span>}
+        {movedNote && <span className="text-sm font-medium text-green-700 dark:text-green-400">{movedNote}</span>}
       </div>
 
       <div className="rounded-lg border border-black/10 p-4 dark:border-white/10">
@@ -752,6 +770,15 @@ export default function ArrivalsClient({
                                 </option>
                               ))}
                             </select>
+                            {row.arrival_day === "sunday" && (
+                              <button
+                                onClick={() => moveToNextWeekMonday(row)}
+                                title="Move this row to Monday of next week"
+                                className="mt-0.5 block text-[11px] font-medium text-green-700 hover:underline dark:text-green-400"
+                              >
+                                → Mon next week
+                              </button>
+                            )}
                           </td>
                           <td className="min-w-[8rem] px-1.5 py-1">
                             <input

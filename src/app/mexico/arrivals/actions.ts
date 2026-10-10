@@ -252,6 +252,8 @@ export async function updateArrivalRow(
     grade?: string | null;
     manifesto?: string | null;
     arrival_day?: MxArrivalDay | null;
+    // Moving a row to another week (e.g. a Sunday arrival to Monday of the next week).
+    week_start_date?: string;
     notes?: string | null;
     truck_group?: string | null;
     truck_position?: MxTruckPosition | null;
@@ -261,7 +263,7 @@ export async function updateArrivalRow(
   const supabase = await createClient();
   const { error } = await supabase.from("mx_arrivals").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  if ("grower_id" in patch || "carton_type_id" in patch || "arrival_day" in patch || COMMODITY_QTY_SLOTS.some((s) => s.idKey in patch || s.qtyKey in patch)) {
+  if ("grower_id" in patch || "carton_type_id" in patch || "arrival_day" in patch || "week_start_date" in patch || COMMODITY_QTY_SLOTS.some((s) => s.idKey in patch || s.qtyKey in patch)) {
     await syncCartonDeductionsForArrival(supabase, id).catch(() => {});
   }
   revalidateAll();
