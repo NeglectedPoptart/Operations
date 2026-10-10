@@ -131,7 +131,9 @@ export async function importOrdersReport(input: {
   parameters: string;
 }): Promise<{ error: string } | { added: number; updated: number; removed: number }> {
   const supabase = await createClient();
-  const { orders, removeIds } = input;
+  // One row per order number, whatever the caller sent (the upsert refuses an order twice).
+  const orders = [...new Map(input.orders.map((o) => [o.order_no, o])).values()];
+  const { removeIds } = input;
   if (orders.length === 0) return { error: "Nothing to import." };
 
   const { data: existing, error: readError } = await supabase.from("pending_orders").select("order_no, shipped, greyed");

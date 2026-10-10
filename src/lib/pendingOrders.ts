@@ -183,16 +183,34 @@ export function parseOrdersReport(rows: PdfRow[]): ParsedOrdersReport {
   }
 
   if (orders.length === 0) warnings.push("No orders were found - is this the Orders Summary report?");
+
+  // An order can be listed more than once (e.g. under two ship dates). It is one
+  // order here: quantities are added together and the earliest ship date is used.
+  const merged = new Map<string, ParsedOrder>();
+  const duplicates = new Map<string, string[]>();
+  for (const o of orders) {
+    const first = merged.get(o.order_no);
+    if (!first) {
+      merged.set(o.order_no, { ...o });
+      continue;
+    }
+    duplicates.set(o.order_no, [...(duplicates.get(o.order_no) ?? []), o.ship_date ?? ""]);
+    first.ordered += o.ordered;
+    first.shipped += o.shipped;
+    if (o.ship_date && (!first.ship_date || o.ship_date < first.ship_date)) first.ship_date = o.ship_date;
+    if (!first.freight) first.freight = o.freight;
+    if (!first.truck) first.truck = o.truck;
+  }
+  const unique = [...merged.values()];
+  for (const [orderNo, dates] of duplicates) {
+    warnings.push(`Order ${orderNo} is on the report more than once (${dates.map(shortDay).join(", ")}) - its quantities were added together.`);
+  }
+  // The report counts each listing, so compare against that, not the merged count.
   if (reportedOrders !== null && reportedOrders !== orders.length) {
     warnings.push(`The report says ${reportedOrders} orders but ${orders.length} were read - check the list.`);
   }
-  const seen = new Set<string>();
-  for (const o of orders) {
-    if (seen.has(o.order_no)) warnings.push(`Order ${o.order_no} appears more than once on the report.`);
-    seen.add(o.order_no);
-    if (!o.ship_date) warnings.push(`Order ${o.order_no} has no ship date.`);
-  }
-  return { orders, parameters, reportedOrders, warnings };
+  for (const o of unique) if (!o.ship_date) warnings.push(`Order ${o.order_no} has no ship date.`);
+  return { orders: unique, parameters, reportedOrders, warnings };
 }
 
 // ---------------------------------------------------------------------------
