@@ -7,9 +7,11 @@ export const dynamic = "force-dynamic";
 export default async function ProducePage() {
   const supabase = await createClient();
 
-  const [{ data: cartonTypes, error: cartonTypesError }, { data: products, error: productsError }] = await Promise.all([
+  const [{ data: cartonTypes, error: cartonTypesError }, { data: products, error: productsError }, { data: labels }] = await Promise.all([
     supabase.from("carton_types").select("*").order("position", { ascending: true }),
     supabase.from("mx_commodities").select("*").order("name", { ascending: true }),
+    // The Product Label pick-list (migration 138); the page still loads without it.
+    supabase.from("qc_field_options").select("id, value").eq("field_key", "product_label").order("value", { ascending: true }),
   ]);
 
   const error = cartonTypesError ?? productsError;
@@ -18,6 +20,10 @@ export default async function ProducePage() {
   }
 
   return (
-    <ProduceClient initialCartonTypes={(cartonTypes ?? []) as CartonType[]} initialProducts={(products ?? []) as MxCommodity[]} />
+    <ProduceClient
+      initialCartonTypes={(cartonTypes ?? []) as CartonType[]}
+      initialProducts={(products ?? []) as MxCommodity[]}
+      initialLabels={(labels ?? []) as { id: string; value: string }[]}
+    />
   );
 }

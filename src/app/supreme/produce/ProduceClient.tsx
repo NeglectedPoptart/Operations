@@ -13,7 +13,8 @@ import {
   renameCommodityVariety,
 } from "@/app/mexico/growers/actions";
 import type { CartonType, MxCommodity } from "@/lib/types";
-import { addCartonType, deleteCartonType, renameCartonType } from "./actions";
+import { addCartonType, deleteCartonType, renameCartonType, type ProductLabel } from "./actions";
+import LabelsPanel from "./LabelsPanel";
 import VarietyBlock from "./VarietyBlock";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
@@ -215,6 +216,8 @@ function CommodityTile({
   const confirm = useConfirm();
   const [newVariety, setNewVariety] = useState("");
   const [adding, setAdding] = useState(false);
+  // A tile can be folded away to just its name.
+  const [open, setOpen] = useState(true);
   const [low, setLow] = useState(group.tempLow === null ? "" : String(group.tempLow));
   const [high, setHigh] = useState(group.tempHigh === null ? "" : String(group.tempHigh));
 
@@ -251,19 +254,39 @@ function CommodityTile({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-black/10 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
-      <label className="text-xs font-medium text-black/60 dark:text-white/60">
-        Name
-        <input
-          defaultValue={group.groupName}
-          onBlur={(e) => {
-            const name = e.target.value.trim();
-            if (name && name !== group.groupName) onRenameGroup(group.groupName, name);
-            else e.target.value = group.groupName;
-          }}
-          className={`${field} mt-0.5 font-semibold`}
-        />
-      </label>
+      <div className="flex items-end gap-2">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          title={open ? "Fold this commodity away" : "Open this commodity"}
+          className="mb-1 shrink-0 rounded p-1 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`}>
+            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+        <label className="min-w-0 flex-1 text-xs font-medium text-black/60 dark:text-white/60">
+          Name
+          <input
+            defaultValue={group.groupName}
+            onBlur={(e) => {
+              const name = e.target.value.trim();
+              if (name && name !== group.groupName) onRenameGroup(group.groupName, name);
+              else e.target.value = group.groupName;
+            }}
+            className={`${field} mt-0.5 font-semibold`}
+          />
+        </label>
+      </div>
+      {!open && (
+        <p className="pl-8 text-xs text-black/50 dark:text-white/50">
+          {varietyNames.length} variet{varietyNames.length === 1 ? "y" : "ies"}
+          {group.products.filter((p) => p.size).length > 0 ? `, ${group.products.filter((p) => p.size).length} sizes` : ""}
+          {group.tempLow !== null || group.tempHigh !== null ? ` · ${group.tempLow ?? "?"}-${group.tempHigh ?? "?"}°` : ""}
+        </p>
+      )}
 
+      {open && (<>
       <div className="flex items-end gap-2">
         <span className="pb-1.5 text-xs font-medium text-black/60 dark:text-white/60">Temperatures</span>
         <label className="text-xs text-black/60 dark:text-white/60">
@@ -334,6 +357,7 @@ function CommodityTile({
           </button>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
@@ -448,9 +472,11 @@ function ProductsPanel({
 export default function ProduceClient({
   initialCartonTypes,
   initialProducts,
+  initialLabels,
 }: {
   initialCartonTypes: CartonType[];
   initialProducts: MxCommodity[];
+  initialLabels: ProductLabel[];
 }) {
   const [cartonTypes, setCartonTypes] = useState(initialCartonTypes);
   const [products, setProducts] = useState(initialProducts);
@@ -563,6 +589,7 @@ export default function ProduceClient({
         onTempsChange={handleTempsChange}
       />
       <CartonTypesPanel items={cartonTypes} onAdd={handleAddCartonType} onDelete={handleDeleteCartonType} onRename={handleRenameCartonType} />
+      <LabelsPanel initialLabels={initialLabels} />
     </div>
   );
 }

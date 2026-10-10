@@ -88,11 +88,12 @@ export default function VarietyBlock({
   const confirm = useConfirm();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  // Folded by default so a long list of varieties stays short.
+  const [open, setOpen] = useState(false);
 
   const sized = rows.filter((r) => r.size).sort((a, b) => sizeOrder(a.size!, b.size!));
   const plain = rows.find((r) => !r.size);
   const have = new Set(sized.map((r) => (r.size ?? "").toLowerCase()));
-  const suggestions = COMMON_SIZES.filter((s) => !have.has(s.toLowerCase()));
   // Sizes that don't have their CH (choice) twin yet.
   const missingCh = sized.filter((r) => !isCh(r.size!) && COMMON_SIZES.includes(r.size!.toUpperCase()) && !have.has(`${r.size!.toLowerCase()}ch`));
 
@@ -118,6 +119,16 @@ export default function VarietyBlock({
   return (
     <div className="space-y-1.5 rounded-md border border-black/10 p-2 dark:border-white/10">
       <div className="flex items-center gap-1.5">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          title={open ? "Fold away" : "Show the sizes"}
+          className="shrink-0 rounded p-0.5 text-green-700 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className={`h-4 w-4 transition-transform ${open ? "rotate-90" : ""}`}>
+            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
         <input
           defaultValue={variety}
           onBlur={(e) => {
@@ -142,6 +153,13 @@ export default function VarietyBlock({
         </button>
       </div>
 
+      {!open && (
+        <p className="pl-6 text-xs text-black/50 dark:text-white/50">
+          {sized.length === 0 ? "No sizes" : sized.map((r) => r.size).join(", ")}
+        </p>
+      )}
+
+      {open && (<>
       <div className="flex flex-wrap gap-1.5">
         {sized.map((r) => (
           <SizeChip key={r.id} product={r} onRename={onRenameSize} onDelete={removeSize} />
@@ -150,16 +168,6 @@ export default function VarietyBlock({
       </div>
 
       <div className="flex flex-wrap items-center gap-1">
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            onClick={() => add([s])}
-            disabled={busy}
-            className="rounded-full border border-dashed border-black/25 px-2 py-0.5 text-xs text-black/60 hover:border-green-600 hover:text-green-700 disabled:opacity-50 dark:border-white/25 dark:text-white/60"
-          >
-            + {s}
-          </button>
-        ))}
         {missingCh.length > 0 && (
           <button
             onClick={() => add(missingCh.map((r) => `${r.size}CH`))}
@@ -199,6 +207,7 @@ export default function VarietyBlock({
           </button>
         </p>
       )}
+      </>)}
     </div>
   );
 }
