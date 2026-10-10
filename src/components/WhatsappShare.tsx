@@ -159,14 +159,16 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
   // message goes with the first group only.
   async function share(partIndex: number) {
     const batch = parts[partIndex] ?? [];
+    setStatus("Opening the share sheet...");
     // Also copy the text, in case WhatsApp only takes the photos from the share.
     if (partIndex === 0) navigator.clipboard?.writeText(text).catch(() => {});
     try {
       await navigator.share(batch.length === 0 ? { text } : partIndex === 0 ? { text, files: batch } : { files: batch });
       setSentParts((prev) => (prev.includes(partIndex) ? prev : [...prev, partIndex]));
+      setStatus(null);
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return; // they closed the share sheet
-      setStatus("Couldn't open the share sheet - use the buttons below instead.");
+      setStatus(`Couldn't open the share sheet (${e instanceof Error ? `${e.name}: ${e.message}` : "unknown error"}). Use the buttons below instead.`);
     }
   }
 
@@ -288,13 +290,13 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
                 <p className="text-sm text-black/50">This inspection has no photos.</p>
               )}
 
-              {status && <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">{status}</p>}
             </>
           )}
         </div>
 
         {!loading && !error && (
           <div className="space-y-2 border-t border-black/10 p-4">
+            {status && <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">{status}</p>}
             {useShareSheet && parts.length <= 1 && (
               <button
                 onClick={() => share(0)}
