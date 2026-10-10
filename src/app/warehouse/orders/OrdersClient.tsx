@@ -212,6 +212,24 @@ export default function OrdersClient({
   const liveCount = main.length;
   const totalOrdered = main.reduce((s, o) => s + o.ordered, 0);
 
+  // Totals for the summary at the top - pending orders only (greyed-out ones have shipped).
+  // An order is due on its ship date, or today if that has passed, or the day it was moved to.
+  const summary = (() => {
+    const pending = orders.filter((o) => !o.greyed);
+    const dueOn = (o: PendingOrder) => (o.moved_to && o.moved_to > today ? o.moved_to : o.ship_date && o.ship_date > today ? o.ship_date : today);
+    const sum = (list: PendingOrder[]) => ({ count: list.length, qty: list.reduce((s, o) => s + o.ordered, 0) });
+    const byLabel = legend.map((l) => ({ item: l, ...sum(pending.filter((o) => o.legend_id === l.id)) }));
+    const knownIds = new Set(legend.map((l) => l.id));
+    return {
+      today: sum(pending.filter((o) => dueOn(o) === today)),
+      tomorrow: sum(pending.filter((o) => dueOn(o) === tomorrow)),
+      later: sum(pending.filter((o) => dueOn(o) > tomorrow)),
+      all: sum(pending),
+      byLabel,
+      noLabel: sum(pending.filter((o) => !o.legend_id || !knownIds.has(o.legend_id))),
+    };
+  })();
+
   function renderGroups(groups: ReturnType<typeof groupByShipDate>, isMoved: boolean) {
     return groups.map((g) => (
       <tbody key={`${isMoved}-${g.date ?? "none"}`}>
@@ -381,6 +399,51 @@ export default function OrdersClient({
       </div>
 
       {(busy || message) && <p className="text-sm text-green-700 dark:text-green-400">{busy ?? message}</p>}
+
+      {/* Summary: today, tomorrow, and each label. */}
+      {orders.length > 0 && (
+        <div className="space-y-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { title: `Today (${dayName(today)})`, note: "includes past-due", ...summary.today, strong: true },
+              { title: `Tomorrow (${dayName(tomorrow)})`, note: "includes moved", ...summary.tomorrow, strong: true },
+              { title: "Later", note: "", ...summary.later, strong: false },
+              { title: "All pending", note: "", ...summary.all, strong: false },
+            ].map((t) => (
+              <div key={t.title} className={`rounded-md border px-3 py-2 ${t.strong ? "border-green-600 bg-green-50 dark:bg-green-950/20" : "border-black/10 dark:border-white/10"}`}>
+                <p className="text-xs font-medium text-black/60 dark:text-white/60">
+                  {t.title}
+                  {t.note && <span className="ml-1 font-normal text-black/40 dark:text-white/40">· {t.note}</span>}
+                </p>
+                <p className="text-xl font-bold">{qty(t.qty)}</p>
+                <p className="text-xs text-black/60 dark:text-white/60">
+                  {t.count} order{t.count === 1 ? "" : "s"}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {summary.byLabel.map((l) => (
+              <span
+                key={l.item.id}
+                className="rounded border border-black/30 px-3 py-1.5 text-sm text-black"
+                style={{ backgroundColor: rgbaOf(l.item.color, Math.max(l.item.opacity, 0.3)) }}
+              >
+                {l.item.name}: <span className="font-bold">{qty(l.qty)}</span>
+                <span className="ml-1 text-xs opacity-70">
+                  ({l.count} order{l.count === 1 ? "" : "s"})
+                </span>
+              </span>
+            ))}
+            <span className="rounded border border-black/30 bg-white px-3 py-1.5 text-sm text-black">
+              No label: <span className="font-bold">{qty(summary.noLabel.qty)}</span>
+              <span className="ml-1 text-xs opacity-70">
+                ({summary.noLabel.count} order{summary.noLabel.count === 1 ? "" : "s"})
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Legend: each color's name, color and opacity. */}
       {legend.length > 0 && !legendOpen && (
