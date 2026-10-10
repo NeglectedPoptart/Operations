@@ -14,7 +14,7 @@ type PhotoInfo = WhatsappShareData["photos"][number];
 // Photos per share.
 const MAX_SELECT = 100; // most photos that can be picked
 const COLLAGE_MAX = 12; // more than this is too small to see as one picture
-const BATCH = 10; // Chrome only hands about 10 files at a time to the share sheet, so more go as extra messages
+const DEFAULT_BATCH = 30; // photos per share; the phone/browser may only take fewer, so it can be lowered in the window
 const PARALLEL = 6;
 
 const modalBtn = "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-50";
@@ -81,6 +81,8 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
   const started = useRef<Set<string>>(new Set());
   // Parts (of BATCH photos each) already handed to WhatsApp.
   const [sentParts, setSentParts] = useState<number[]>([]);
+  // Photos per share. A browser may only hand a few files at a time to the share sheet.
+  const [batchSize, setBatchSize] = useState(DEFAULT_BATCH);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,9 +128,9 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
   const waiting = selected.length - files.length - failedCount;
   const ready = waiting === 0;
 
-  // The photos in groups of BATCH (WhatsApp takes 30 per message).
+  // The photos in groups (WhatsApp takes 30 per message).
   const parts: File[][] = [];
-  for (let i = 0; i < files.length; i += BATCH) parts.push(files.slice(i, i + BATCH));
+  for (let i = 0; i < files.length; i += batchSize) parts.push(files.slice(i, i + batchSize));
 
   const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function" && parts.length > 0 && navigator.canShare({ files: parts[0] });
   const canShareText = typeof navigator !== "undefined" && typeof navigator.share === "function";
@@ -297,6 +299,26 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
         {!loading && !error && (
           <div className="space-y-2 border-t border-black/10 p-4">
             {status && <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-800">{status}</p>}
+            {useShareSheet && selected.length > 10 && (
+              <label className="flex items-center gap-2 text-xs text-black/70">
+                Photos per message
+                <select
+                  value={batchSize}
+                  onChange={(e) => {
+                    setBatchSize(Number(e.target.value));
+                    setSentParts([]);
+                  }}
+                  className="rounded border border-gray-300 bg-white px-1.5 py-0.5 text-sm text-black"
+                >
+                  {[10, 15, 20, 30].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-black/45">(if the share sheet won&apos;t open, try fewer)</span>
+              </label>
+            )}
             {useShareSheet && parts.length <= 1 && (
               <button
                 onClick={() => share(0)}
@@ -311,11 +333,11 @@ function Modal({ inspectionId, onClose }: { inspectionId: string; onClose: () =>
             {useShareSheet && parts.length > 1 && (
               <div className="space-y-1.5">
                 <p className="text-xs text-black/60">
-                  The share sheet takes about {BATCH} photos at a time, so these go in {parts.length} messages. Send each one to the same chat.
+                  These go in {parts.length} messages of up to {batchSize} photos. Send each one to the same chat.
                 </p>
                 {parts.map((batch, i) => {
-                  const from = i * BATCH + 1;
-                  const to = i * BATCH + batch.length;
+                  const from = i * batchSize + 1;
+                  const to = i * batchSize + batch.length;
                   return (
                     <button
                       key={i}
