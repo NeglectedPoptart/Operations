@@ -127,7 +127,6 @@ export async function buildInspectionPdf(inspection: QcLotInspection, photos: Re
   // ---- header block (right column: times)
   const headerTop = y;
   infoRow("Commodity Name", inspection.commodity);
-  infoRow("Control Point Name", inspection.control_point ?? "");
   infoRow("Inspected By", inspection.inspector_name ?? "");
   for (const f of config.headerFields) infoRow(f.label, inspection.header[f.key] ?? "");
   infoRow("Notes #1", inspection.notes_1 ?? "");

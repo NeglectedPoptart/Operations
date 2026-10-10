@@ -78,7 +78,7 @@ function PlanEditor({
   const confirm = useConfirm();
   const [name, setName] = useState(plan?.name ?? "");
   const [commodity, setCommodity] = useState(plan?.commodity ?? "");
-  const [controlPoint, setControlPoint] = useState(plan?.control_point ?? "");
+
   const [active, setActive] = useState(plan?.active ?? true);
   const [config, setConfig] = useState<PlanConfig>(() =>
     plan ? (JSON.parse(JSON.stringify(plan.config)) as PlanConfig) : emptyPlanConfig(),
@@ -128,7 +128,7 @@ function PlanEditor({
     setBusy(true);
     setMessage(null);
     try {
-      const saved = await savePlan(plan?.id ?? null, { name, commodity, control_point: controlPoint, active, config });
+      const saved = await savePlan(plan?.id ?? null, { name, commodity, control_point: plan?.control_point ?? "", active, config });
       onSaved(saved);
       setMessage({ kind: "ok", text: "Saved." });
     } catch (e) {
@@ -209,7 +209,7 @@ function PlanEditor({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-sm">
           Plan name
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Lettuce Receiving" className={`${field} mt-1`} />
@@ -217,10 +217,6 @@ function PlanEditor({
         <label className="text-sm">
           Commodity
           <PickListField fieldKey="commodity" value={commodity} options={commodities} onChange={setCommodity} onAdded={onCommodityAdded} inputClass={field} placeholder="Lettuce" />
-        </label>
-        <label className="text-sm">
-          Control point
-          <input value={controlPoint} onChange={(e) => setControlPoint(e.target.value)} placeholder="Receiving" className={`${field} mt-1`} />
         </label>
       </div>
       <label className="flex items-center gap-2 text-sm">
@@ -403,7 +399,7 @@ export default function PlansClient({ initialPlans, commodityOptions }: { initia
               >
                 <span className="block font-medium">{p.name}</span>
                 <span className="block text-xs text-black/50 dark:text-white/50">
-                  {[p.commodity, p.control_point].filter(Boolean).join(" · ")}
+                  {p.commodity}
                   {!p.active && " · inactive"}
                 </span>
               </button>
