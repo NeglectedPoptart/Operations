@@ -417,7 +417,7 @@ export default function QcInspectionsClient({
           <td className="px-2 py-1.5 text-xs text-black/50 dark:text-white/50">{g.open ? "Click to close" : "Click to open"}</td>
           <td />
         </tr>
-        {g.open && (
+        {g.open && g.items.some((i) => i.lot_inspection_id) && (
           <tr className="border-t border-black/10 bg-green-50/40 dark:border-white/10 dark:bg-green-950/10">
             <td colSpan={12}>
               <GroupPanel
@@ -576,7 +576,7 @@ export default function QcInspectionsClient({
                 return (
                 <Fragment key={item.id}>
                 <tr className={`border-t border-black/10 dark:border-white/10 ${r.nested ? "bg-black/[0.025] dark:bg-white/[0.03]" : ""}`}>
-                  <td className="px-1 py-1 text-center">
+                  <td className={`px-1 py-1 text-center ${r.nested ? "border-l-4 border-green-600" : ""}`}>
                     {item.lot_inspection_id ? (
                       <button
                         onClick={() => setOpenId((cur) => (cur === item.id ? null : item.id))}
