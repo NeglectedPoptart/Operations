@@ -351,6 +351,11 @@ export default function QcInspectionsClient({
     }
   }
 
+  // Ticks (or unticks) Chat or Report on every row of a PO / lot group at once.
+  function setGroupFlag(items: QcInspection[], field: "chat" | "report", value: boolean) {
+    for (const i of items) if (i[field] !== value) handleFieldSave(i.id, { [field]: value });
+  }
+
   // The band that opens and closes a month.
   function renderMonth(m: Extract<FlatRow, { kind: "month" }>) {
     return (
@@ -401,9 +406,11 @@ export default function QcInspectionsClient({
             {products.join(", ")}
           </td>
           <td className="px-2 py-1.5">{qcs.join(", ")}</td>
-          <td className="px-2 py-1.5 text-center text-xs text-black/60 dark:text-white/60" />
-          <td className="px-2 py-1.5 text-center text-xs text-black/60 dark:text-white/60">
-            {reported}/{g.items.length}
+          <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+            <GroupCheck items={g.items} field="chat" onSet={setGroupFlag} title="Chat - tick or untick it for every commodity on this PO" />
+          </td>
+          <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+            <GroupCheck items={g.items} field="report" onSet={setGroupFlag} title={`Report - tick or untick it for every commodity on this PO (${reported} of ${g.items.length} have a full report in HOPS)`} />
           </td>
           <td className="px-2 py-1.5 text-xs text-black/60 dark:text-white/60">{mailed > 0 ? `${mailed}/${g.items.length} emailed` : ""}</td>
           <td className="px-2 py-1.5">{results.join(" / ")}</td>
@@ -717,5 +724,32 @@ export default function QcInspectionsClient({
         </div>
       </div>
     </div>
+  );
+}
+
+// A checkbox for a whole group: ticked when every row is, "dash" when only some are.
+function GroupCheck({
+  items,
+  field,
+  onSet,
+  title,
+}: {
+  items: QcInspection[];
+  field: "chat" | "report";
+  onSet: (items: QcInspection[], field: "chat" | "report", value: boolean) => void;
+  title: string;
+}) {
+  const ticked = items.filter((i) => i[field]).length;
+  const all = ticked === items.length;
+  return (
+    <input
+      type="checkbox"
+      checked={all}
+      title={title}
+      ref={(el) => {
+        if (el) el.indeterminate = ticked > 0 && !all;
+      }}
+      onChange={(e) => onSet(items, field, e.target.checked)}
+    />
   );
 }

@@ -30,6 +30,15 @@ export default function GroupPanel({ items, onEmailed }: { items: QcInspection[]
     frame.src = `${url}&t=${Date.now()}`;
   }
 
+  if (ids.length === 0) {
+    return (
+      <p className="px-3 py-3 text-xs text-black/50 dark:text-white/50">
+        None of these rows has a full inspection report in HOPS (they were logged on the sheet only), so there is nothing to view or email.
+        Use the Chat and Report ticks on the line above to mark them all at once.
+      </p>
+    );
+  }
+
   return (
     <div className="space-y-2 px-2 py-3">
       <div className="flex flex-wrap items-center gap-2">
