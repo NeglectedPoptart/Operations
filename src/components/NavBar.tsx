@@ -367,7 +367,7 @@ export default function NavBar({
                           onClick={() => openPopout(item.href)}
                           title={`Open ${item.label} in its own window`}
                           aria-label={`Open ${item.label} in its own window`}
-                          className="ml-1 hidden shrink-0 rounded p-1 text-sidebar-text-muted opacity-0 hover:bg-sidebar-hover hover:text-white focus:opacity-100 group-hover:opacity-100 lg:block"
+                          className="ml-1 hidden shrink-0 rounded p-1 text-sidebar-text-muted opacity-60 hover:bg-sidebar-hover hover:text-white hover:opacity-100 focus:opacity-100 sm:block"
                         >
                           <PopoutIcon />
                         </button>
