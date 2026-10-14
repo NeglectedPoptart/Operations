@@ -36,8 +36,20 @@ function keyOf(i: { whse: string; comm: string; variety: string; pstyle: string;
 // already on the list (matched by whse+comm+variety+pstyle+size+label) just
 // gets its qty_needed refreshed in place - position and notes are left
 // untouched so nothing reshuffles or loses its note on re-paste.
-export async function importBuyersListItems(items: ParsedBuyersItem[]): Promise<BuyersListItem[]> {
+export async function importBuyersListItems(rawItems: ParsedBuyersItem[]): Promise<BuyersListItem[]> {
   const supabase = await createClient();
+
+  // The same line twice in one report (same warehouse, commodity, variety, pack
+  // style, size and label) is one shortage: the quantities are added together.
+  // (The table allows each combination once, so a repeat would fail the import.)
+  const merged = new Map<string, ParsedBuyersItem>();
+  for (const it of rawItems) {
+    const k = keyOf(it);
+    const have = merged.get(k);
+    if (have) have.qtyNeeded += it.qtyNeeded;
+    else merged.set(k, { ...it });
+  }
+  const items = [...merged.values()];
 
   const { data: existingRows, error: fetchError } = await supabase
     .from("buyers_list_items")

@@ -79,6 +79,9 @@ export default function BuyersListClient({ initialItems }: { initialItems: Buyer
       setItems(result);
       setPreviewItems(null);
       setShowUpload(false);
+    } catch (err) {
+      // Say what went wrong instead of leaving the button doing nothing.
+      setParseError(`Couldn't add these to the list: ${err instanceof Error ? err.message : "try again"}`);
     } finally {
       setImporting(false);
     }

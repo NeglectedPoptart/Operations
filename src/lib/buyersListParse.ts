@@ -49,9 +49,14 @@ function popIfLabel(tokens: string[]): string | null {
 // needs to be recognized well enough to discard before it's mistaken for
 // PStyle/Size. Observed values are short: a single letter ("U") or a
 // "#<digits>" code ("#1").
+// Short size words that look like a grade code ("CH" = choice, e.g. "CH 0 0 0 56
+// 0 -56" under an LGE/MED/CH size ladder) - they are the Size, not a Grade.
+const SIZE_WORDS_LOOKING_LIKE_GRADES = new Set(["CH", "XL", "LG", "MD", "SM", "JB"]);
+
 function popIfGrade(tokens: string[]): void {
   const last = tokens[tokens.length - 1];
-  if (last && (/^[A-Z]{1,2}$/.test(last) || /^#\d+$/.test(last))) tokens.pop();
+  if (!last || SIZE_WORDS_LOOKING_LIKE_GRADES.has(last.toUpperCase())) return;
+  if (/^[A-Z]{1,2}$/.test(last) || /^#\d+$/.test(last)) tokens.pop();
 }
 
 function parseNum(raw: string): number {
@@ -114,7 +119,12 @@ export function parseBuyersListPdfText(raw: string): { items: ParsedBuyersItem[]
       state.pstyle = desc[0];
       state.size = desc[1];
     } else if (desc.length === 1) {
-      if (PSTYLE_ONLY_MARKERS.has(desc[0].toUpperCase())) {
+      // A lone token that is the same kind of pack code as the current pack
+      // style (CACTN52 -> CACTN56) is a new pack style on the same size, not a size.
+      const letters = (s: string) => (/^[A-Za-z]+/.exec(s)?.[0] ?? "").toUpperCase();
+      const sameFamily =
+        letters(desc[0]).length >= 3 && letters(desc[0]) === letters(state.pstyle) && desc[0].toUpperCase() !== state.pstyle.toUpperCase();
+      if (PSTYLE_ONLY_MARKERS.has(desc[0].toUpperCase()) || sameFamily) {
         state.pstyle = desc[0];
       } else {
         state.size = desc[0];
