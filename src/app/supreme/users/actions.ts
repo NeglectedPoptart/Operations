@@ -61,6 +61,55 @@ export async function setUserPassword(userId: string, newPassword: string): Prom
   return { ok: true };
 }
 
+// Add a person. Created directly with the password you give - no invitation or
+// confirmation email is sent (email_confirm is set), so they can sign in right
+// away. Supreme only.
+export async function createUserAccount(input: {
+  email: string;
+  password: string;
+  role: string;
+  brokerId?: string | null;
+}): Promise<{ error: string } | { profile: Record<string, unknown> }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!isSupremeUser(user?.email ?? null)) return { error: "Not allowed." };
+
+  const email = input.email.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Enter a valid email address." };
+  const problem = passwordProblem(input.password);
+  if (problem) return { error: problem };
+
+  const { data: role } = await supabase.from("roles").select("key").eq("key", input.role).maybeSingle();
+  if (!role) return { error: "Pick a role for them." };
+
+  try {
+    const admin = adminClient();
+    const { data: created, error } = await admin.auth.admin.createUser({
+      email,
+      password: input.password,
+      email_confirm: true, // no confirmation / setup email
+    });
+    if (error || !created.user) {
+      const message = error?.message ?? "Couldn't create the user.";
+      return { error: /already|registered|exists/i.test(message) ? "Someone with that email already has a login." : message };
+    }
+
+    // A profile row is added automatically (as Sales); set the real role and the rest.
+    const patch: Record<string, unknown> = { role: input.role, password_changed_at: new Date().toISOString() };
+    if (input.role === "broker_carrier") patch.broker_id = input.brokerId || null;
+    const { error: profileError } = await admin.from("profiles").update(patch).eq("id", created.user.id);
+    if (profileError) return { error: `The login was created but its role couldn't be set: ${profileError.message}` };
+
+    const { data: profile } = await admin.from("profiles").select("*").eq("id", created.user.id).single();
+    revalidatePath("/supreme/users");
+    return { profile: (profile ?? { id: created.user.id, email, role: input.role }) as Record<string, unknown> };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't create the user." };
+  }
+}
+
 // A person's time zone, for the Activity Log's "their time". null puts them
 // back on auto-detect (their browser's zone is picked up on their next visit).
 export async function updateUserTimezone(id: string, timeZone: string | null) {

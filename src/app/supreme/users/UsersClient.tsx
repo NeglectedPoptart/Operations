@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate, formatTimestamp } from "@/lib/dates";
+import AddUserModal from "./AddUserModal";
 import SetPasswordModal from "./SetPasswordModal";
 import { NAV } from "@/lib/navConfig";
 import type { Role, Tab } from "@/lib/roles";
@@ -295,6 +296,8 @@ export default function UsersClient({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [passwordFor, setPasswordFor] = useState<Profile | null>(null);
+  // The Add user window, opened with the role it should start on.
+  const [adding, setAdding] = useState<string | null>(null);
 
   const peopleByRole = useMemo(() => {
     const m = new Map<string, number>();
@@ -484,10 +487,20 @@ export default function UsersClient({
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
 
       <CollapsibleSection id="users-people" title="People" note={`${people.length}`}>
+        <div className="flex justify-end">
+          <button onClick={() => setAdding("sales")} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+            + Add user
+          </button>
+        </div>
         {loginsTable(people, false)}
       </CollapsibleSection>
 
       <CollapsibleSection id="users-carriers" title="Carriers / Brokers" note={`${carrierLogins.length}`}>
+        <div className="flex justify-end">
+          <button onClick={() => setAdding("broker_carrier")} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+            + Add carrier / broker login
+          </button>
+        </div>
         {loginsTable(carrierLogins, true)}
       </CollapsibleSection>
 
@@ -506,6 +519,15 @@ export default function UsersClient({
         </div>
         <NewRole roles={roles} onCreated={(r) => setRoles((prev) => [...prev, r])} onError={setError} />
       </CollapsibleSection>
+      {adding !== null && (
+        <AddUserModal
+          roles={roles}
+          brokers={brokers}
+          defaultRole={adding}
+          onClose={() => setAdding(null)}
+          onCreated={(profile) => setProfiles((prev) => (prev.some((p) => p.id === profile.id) ? prev : [...prev, profile]))}
+        />
+      )}
       {passwordFor && (
         <SetPasswordModal
           email={passwordFor.email ?? "(no email)"}
