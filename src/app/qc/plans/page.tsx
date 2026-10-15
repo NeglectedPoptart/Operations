@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { canEditQcPlans } from "@/lib/roles";
+import { canEditPlansNow } from "@/lib/pageAccess";
 import type { QcPlan } from "@/lib/qcPlans";
 import PlansClient from "./PlansClient";
 
@@ -10,9 +10,8 @@ export default async function QcPlansPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile } = user ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null };
 
-  if (!canEditQcPlans((profile?.role as string | null) ?? null, user?.email ?? null)) {
+  if (!(await canEditPlansNow(supabase, user))) {
     return (
       <p className="text-sm text-black/60 dark:text-white/60">
         Inspection plans can only be changed by the Quality Control Manager.

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { canAccessTab, isPageAllowed, isPageHidden, isSupremeUser, tabForPath, type Role } from "./roles";
+import { canAccessTab, canEditQcPlans, isPageAllowed, isPageHidden, isSupremeUser, tabForPath, type Role } from "./roles";
 import { loadRoleAccess } from "./roleAccess";
 
 // Can this signed-in person open the page, going by their role's settings on
@@ -21,4 +21,20 @@ export async function canOpenPage(
   if (isPageAllowed(access, pathname)) return true;
   const tab = tabForPath(pathname);
   return !!tab && canAccessTab(access, tab) && !isPageHidden(access, pathname);
+}
+
+// Who may change the inspection plans: the Quality Control Manager and the
+// Supreme account, plus any role given the Inspection Plans page on User Roles.
+export async function canEditPlansNow(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: SupabaseClient<any, any, any>,
+  user: { id: string; email?: string | null } | null,
+): Promise<boolean> {
+  if (!user) return false;
+  if (isSupremeUser(user.email ?? null)) return true;
+  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  const role = (profile?.role ?? null) as Role | null;
+  if (canEditQcPlans(role, user.email ?? null)) return true;
+  if (!role) return false;
+  return isPageAllowed(await loadRoleAccess(supabase, role), "/qc/plans");
 }

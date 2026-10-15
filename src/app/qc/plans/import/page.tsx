@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { canEditQcPlans } from "@/lib/roles";
+import { canEditPlansNow } from "@/lib/pageAccess";
 import ImportClient from "./ImportClient";
 
 export const dynamic = "force-dynamic";
@@ -11,9 +11,8 @@ export default async function ImportLotpathPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { data: profile } = user ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle() : { data: null };
 
-  if (!canEditQcPlans((profile?.role as string | null) ?? null, user?.email ?? null)) {
+  if (!(await canEditPlansNow(supabase, user))) {
     return (
       <p className="text-sm text-black/60 dark:text-white/60">
         Importing inspections can only be done by the Quality Control Manager.

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { canEditQcPlans } from "@/lib/roles";
+import { canEditPlansNow } from "@/lib/pageAccess";
 import {
   DEFAULT_RESULT_OPTIONS,
   emptyPlanConfig,
@@ -20,8 +20,7 @@ async function managerClient() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (!canEditQcPlans((profile?.role as string | null) ?? null, user.email ?? null)) {
+  if (!(await canEditPlansNow(supabase, user))) {
     throw new Error("Only the Quality Control Manager can change inspection plans.");
   }
   return supabase;

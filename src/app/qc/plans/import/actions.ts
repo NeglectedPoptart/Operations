@@ -7,7 +7,7 @@ import { extractLotpathRows } from "@/lib/lotpathExtract";
 import { centralToIso, configFromParsed, extendConfig, mapToPlan } from "@/lib/lotpathImport";
 import { norm, normalizeResult, parseLotpathRows, type ParsedLotpath } from "@/lib/lotpathParse";
 import { splitPoLot } from "@/lib/qcLot";
-import { canEditQcPlans } from "@/lib/roles";
+import { canEditPlansNow } from "@/lib/pageAccess";
 import { defectTotals, initialsFor, percentText, productText, type PlanConfig, type QcPlan } from "@/lib/qcPlans";
 
 // Bulk-importing LotPath PDFs creates and extends plans, so it's limited to the
@@ -23,8 +23,7 @@ async function managerContext() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not signed in.");
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (!canEditQcPlans((profile?.role as string | null) ?? null, user.email ?? null)) {
+  if (!(await canEditPlansNow(supabase, user))) {
     throw new Error("Only the Quality Control Manager can import inspections.");
   }
   return { supabase, user };

@@ -28,8 +28,8 @@ import {
 const SECTIONS = NAV.filter((c) => c.tab && !c.supremeOnly).map((c) => ({
   tab: c.tab as Tab,
   label: c.label,
-  // Supreme-only pages (Agents, Activity Log) are never given out by role.
-  pages: (c.items ?? []).filter((i) => !i.supremeOnly && !i.onlyRoles).map((i) => ({ href: i.href, label: i.label })),
+  // Pages only the Supreme account can open (the Supreme Tab) are left out; everything else can be given to a role.
+  pages: (c.items ?? []).filter((i) => !i.supremeOnly).map((i) => ({ href: i.href, label: i.label, onlyRoles: i.onlyRoles })),
 }));
 
 const selectClass = "w-full max-w-[12rem] rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black disabled:opacity-60";
@@ -73,8 +73,8 @@ function RoleCard({
 
   // Inside a section the role has, a page is hidden or shown. Inside a section it
   // doesn't have, a page is given (or taken away) on its own.
-  function togglePage(href: string, sectionOn: boolean) {
-    if (sectionOn) {
+  function togglePage(href: string, sectionOn: boolean, restricted = false) {
+    if (sectionOn && !restricted) {
       const hidden = role.hidden_pages.includes(href) ? role.hidden_pages.filter((h) => h !== href) : [...role.hidden_pages, href];
       void run(role, { ...role, hidden_pages: hidden }, () => setRoleHiddenPages(role.key, hidden));
     } else {
@@ -104,8 +104,11 @@ function RoleCard({
     }
   }
 
+  // A page only certain roles get by default (Inspection Plans: the Quality Control Manager) -
+  // for any other role it is off until it is given here, whether or not the section is ticked.
+  const restricted = (p: { onlyRoles?: string[] }) => !!p.onlyRoles && !p.onlyRoles.includes(role.key);
   const sectionCount = isBroker ? 0 : role.tabs.length;
-  const singlePages = isBroker ? 0 : (role.allowed_pages ?? []).filter((p) => !SECTIONS.some((s) => role.tabs.includes(s.tab) && s.pages.some((x) => x.href === p))).length;
+  const singlePages = isBroker ? 0 : (role.allowed_pages ?? []).filter((p) => !SECTIONS.some((s) => role.tabs.includes(s.tab) && s.pages.some((x) => x.href === p && !x.onlyRoles))).length;
 
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/10">
@@ -191,11 +194,12 @@ function RoleCard({
                           <label key={p.href} className="flex items-center gap-2 text-xs">
                             <input
                               type="checkbox"
-                              checked={on ? !role.hidden_pages.includes(p.href) : (role.allowed_pages ?? []).includes(p.href)}
-                              onChange={() => togglePage(p.href, on)}
+                              checked={restricted(p) ? (role.allowed_pages ?? []).includes(p.href) : on ? !role.hidden_pages.includes(p.href) : (role.allowed_pages ?? []).includes(p.href)}
+                              onChange={() => togglePage(p.href, on, restricted(p))}
                               className="h-3.5 w-3.5"
                             />
                             {p.label}
+                            {restricted(p) && <span className="text-[10px] text-black/40 dark:text-white/40">(Quality Control Manager only unless ticked here)</span>}
                           </label>
                         ))}
                       </div>
