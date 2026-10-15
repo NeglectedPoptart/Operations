@@ -133,7 +133,7 @@ export const NAV: NavCategory[] = [
   },
   {
     label: "SubManagement",
-    supremeOnly: true,
+    tab: "submanagement",
     items: [
       { href: "/submanagement/agents", label: "Agents" },
       { href: "/submanagement/activity-log", label: "Activity Log" },

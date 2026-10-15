@@ -55,7 +55,7 @@ export default async function RootLayout({
   } = await supabase.auth.getUser();
 
   let role: Role | null = null;
-  let access: RoleAccess = { tabs: [], hiddenPages: [] };
+  let access: RoleAccess = { tabs: [], hiddenPages: [], allowedPages: [] };
   let roleLabel: string | null = null;
   let reminderCheck: DailyReminderCheck | null = null;
   let savedTimezone: string | null = null;

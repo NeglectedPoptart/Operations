@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { isSupremeUser } from "@/lib/roles";
+import { canOpenPage } from "@/lib/pageAccess";
 import { setupStatus } from "@/lib/agents/run";
 import { loadRoles } from "@/lib/roleAccess";
 import type { Agent, AgentEvent, AgentReply, AgentThread } from "@/lib/agents/types";
@@ -15,7 +15,7 @@ export default async function AgentsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!isSupremeUser(user?.email ?? null)) {
+  if (!(await canOpenPage(supabase, user, "/submanagement/agents"))) {
     return <p className="text-sm text-black/60 dark:text-white/60">You do not have access to Agents.</p>;
   }
 

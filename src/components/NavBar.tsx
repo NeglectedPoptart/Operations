@@ -234,16 +234,24 @@ export default function NavBar({
         : NAV.filter((category) => {
             if (category.supremeOnly) return isSupremeUser(email);
             if (category.tab === "logistics") return canAccessTab(access, "logistics") || hasLogisticsOversight(role);
-            return !category.tab || canAccessTab(access, category.tab);
+            if (!category.tab) return true;
+            // A section shows when the role has it, or has been given one of its pages on its own.
+            return canAccessTab(access, category.tab) || (category.items ?? []).some((item) => access.allowedPages.includes(item.href));
           }).map((category) => ({
             ...category,
-            items: category.items?.filter(
-              (item) =>
+            items: category.items?.filter((item) => {
+              // A page given to the role on its own always shows.
+              if (access.allowedPages.includes(item.href)) return true;
+              // Otherwise a section the role doesn't have shows none of its pages
+              // (the section may only be listed because of a page given on its own).
+              if (category.tab && category.tab !== "logistics" && !canAccessTab(access, category.tab)) return false;
+              return (
                 !(role && item.excludeRoles?.includes(role)) &&
                 !(item.supremeOnly && !isSupremeUser(email)) &&
                 !(item.onlyRoles && !isSupremeUser(email) && !(role && item.onlyRoles.includes(role))) &&
-                !access.hiddenPages.includes(item.href),
-            ),
+                !access.hiddenPages.includes(item.href)
+              );
+            }),
           })),
     [isBrokerCarrier, role, email, access],
   );

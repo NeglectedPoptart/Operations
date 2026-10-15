@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { isSupremeUser } from "@/lib/roles";
+import { canOpenPage } from "@/lib/pageAccess";
 import { applyBuyersReply, applyOrdersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
 import type { AgentMode, ProposedBuyerUpdate, ProposedLoadUpdate, ProposedOrderUpdate, ReplyAttachment } from "@/lib/agents/types";
 
@@ -13,7 +13,7 @@ async function ownerClient() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!isSupremeUser(user?.email ?? null)) throw new Error("Not allowed.");
+  if (!(await canOpenPage(supabase, user, "/submanagement/agents"))) throw new Error("Not allowed.");
   return supabase;
 }
 

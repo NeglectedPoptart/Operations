@@ -6,6 +6,7 @@ import {
   FULL_ACCESS,
   SUPREME_PATH_PREFIXES,
   canAccessTab,
+  isPageAllowed,
   isPageHidden,
   isWarehouseQcLike,
   crmActivityAllowed,
@@ -96,7 +97,9 @@ export async function updateSession(request: NextRequest) {
   }
 
   const tab = tabForPath(pathname);
-  if (tab && !canAccessTab(access, tab)) {
+  // A page given to this role one at a time (User Roles) opens even without its whole section.
+  const pageGranted = isPageAllowed(access, pathname);
+  if (tab && !pageGranted && !canAccessTab(access, tab)) {
     // Logistics Oversight (Sales/Buyer-Sales/Executive): no "logistics" tab,
     // but still allowed onto a specific handful of Logistics pages - see
     // roles.ts.
@@ -109,7 +112,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   // A single page the role's settings hide inside an otherwise-open section.
-  if (isPageHidden(access, pathname)) {
+  if (!pageGranted && isPageHidden(access, pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
@@ -118,7 +121,7 @@ export async function updateSession(request: NextRequest) {
   // Warehouse/QC's "mexico" tab grant is deliberately partial - Arrivals
   // and Orders only, not Growers - so it needs this extra narrowing on top
   // of the generic tab check above, which only knows about whole tabs.
-  if (tab === "mexico" && isWarehouseQcLike(role) && !warehouseQcMexicoAllowed(pathname)) {
+  if (tab === "mexico" && !pageGranted && isWarehouseQcLike(role) && !warehouseQcMexicoAllowed(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);

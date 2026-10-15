@@ -46,7 +46,8 @@ export type Tab =
   | "mexico"
   | "shipping_receiving"
   | "crm"
-  | "documents";
+  | "documents"
+  | "submanagement";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -63,10 +64,11 @@ export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
 // prefix instead of a single page (see middleware.ts and NavBar.tsx).
 export const SUPREME_EMAIL = "tcamph@harvestbestinc.com";
 export const SUPREME_PATH_PREFIX = "/supreme";
-// SubManagement (Agents, Activity Log) is locked to this account too - Agents
-// sends email on the company's behalf and the Activity Log is an audit trail
-// of other people.
-export const SUPREME_PATH_PREFIXES = [SUPREME_PATH_PREFIX, "/submanagement"];
+// SubManagement (Agents, Activity Log) used to be locked to this account too. It is now a
+// section a role can be given on User Roles, like any other (Agents sends email on the
+// company's behalf and the Activity Log is an audit trail of other people, so give it
+// with care).
+export const SUPREME_PATH_PREFIXES = [SUPREME_PATH_PREFIX];
 
 export function isSupremeUser(email: string | null): boolean {
   return email === SUPREME_EMAIL;
@@ -162,25 +164,32 @@ export function canEditQcPlans(role: Role | null, email: string | null): boolean
   return role === "qc_manager" || isSupremeUser(email);
 }
 
-export const ALL_TABS: Tab[] = DEFAULT_ROLE_TABS.admin;
+export const ALL_TABS: Tab[] = [...DEFAULT_ROLE_TABS.admin, "submanagement"];
 
 // What one role can open: whole sections (tabs), minus any single pages
 // hidden inside them (menu hrefs such as "/sales/calculator").
 export interface RoleAccess {
   tabs: Tab[];
   hiddenPages: string[];
+  // Single pages the role can open even without their whole section.
+  allowedPages: string[];
 }
 
 // The Supreme account is never limited by role settings.
-export const FULL_ACCESS: RoleAccess = { tabs: ALL_TABS, hiddenPages: [] };
+export const FULL_ACCESS: RoleAccess = { tabs: ALL_TABS, hiddenPages: [], allowedPages: [] };
 
 export function defaultAccess(role: Role | null): RoleAccess {
   const tabs = role ? DEFAULT_ROLE_TABS[role as BuiltinRole] : undefined;
-  return { tabs: tabs ?? [], hiddenPages: [] };
+  return { tabs: tabs ?? [], hiddenPages: [], allowedPages: [] };
 }
 
 export function canAccessTab(access: RoleAccess | null, tab: Tab): boolean {
   return !!access && access.tabs.includes(tab);
+}
+
+// A page given to the role one at a time (works without its whole section).
+export function isPageAllowed(access: RoleAccess | null, pathname: string): boolean {
+  return !!access && access.allowedPages.some((a) => pathname === a || pathname.startsWith(`${a}/`));
 }
 
 export function isPageHidden(access: RoleAccess | null, pathname: string): boolean {
@@ -205,6 +214,7 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/shipping-receiving")) return "shipping_receiving";
   if (pathname.startsWith("/crm")) return "crm";
   if (pathname.startsWith("/documents")) return "documents";
+  if (pathname.startsWith("/submanagement")) return "submanagement";
   return null;
 }
 

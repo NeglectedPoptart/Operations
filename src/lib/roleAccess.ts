@@ -10,6 +10,8 @@ export interface RoleRow {
   label: string;
   tabs: Tab[];
   hidden_pages: string[];
+  // Single pages the role can open without the whole section (migration 142).
+  allowed_pages: string[];
   position: number;
   is_builtin: boolean;
 }
@@ -20,6 +22,7 @@ export function builtinRoleRows(): RoleRow[] {
     label: r.label,
     tabs: DEFAULT_ROLE_TABS[r.value],
     hidden_pages: [],
+    allowed_pages: [],
     position: i,
     is_builtin: true,
   }));
@@ -31,12 +34,16 @@ type Db = Pick<SupabaseClient<any, any, any>, "from">;
 export async function loadRoles(db: Db): Promise<RoleRow[]> {
   const { data, error } = await db.from("roles").select("*").order("position", { ascending: true });
   if (error || !data || data.length === 0) return builtinRoleRows();
-  return data as RoleRow[];
+  // A database that doesn't have allowed_pages yet just means no single-page grants.
+  return (data as RoleRow[]).map((r) => ({ ...r, allowed_pages: r.allowed_pages ?? [] }));
 }
 
 export async function loadRoleAccess(db: Db, role: Role | null): Promise<RoleAccess> {
-  if (!role) return { tabs: [], hiddenPages: [] };
-  const { data, error } = await db.from("roles").select("tabs, hidden_pages").eq("key", role).maybeSingle();
+  if (!role) return { tabs: [], hiddenPages: [], allowedPages: [] };
+  // allowed_pages comes from migration 142 - fall back to the older columns if it isn't there yet.
+  let { data, error } = await db.from("roles").select("tabs, hidden_pages, allowed_pages").eq("key", role).maybeSingle();
+  if (error) ({ data, error } = await db.from("roles").select("tabs, hidden_pages").eq("key", role).maybeSingle());
   if (error || !data) return defaultAccess(role);
-  return { tabs: (data.tabs ?? []) as Tab[], hiddenPages: (data.hidden_pages ?? []) as string[] };
+  const row = data as { tabs?: Tab[]; hidden_pages?: string[]; allowed_pages?: string[] };
+  return { tabs: row.tabs ?? [], hiddenPages: row.hidden_pages ?? [], allowedPages: row.allowed_pages ?? [] };
 }

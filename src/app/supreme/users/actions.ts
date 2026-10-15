@@ -211,6 +211,16 @@ export async function setRoleHiddenPages(key: string, hiddenPages: string[]) {
   refresh();
 }
 
+// Single pages a role can open even without the whole section (migration 142).
+export async function setRoleAllowedPages(key: string, pages: string[]) {
+  const supabase = await ownerClient();
+  if (key === "broker_carrier") throw new Error("Broker/Carrier only ever sees its one page.");
+  const clean = pages.filter((p) => KNOWN_PAGES.has(p));
+  const { error } = await supabase.from("roles").update({ allowed_pages: clean }).eq("key", key);
+  if (error) throw new Error(error.message);
+  refresh();
+}
+
 export async function deleteRole(key: string) {
   const supabase = await ownerClient();
   const { data: role } = await supabase.from("roles").select("is_builtin").eq("key", key).maybeSingle();

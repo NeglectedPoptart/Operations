@@ -15,6 +15,7 @@ import {
   createRole,
   deleteRole,
   renameRole,
+  setRoleAllowedPages,
   setRoleHiddenPages,
   setRoleTabs,
   updateUserBrokerId,
@@ -70,9 +71,16 @@ function RoleCard({
     void run(role, { ...role, tabs }, () => setRoleTabs(role.key, tabs));
   }
 
-  function togglePage(href: string) {
-    const hidden = role.hidden_pages.includes(href) ? role.hidden_pages.filter((h) => h !== href) : [...role.hidden_pages, href];
-    void run(role, { ...role, hidden_pages: hidden }, () => setRoleHiddenPages(role.key, hidden));
+  // Inside a section the role has, a page is hidden or shown. Inside a section it
+  // doesn't have, a page is given (or taken away) on its own.
+  function togglePage(href: string, sectionOn: boolean) {
+    if (sectionOn) {
+      const hidden = role.hidden_pages.includes(href) ? role.hidden_pages.filter((h) => h !== href) : [...role.hidden_pages, href];
+      void run(role, { ...role, hidden_pages: hidden }, () => setRoleHiddenPages(role.key, hidden));
+    } else {
+      const allowed = role.allowed_pages.includes(href) ? role.allowed_pages.filter((a) => a !== href) : [...role.allowed_pages, href];
+      void run(role, { ...role, allowed_pages: allowed }, () => setRoleAllowedPages(role.key, allowed));
+    }
   }
 
   async function saveName() {
@@ -97,6 +105,7 @@ function RoleCard({
   }
 
   const sectionCount = isBroker ? 0 : role.tabs.length;
+  const singlePages = isBroker ? 0 : (role.allowed_pages ?? []).filter((p) => !SECTIONS.some((s) => role.tabs.includes(s.tab) && s.pages.some((x) => x.href === p))).length;
 
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/10">
@@ -124,7 +133,7 @@ function RoleCard({
           )}
           <span className="text-xs text-black/50 dark:text-white/50">
             {people} {people === 1 ? "person" : "people"}
-            {isBroker ? " · one page only" : ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}`}
+            {isBroker ? " · one page only" : ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}${singlePages > 0 ? ` + ${singlePages} single page${singlePages === 1 ? "" : "s"}` : ""}`}
           </span>
         </button>
         {open && !renaming && (
@@ -150,13 +159,14 @@ function RoleCard({
           ) : (
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
               <p className="text-xs text-black/50 dark:text-white/50 sm:col-span-2">
-                Tick what this role can open. Click a section&apos;s name to hide individual pages inside it.
+                Tick a whole section, or click its name to choose pages: untick one to hide it, or - in a section that is not ticked - tick just the pages this role should have.
                 Changes save as you click.
               </p>
               {SECTIONS.map((s) => {
                 const on = role.tabs.includes(s.tab);
                 const expanded = openSection === s.tab;
                 const hiddenCount = s.pages.filter((p) => role.hidden_pages.includes(p.href)).length;
+                const givenCount = s.pages.filter((p) => (role.allowed_pages ?? []).includes(p.href)).length;
                 return (
                   <div key={s.tab} className="py-0.5">
                     <div className="flex items-center gap-2">
@@ -164,23 +174,25 @@ function RoleCard({
                       <button
                         onClick={() => setOpenSection(expanded ? null : s.tab)}
                         disabled={s.pages.length === 0}
-                        className={`text-sm ${on ? "font-medium" : "text-black/50 dark:text-white/50"} ${s.pages.length > 0 ? "hover:underline" : "cursor-default"}`}
+                        className={`text-sm ${on || givenCount > 0 ? "font-medium" : "text-black/50 dark:text-white/50"} ${s.pages.length > 0 ? "hover:underline" : "cursor-default"}`}
                       >
                         {s.label}
                       </button>
                       {on && hiddenCount > 0 && (
                         <span className="text-xs text-amber-600">{hiddenCount} page{hiddenCount === 1 ? "" : "s"} hidden</span>
                       )}
+                      {!on && givenCount > 0 && (
+                        <span className="text-xs text-green-700 dark:text-green-400">{givenCount} page{givenCount === 1 ? "" : "s"} only</span>
+                      )}
                     </div>
                     {expanded && (
                       <div className="ml-6 mt-1 space-y-0.5 border-l border-black/10 pl-3 dark:border-white/10">
                         {s.pages.map((p) => (
-                          <label key={p.href} className={`flex items-center gap-2 text-xs ${on ? "" : "opacity-40"}`}>
+                          <label key={p.href} className="flex items-center gap-2 text-xs">
                             <input
                               type="checkbox"
-                              disabled={!on}
-                              checked={!role.hidden_pages.includes(p.href)}
-                              onChange={() => togglePage(p.href)}
+                              checked={on ? !role.hidden_pages.includes(p.href) : (role.allowed_pages ?? []).includes(p.href)}
+                              onChange={() => togglePage(p.href, on)}
                               className="h-3.5 w-3.5"
                             />
                             {p.label}

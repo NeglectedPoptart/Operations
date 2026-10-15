@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { isSupremeUser } from "@/lib/roles";
+import { canOpenPage } from "@/lib/pageAccess";
 import type { AuditLogRow } from "@/lib/auditTracked";
 import ActivityLogClient from "./ActivityLogClient";
 import QcByInspector, { type QcCountRow } from "./QcByInspector";
@@ -84,7 +84,7 @@ export default async function ActivityLogPage() {
   // The log itself is also locked down by RLS (only the Supreme account can
   // read it) - this is just so anyone else lands on a clear message instead
   // of an empty page.
-  if (!isSupremeUser(user?.email ?? null)) {
+  if (!(await canOpenPage(supabase, user, "/submanagement/activity-log"))) {
     return <p className="text-sm text-black/60 dark:text-white/60">You do not have access to the Activity Log.</p>;
   }
 
