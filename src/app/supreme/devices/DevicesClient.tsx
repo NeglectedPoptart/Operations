@@ -10,14 +10,20 @@ const field = "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-s
 const label = "mb-1 block text-xs font-medium text-black/60 dark:text-white/60";
 
 // Groups in the order they appear in the list.
-const GROUP_ORDER = ["Phone", "Laptop", "Tablet", "Other"];
+const GROUP_ORDER = ["Cell phone", "Desk phone", "Laptop", "Tablet", "Other"];
+
+// Devices saved before Cell phone / Desk phone were split say just "Phone" - they are cell phones.
+function normalType(type: string | null): string {
+  return type === "Phone" ? "Cell phone" : type ?? "Other";
+}
 
 function typeOf(d: Device): string {
-  return d.device_type && GROUP_ORDER.includes(d.device_type) ? d.device_type : "Other";
+  const t = normalType(d.device_type);
+  return GROUP_ORDER.includes(t) ? t : "Other";
 }
 
 function deviceLabel(d: Device): string {
-  const type = d.device_type === "Other" ? d.device_type_other || "Other" : d.device_type;
+  const type = d.device_type === "Other" ? d.device_type_other || "Other" : normalType(d.device_type);
   return d.device_name || type || "Device";
 }
 
@@ -50,11 +56,19 @@ function Avatar({ name, photoUrl, size = 28 }: { name: string | null; photoUrl?:
 
 function TypeIcon({ type, className = "h-5 w-5" }: { type: string; className?: string }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className, viewBox: "0 0 24 24" };
-  if (type === "Phone")
+  if (type === "Cell phone")
     return (
       <svg {...common}>
         <rect x="7" y="3" width="10" height="18" rx="2" />
         <path d="M11 18h2" />
+      </svg>
+    );
+  if (type === "Desk phone")
+    return (
+      <svg {...common}>
+        <path d="M5 10c4-3 10-3 14 0l-1.5 2.5-3-1.2v-1.3a7 7 0 0 0-5 0v1.3l-3 1.2z" />
+        <rect x="4" y="15" width="16" height="5" rx="1.5" />
+        <path d="M8 17.5h.01M12 17.5h.01M16 17.5h.01" />
       </svg>
     );
   if (type === "Laptop")
@@ -286,7 +300,7 @@ function DetailPanel({
   onRemove: () => void;
 }) {
   const person = device.assigned_to ? employees.find((e) => e.id === device.assigned_to) : undefined;
-  const type = device.device_type ?? "Other";
+  const type = normalType(device.device_type);
   return (
     <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
       <div className="flex items-center gap-3">

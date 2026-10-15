@@ -1673,7 +1673,7 @@ export interface EmployeeDocument {
   created_at: string;
 }
 
-export const DEVICE_TYPES = ["Tablet", "Laptop", "Phone", "Other"] as const;
+export const DEVICE_TYPES = ["Tablet", "Laptop", "Cell phone", "Desk phone", "Other"] as const;
 export const DEVICE_CHECKOUT_CONDITIONS = ["New", "Good", "Fair", "Damaged"] as const;
 export const DEVICE_RETURN_CONDITIONS = ["Good", "Fair", "Damaged"] as const;
 
