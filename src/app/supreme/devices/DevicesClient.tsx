@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { createClient } from "@/lib/supabase/client";
 import { DEVICE_TYPES, type Device, type Employee, type EmployeeDocument } from "@/lib/types";
 import { createDevice, deleteDevice, updateDevice } from "./actions";
 
-const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
+const field = "w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black";
+const label = "mb-1 block text-xs font-medium text-black/60 dark:text-white/60";
+
+// Groups in the order they appear in the list.
+const GROUP_ORDER = ["Phone", "Laptop", "Tablet", "Other"];
+
+function typeOf(d: Device): string {
+  return d.device_type && GROUP_ORDER.includes(d.device_type) ? d.device_type : "Other";
+}
 
 function deviceLabel(d: Device): string {
   const type = d.device_type === "Other" ? d.device_type_other || "Other" : d.device_type;
-  return [type, d.device_name].filter(Boolean).join(" - ") || "Device";
+  return d.device_name || type || "Device";
 }
 
 function initials(name: string): string {
@@ -25,26 +33,53 @@ function initials(name: string): string {
   );
 }
 
-function Avatar({ name, photoUrl }: { name: string | null; photoUrl?: string }) {
+function Avatar({ name, photoUrl, size = 28 }: { name: string | null; photoUrl?: string; size?: number }) {
   if (photoUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={photoUrl} alt={name ?? ""} className="h-7 w-7 shrink-0 rounded-full object-cover" />;
+    return <img src={photoUrl} alt={name ?? ""} style={{ width: size, height: size }} className="shrink-0 rounded-full object-cover" />;
   }
   return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-black/10 text-[10px] font-bold text-black/60 dark:bg-white/10 dark:text-white/60">
+    <span
+      style={{ width: size, height: size }}
+      className="flex shrink-0 items-center justify-center rounded-full bg-black/10 text-[10px] font-bold text-black/60 dark:bg-white/10 dark:text-white/60"
+    >
       {name ? initials(name) : "?"}
     </span>
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: string }) {
+function TypeIcon({ type, className = "h-5 w-5" }: { type: string; className?: string }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className, viewBox: "0 0 24 24" };
+  if (type === "Phone")
+    return (
+      <svg {...common}>
+        <rect x="7" y="3" width="10" height="18" rx="2" />
+        <path d="M11 18h2" />
+      </svg>
+    );
+  if (type === "Laptop")
+    return (
+      <svg {...common}>
+        <rect x="5" y="5" width="14" height="10" rx="1.5" />
+        <path d="M3 19h18" />
+      </svg>
+    );
+  if (type === "Tablet")
+    return (
+      <svg {...common}>
+        <rect x="5" y="3" width="14" height="18" rx="2" />
+        <path d="M11 18h2" />
+      </svg>
+    );
   return (
-    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
-      <p className="text-xs font-medium text-black/60 dark:text-white/60">{label}</p>
-      <p className={`text-2xl font-bold ${accent ?? ""}`}>{value}</p>
-    </div>
+    <svg {...common}>
+      <rect x="4" y="6" width="16" height="12" rx="2" />
+      <path d="M8 10h8M8 14h5" />
+    </svg>
   );
 }
+
+type Filter = "all" | "unassigned" | "flagged";
 
 export default function DevicesClient({
   initialDevices,
@@ -58,17 +93,13 @@ export default function DevicesClient({
   const confirm = useConfirm();
   const [devices, setDevices] = useState(initialDevices);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
-
-  const [newType, setNewType] = useState<string>(DEVICE_TYPES[1]);
-  const [newTypeOther, setNewTypeOther] = useState("");
-  const [newName, setNewName] = useState("");
-  const [newSerial, setNewSerial] = useState("");
-  const [newAssignedTo, setNewAssignedTo] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(initialDevices[0]?.id ?? null);
   const [adding, setAdding] = useState(false);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [search, setSearch] = useState("");
 
   // One signed URL per employee who has a photo on file (most recent one,
-  // since `photos` is already ordered newest-first) - fetched once up
-  // front rather than per-row, since the assignee list here is small.
+  // since `photos` is already ordered newest-first).
   useEffect(() => {
     const latestByEmployee = new Map<string, EmployeeDocument>();
     for (const doc of photos) {
@@ -94,203 +125,333 @@ export default function DevicesClient({
     };
   }, [photos]);
 
+  const employeeById = useMemo(() => new Map(employees.map((e) => [e.id, e])), [employees]);
   const total = devices.length;
-  const assignedCount = devices.filter((d) => d.assigned_to).length;
-  const unassignedCount = total - assignedCount;
+  const unassignedCount = devices.filter((d) => !d.assigned_to).length;
   const flaggedCount = devices.filter((d) => d.has_issue).length;
 
-  async function handleAdd() {
-    setAdding(true);
-    try {
-      const created = await createDevice({
-        deviceType: newType,
-        deviceTypeOther: newType === "Other" ? newTypeOther.trim() || null : null,
-        deviceName: newName.trim() || null,
-        serialNumber: newSerial.trim() || null,
-        assignedTo: newAssignedTo || null,
-      });
-      setDevices((prev) => [created, ...prev]);
-      setNewType(DEVICE_TYPES[1]);
-      setNewTypeOther("");
-      setNewName("");
-      setNewSerial("");
-      setNewAssignedTo("");
-    } finally {
-      setAdding(false);
-    }
-  }
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return devices.filter((d) => {
+      if (filter === "unassigned" && d.assigned_to) return false;
+      if (filter === "flagged" && !d.has_issue) return false;
+      if (!q) return true;
+      const person = d.assigned_to ? employeeById.get(d.assigned_to)?.name ?? "" : "unassigned";
+      return [deviceLabel(d), d.serial_number ?? "", person, d.notes ?? "", d.device_type ?? ""].some((t) => t.toLowerCase().includes(q));
+    });
+  }, [devices, filter, search, employeeById]);
 
-  function handleReassign(id: string, assignedTo: string) {
-    const value = assignedTo || null;
-    setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, assigned_to: value } : d)));
-    updateDevice(id, { assigned_to: value }).catch(() => {});
-  }
+  const groups = GROUP_ORDER.map((g) => ({ name: g, items: shown.filter((d) => typeOf(d) === g) })).filter((g) => g.items.length > 0);
+  const selected = devices.find((d) => d.id === selectedId) ?? null;
 
-  function handleNotesSave(id: string, notes: string) {
-    setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, notes: notes || null } : d)));
-    updateDevice(id, { notes: notes || null }).catch(() => {});
-  }
-
-  function handleToggleFlag(id: string, hasIssue: boolean) {
-    setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, has_issue: hasIssue } : d)));
-    updateDevice(id, { has_issue: hasIssue }).catch(() => {});
+  function patchDevice(id: string, patch: Partial<Device>) {
+    setDevices((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    updateDevice(id, patch).catch(() => {});
   }
 
   async function handleRemove(d: Device) {
     if (!(await confirm(`Remove "${deviceLabel(d)}" from the device registry? This can't be undone.`))) return;
     setDevices((prev) => prev.filter((x) => x.id !== d.id));
+    setSelectedId((cur) => (cur === d.id ? null : cur));
     await deleteDevice(d.id).catch(() => {});
+  }
+
+  function pill(id: Filter, text: string, count: number): ReactNode {
+    const on = filter === id;
+    return (
+      <button
+        key={id}
+        onClick={() => setFilter(id)}
+        className={`rounded-full px-3 py-1 text-xs font-medium ${
+          on ? "bg-black text-white dark:bg-white dark:text-black" : "border border-black/20 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+        }`}
+      >
+        {text} {count}
+      </button>
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">Devices</h1>
-        <p className="text-sm text-black/60 dark:text-white/60">
-          Every piece of company equipment and who currently has it. Reassign a device here or from that person&apos;s
-          tile on Employee Files.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Devices</h1>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            Every piece of company equipment and who has it. Pick a device on the left to edit it on the right. You can also reassign from
+            that person&apos;s tile on Employee Files.
+          </p>
+        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700"
+        >
+          + Add device
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total Devices" value={total} />
-        <StatCard label="Assigned" value={assignedCount} accent="text-green-700 dark:text-green-400" />
-        <StatCard label="Unassigned" value={unassignedCount} accent="text-black/60 dark:text-white/60" />
-        <StatCard label="Needs Follow-up" value={flaggedCount} accent="text-red-600 dark:text-red-400" />
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search devices, serials, people" className={`${field} max-w-xs`} />
+        {pill("all", "All", total)}
+        {pill("unassigned", "Unassigned", unassignedCount)}
+        {pill("flagged", "Needs follow-up", flaggedCount)}
       </div>
 
-      <div className="space-y-2 rounded-lg border border-black/10 p-4 dark:border-white/10">
-        <h2 className="text-sm font-bold text-green-700 dark:text-green-400">Add Device</h2>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-black/60 dark:text-white/60">Type</span>
-            <select value={newType} onChange={(e) => setNewType(e.target.value)} className={`${field} mt-1 w-32`}>
-              {DEVICE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          {newType === "Other" && (
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-black/60 dark:text-white/60">Describe</span>
-              <input value={newTypeOther} onChange={(e) => setNewTypeOther(e.target.value)} className={`${field} mt-1`} />
-            </label>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <div className="overflow-hidden rounded-lg border border-black/10 dark:border-white/10">
+          {groups.map((g) => (
+            <div key={g.name}>
+              <div className="bg-black/5 px-3 py-1.5 text-xs font-medium text-black/60 dark:bg-white/10 dark:text-white/60">
+                {g.name === "Other" ? "Other" : `${g.name}s`} ({g.items.length})
+              </div>
+              {g.items.map((d) => {
+                const person = d.assigned_to ? employeeById.get(d.assigned_to) : undefined;
+                const on = d.id === selectedId && !adding;
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => {
+                      setAdding(false);
+                      setSelectedId(d.id);
+                    }}
+                    className={`flex w-full items-center gap-3 border-t border-black/10 px-3 py-2 text-left dark:border-white/10 ${
+                      on ? "bg-green-50 dark:bg-green-950/30" : d.has_issue ? "bg-red-50 dark:bg-red-950/20" : "hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    <span className="text-black/50 dark:text-white/50">
+                      <TypeIcon type={typeOf(d)} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{deviceLabel(d)}</span>
+                      <span className="block truncate text-xs text-black/55 dark:text-white/55">
+                        {person ? person.name : <span className="italic">Unassigned</span>}
+                        {d.serial_number ? ` · ${d.serial_number}` : ""}
+                      </span>
+                    </span>
+                    {person && <Avatar name={person.name} photoUrl={photoUrls[person.id]} size={24} />}
+                    {d.has_issue && <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" title="Needs follow-up" />}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+          {groups.length === 0 && (
+            <p className="px-3 py-6 text-center text-sm text-black/40 dark:text-white/40">
+              {devices.length === 0 ? "No devices yet - add one." : "Nothing matches that search or filter."}
+            </p>
           )}
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-black/60 dark:text-white/60">Device Name / Label</span>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} className={`${field} mt-1`} />
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-black/60 dark:text-white/60">Serial Number / Asset Tag</span>
-            <input value={newSerial} onChange={(e) => setNewSerial(e.target.value)} className={`${field} mt-1`} />
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-black/60 dark:text-white/60">Assign To</span>
-            <select value={newAssignedTo} onChange={(e) => setNewAssignedTo(e.target.value)} className={`${field} mt-1 w-40`}>
-              <option value="">Unassigned</option>
-              {employees.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            onClick={handleAdd}
-            disabled={adding}
-            className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-          >
-            {adding ? "Adding..." : "+ Add Device"}
-          </button>
+        </div>
+
+        <div className="lg:sticky lg:top-4">
+          {adding ? (
+            <AddPanel
+              employees={employees}
+              onCancel={() => setAdding(false)}
+              onCreated={(d) => {
+                setDevices((prev) => [d, ...prev]);
+                setSelectedId(d.id);
+                setAdding(false);
+              }}
+            />
+          ) : selected ? (
+            <DetailPanel
+              key={selected.id}
+              device={selected}
+              employees={employees}
+              photoUrls={photoUrls}
+              onPatch={(patch) => patchDevice(selected.id, patch)}
+              onRemove={() => handleRemove(selected)}
+            />
+          ) : (
+            <p className="rounded-lg border border-dashed border-black/20 p-8 text-center text-sm text-black/50 dark:border-white/20 dark:text-white/50">
+              Pick a device to see and edit its details.
+            </p>
+          )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-        <table className="w-full text-sm">
-          <thead className="bg-black/5 text-left dark:bg-white/5">
-            <tr>
-              <th className="px-3 py-2">Device</th>
-              <th className="px-3 py-2">Serial Number</th>
-              <th className="px-3 py-2">Assigned To</th>
-              <th className="px-3 py-2">Notes</th>
-              <th className="px-3 py-2">Flag</th>
-              <th className="w-20 px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {devices.map((d) => {
-              const assignedEmployee = employees.find((e) => e.id === d.assigned_to);
-              return (
-                <tr
-                  key={d.id}
-                  className={`border-t border-black/10 dark:border-white/10 ${
-                    d.has_issue ? "bg-red-50 dark:bg-red-950/20" : ""
-                  }`}
-                >
-                  <td className="px-3 py-2">{deviceLabel(d)}</td>
-                  <td className="px-3 py-2">{d.serial_number || "-"}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex w-fit items-center gap-2 rounded-full bg-black/5 py-1 pl-1 pr-3 dark:bg-white/10">
-                        <Avatar
-                          name={assignedEmployee?.name ?? null}
-                          photoUrl={assignedEmployee ? photoUrls[assignedEmployee.id] : undefined}
-                        />
-                        <span className="text-xs font-medium">{assignedEmployee?.name ?? "Unassigned"}</span>
-                      </div>
-                      <select
-                        value={d.assigned_to ?? ""}
-                        onChange={(e) => handleReassign(d.id, e.target.value)}
-                        className={`${field} w-44 text-xs`}
-                      >
-                        <option value="">Unassigned</option>
-                        {employees.map((e) => (
-                          <option key={e.id} value={e.id}>
-                            {e.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      defaultValue={d.notes ?? ""}
-                      onBlur={(e) => handleNotesSave(d.id, e.target.value)}
-                      placeholder="Add a note..."
-                      className={`${field} w-40`}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <button
-                      onClick={() => handleToggleFlag(d.id, !d.has_issue)}
-                      className={`rounded-full px-2 py-1 text-xs font-medium ${
-                        d.has_issue
-                          ? "bg-red-600 text-white hover:bg-red-700"
-                          : "border border-gray-300 text-black/60 hover:bg-black/5 dark:border-white/20 dark:text-white/60 dark:hover:bg-white/10"
-                      }`}
-                    >
-                      {d.has_issue ? "⚑ Needs Follow-up" : "Flag Issue"}
-                    </button>
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button onClick={() => handleRemove(d)} className="font-medium text-red-600 hover:underline">
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-            {devices.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
-                  No devices yet - add one above.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+function DetailPanel({
+  device,
+  employees,
+  photoUrls,
+  onPatch,
+  onRemove,
+}: {
+  device: Device;
+  employees: Employee[];
+  photoUrls: Record<string, string>;
+  onPatch: (patch: Partial<Device>) => void;
+  onRemove: () => void;
+}) {
+  const person = device.assigned_to ? employees.find((e) => e.id === device.assigned_to) : undefined;
+  const type = device.device_type ?? "Other";
+  return (
+    <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/5 text-black/60 dark:bg-white/10 dark:text-white/60">
+          <TypeIcon type={typeOf(device)} className="h-6 w-6" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-bold">{deviceLabel(device)}</p>
+          <p className="text-xs text-black/55 dark:text-white/55">
+            {type === "Other" ? device.device_type_other || "Other" : type} · added {new Date(device.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+          </p>
+        </div>
+        {person && <Avatar name={person.name} photoUrl={photoUrls[person.id]} size={36} />}
+      </div>
+
+      <label className="block text-sm">
+        <span className={label}>Assigned to</span>
+        <select value={device.assigned_to ?? ""} onChange={(e) => onPatch({ assigned_to: e.target.value || null })} className={field}>
+          <option value="">Unassigned</option>
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-sm">
+          <span className={label}>Type</span>
+          <select value={type} onChange={(e) => onPatch({ device_type: e.target.value })} className={field}>
+            {DEVICE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        {type === "Other" ? (
+          <label className="block text-sm">
+            <span className={label}>Describe</span>
+            <input defaultValue={device.device_type_other ?? ""} onBlur={(e) => onPatch({ device_type_other: e.target.value.trim() || null })} className={field} />
+          </label>
+        ) : (
+          <label className="block text-sm">
+            <span className={label}>Name / label</span>
+            <input defaultValue={device.device_name ?? ""} onBlur={(e) => onPatch({ device_name: e.target.value.trim() || null })} className={field} />
+          </label>
+        )}
+      </div>
+      {type === "Other" && (
+        <label className="block text-sm">
+          <span className={label}>Name / label</span>
+          <input defaultValue={device.device_name ?? ""} onBlur={(e) => onPatch({ device_name: e.target.value.trim() || null })} className={field} />
+        </label>
+      )}
+
+      <label className="block text-sm">
+        <span className={label}>Serial number / asset tag</span>
+        <input defaultValue={device.serial_number ?? ""} onBlur={(e) => onPatch({ serial_number: e.target.value.trim() || null })} className={field} />
+      </label>
+
+      <label className="block text-sm">
+        <span className={label}>Notes</span>
+        <textarea defaultValue={device.notes ?? ""} onBlur={(e) => onPatch({ notes: e.target.value.trim() || null })} rows={3} placeholder="Add a note..." className={field} />
+      </label>
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          onClick={() => onPatch({ has_issue: !device.has_issue })}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+            device.has_issue
+              ? "bg-red-600 text-white hover:bg-red-700"
+              : "border border-black/20 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+          }`}
+        >
+          {device.has_issue ? "⚑ Needs follow-up - clear it" : "Flag for follow-up"}
+        </button>
+        <span className="flex-1" />
+        <button onClick={onRemove} className="text-sm font-medium text-red-600 hover:underline">
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AddPanel({ employees, onCancel, onCreated }: { employees: Employee[]; onCancel: () => void; onCreated: (d: Device) => void }) {
+  const [type, setType] = useState<string>(DEVICE_TYPES[1]);
+  const [other, setOther] = useState("");
+  const [name, setName] = useState("");
+  const [serial, setSerial] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function add() {
+    setBusy(true);
+    try {
+      const created = await createDevice({
+        deviceType: type,
+        deviceTypeOther: type === "Other" ? other.trim() || null : null,
+        deviceName: name.trim() || null,
+        serialNumber: serial.trim() || null,
+        assignedTo: assignedTo || null,
+      });
+      onCreated(created);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border-2 border-green-600 p-4">
+      <p className="text-base font-bold">Add a device</p>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-sm">
+          <span className={label}>Type</span>
+          <select value={type} onChange={(e) => setType(e.target.value)} className={field}>
+            {DEVICE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </label>
+        {type === "Other" ? (
+          <label className="block text-sm">
+            <span className={label}>Describe</span>
+            <input value={other} onChange={(e) => setOther(e.target.value)} className={field} />
+          </label>
+        ) : (
+          <label className="block text-sm">
+            <span className={label}>Name / label</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
+          </label>
+        )}
+      </div>
+      {type === "Other" && (
+        <label className="block text-sm">
+          <span className={label}>Name / label</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
+        </label>
+      )}
+      <label className="block text-sm">
+        <span className={label}>Serial number / asset tag</span>
+        <input value={serial} onChange={(e) => setSerial(e.target.value)} className={field} />
+      </label>
+      <label className="block text-sm">
+        <span className={label}>Assign to</span>
+        <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className={field}>
+          <option value="">Unassigned</option>
+          {employees.map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm font-medium text-black/60 hover:bg-black/5 dark:text-white/60 dark:hover:bg-white/10">
+          Cancel
+        </button>
+        <button onClick={add} disabled={busy} className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60">
+          {busy ? "Adding..." : "Add device"}
+        </button>
       </div>
     </div>
   );
