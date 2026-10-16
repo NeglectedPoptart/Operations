@@ -1,7 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import type { RoleSchedule, RoleScheduleAssignmentType, ScheduleDayHours, ScheduleException } from "@/lib/types";
+import type { PtoRequest, RoleSchedule, RoleScheduleAssignmentType, ScheduleDayHours, ScheduleException } from "@/lib/types";
 
 // No revalidatePath - see employee-files/actions.ts for why. The page is
 // already force-dynamic, and the client's own optimistic setState already
@@ -101,5 +101,44 @@ export async function createScheduleException(input: {
 export async function deleteScheduleException(id: string) {
   const supabase = await createClient();
   const { error } = await supabase.from("schedule_exceptions").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+// Time off (PTO) ----------------------------------------------------------------
+
+export interface NewPtoInput {
+  employee_name: string;
+  start_date: string;
+  end_date: string;
+  days: number;
+  notes: string | null;
+}
+
+export async function createPtoEntry(input: NewPtoInput): Promise<PtoRequest> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("pto_requests")
+    .insert({
+      employee_name: input.employee_name.trim(),
+      start_date: input.start_date,
+      end_date: input.end_date < input.start_date ? input.start_date : input.end_date,
+      days: input.days,
+      notes: input.notes?.trim() || null,
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data as PtoRequest;
+}
+
+export async function updatePtoDays(id: string, days: number) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("pto_requests").update({ days, updated_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+export async function deletePtoEntry(id: string) {
+  const supabase = await createClient();
+  const { error } = await supabase.from("pto_requests").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }

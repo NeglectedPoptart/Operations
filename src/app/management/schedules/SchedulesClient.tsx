@@ -13,10 +13,12 @@ import {
 } from "@/lib/dates";
 import { copyOrDownloadPng } from "@/lib/fobPricing";
 import { renderScheduleImagePng, type ScheduleWeekRow } from "@/lib/scheduleImage";
+import PtoSection from "./PtoSection";
 import {
   SCHEDULE_DAY_KEYS,
   SCHEDULE_DAY_LABELS,
   type Employee,
+  type PtoRequest,
   type RoleSchedule,
   type RoleScheduleAssignmentType,
   type ScheduleDayHours,
@@ -718,10 +720,12 @@ export default function SchedulesClient({
   initialSchedules,
   employees,
   initialExceptions,
+  initialPto,
 }: {
   initialSchedules: RoleSchedule[];
   employees: Employee[];
   initialExceptions: ScheduleException[];
+  initialPto: PtoRequest[];
 }) {
   const confirm = useConfirm();
   const [schedules, setSchedules] = useState(initialSchedules);
@@ -817,6 +821,8 @@ export default function SchedulesClient({
           {showNewDept ? "Cancel" : "+ Add Department"}
         </button>
       </div>
+
+      <PtoSection employees={employees.map((e) => ({ id: e.id, name: e.name, start_date: e.start_date, status: e.status }))} initialEntries={initialPto} />
 
       <div className="flex flex-wrap items-center gap-2">
         <button

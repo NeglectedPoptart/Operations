@@ -403,6 +403,8 @@ export interface PtoRequest {
   start_date: string;
   end_date: string;
   notes: string | null;
+  // Working days this entry uses (weekdays by default; a half day is 0.5). Null on entries from before it existed.
+  days: number | null;
   created_at: string;
   updated_at: string;
 }
