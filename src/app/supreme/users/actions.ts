@@ -232,3 +232,29 @@ export async function deleteRole(key: string) {
   if (error) throw new Error(error.message);
   refresh();
 }
+
+// Delete someone's login for good (Supreme only). They can't sign in again and
+// the login can't be brought back; things they entered in HOPS stay. You can't
+// delete your own login or the Supreme account.
+export async function deleteUserAccount(userId: string): Promise<{ error: string } | { ok: true }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!isSupremeUser(user?.email ?? null)) return { error: "Not allowed." };
+  if (user && user.id === userId) return { error: "You can't delete your own login." };
+
+  try {
+    const admin = adminClient();
+    const { data: target } = await admin.auth.admin.getUserById(userId);
+    if (isSupremeUser(target?.user?.email ?? null)) return { error: "The Supreme account can't be deleted." };
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (error) return { error: error.message };
+    // The profile goes with the login; make sure of it.
+    await admin.from("profiles").delete().eq("id", userId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't delete that login." };
+  }
+  revalidatePath("/supreme/users");
+  return { ok: true };
+}

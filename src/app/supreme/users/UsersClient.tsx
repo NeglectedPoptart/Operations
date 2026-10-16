@@ -13,6 +13,7 @@ import type { Broker, Profile } from "@/lib/types";
 import { TIMEZONE_OPTIONS, timeZoneLabel } from "@/lib/timezones";
 import {
   createRole,
+  deleteUserAccount,
   deleteRole,
   renameRole,
   setRoleAllowedPages,
@@ -311,6 +312,7 @@ export default function UsersClient({
   const [profiles, setProfiles] = useState(initialProfiles);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirmDelete = useConfirm();
   const [passwordFor, setPasswordFor] = useState<Profile | null>(null);
   // The Add user window, opened with the role it should start on.
   const [adding, setAdding] = useState<string | null>(null);
@@ -370,6 +372,24 @@ export default function UsersClient({
     }
   }
 
+  async function handleDeleteUser(profile: Profile) {
+    const who = profile.email || "this login";
+    if (
+      !(await confirmDelete(
+        `Delete ${who} for good? They won't be able to sign in again and this can't be undone. Things they entered in HOPS stay.`,
+      ))
+    ) {
+      return;
+    }
+    setError(null);
+    const result = await deleteUserAccount(profile.id);
+    if ("error" in result) {
+      setError(`Couldn't delete ${who}: ${result.error}`);
+      return;
+    }
+    setProfiles((prev) => prev.filter((p) => p.id !== profile.id));
+  }
+
   // One table of logins. Carrier/broker logins get their own section (with
   // the company picker); everyone else is under People.
   function loginsTable(list: Profile[], carrierSection: boolean) {
@@ -384,6 +404,7 @@ export default function UsersClient({
                   <th className="px-3 py-2">Password</th>
                   {carrierSection && <th className="px-3 py-2">Carrier / Broker Company</th>}
                   <th className="px-3 py-2">Added</th>
+                  <th className="w-16 px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
@@ -471,12 +492,19 @@ export default function UsersClient({
                       <td className="whitespace-nowrap px-3 py-2 text-black/60 dark:text-white/60">
                         {formatDate(profile.created_at.slice(0, 10))}
                       </td>
+                      <td className="px-3 py-2 text-right">
+                        {!isSelf && (
+                          <button onClick={() => handleDeleteUser(profile)} className="text-xs font-medium text-red-600 hover:underline">
+                            Delete
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
                 {list.length === 0 && (
                   <tr>
-                    <td colSpan={carrierSection ? 6 : 5} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
+                    <td colSpan={carrierSection ? 7 : 6} className="px-3 py-4 text-center text-black/40 dark:text-white/40">
                       {carrierSection ? "No carrier or broker logins yet." : "No users yet."}
                     </td>
                   </tr>
