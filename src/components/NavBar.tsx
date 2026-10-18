@@ -28,6 +28,15 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
     strokeLinejoin: "round" as const,
   };
   switch (label) {
+    case "Dashboard":
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="7" height="9" rx="1.2" />
+          <rect x="13" y="4" width="7" height="5" rx="1.2" />
+          <rect x="13" y="11" width="7" height="9" rx="1.2" />
+          <rect x="4" y="15" width="7" height="5" rx="1.2" />
+        </svg>
+      );
     case "Home":
       return (
         <svg {...common}>

@@ -47,7 +47,8 @@ export type Tab =
   | "shipping_receiving"
   | "crm"
   | "documents"
-  | "submanagement";
+  | "submanagement"
+  | "dashboard";
 
 // A broker/carrier login is a fundamentally different shape of access than
 // every other role - not "which tabs", but "exactly this one page and
@@ -96,6 +97,7 @@ export const DEFAULT_ROLE_TABS: Record<BuiltinRole, Tab[]> = {
     "shipping_receiving",
     "crm",
     "documents",
+    "dashboard",
   ],
   // Sees everything except Management. Gets CRM to browse/manage buckets
   // and pipelines, but - unlike Sales/Executive/Buyer-Sales - is never
@@ -215,6 +217,7 @@ export function tabForPath(pathname: string): Tab | null {
   if (pathname.startsWith("/crm")) return "crm";
   if (pathname.startsWith("/documents")) return "documents";
   if (pathname.startsWith("/submanagement")) return "submanagement";
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) return "dashboard";
   return null;
 }
 
