@@ -41,17 +41,30 @@ export interface DashboardData {
 }
 
 // What a saved workspace holds.
-export interface PaneConfig {
-  tabs: string[]; // page paths open in this pane
+
+// A free-floating window. Position and size are fractions of the workspace
+// area (0 to 1), so a layout fits whatever the screen size is.
+export interface WindowConfig {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number; // stacking order - the highest is in front
+  tabs: string[]; // page paths open in this window
   active: string | null;
+  // Where it was before Maximize, so Restore can put it back.
+  restore?: { x: number; y: number; w: number; h: number };
 }
 
 export interface WorkspaceConfig {
-  panes: PaneConfig[]; // 1 or 2
-  stacked: boolean; // two panes one above the other instead of side by side
-  height: number; // px height of the pane area
+  windows: WindowConfig[];
+  widgetsOpen: boolean; // the widget strip along the bottom
   widgets: string[]; // widget ids shown, in order
   notes: string; // the My notes widget
+  // From the first version (two fixed panes) - converted to windows when loaded.
+  panes?: { tabs: string[]; active: string | null }[];
+  stacked?: boolean;
 }
 
 export interface SavedLayout {
