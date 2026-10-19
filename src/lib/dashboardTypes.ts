@@ -55,6 +55,8 @@ export interface WindowConfig {
   active: string | null;
   // Where it was before Maximize, so Restore can put it back.
   restore?: { x: number; y: number; w: number; h: number };
+  // How much the page inside is shrunk to fit more on screen (1 = normal).
+  zoom?: number;
 }
 
 export interface WorkspaceConfig {

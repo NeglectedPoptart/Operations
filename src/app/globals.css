@@ -68,3 +68,11 @@ body {
 html[data-popout] .popout-hide {
   display: none !important;
 }
+
+/* In a pop-out window or Dashboard window the page gets the whole width, so wide tables are not cut off. */
+html[data-popout] .popout-main {
+  padding: 0.75rem !important;
+}
+html[data-popout] .popout-main > div {
+  max-width: none !important;
+}

@@ -18,6 +18,7 @@ const STORAGE_KEY = "hops-dashboard-workspace-v2";
 const REFRESH_MS = 90_000;
 const MIN_W_PX = 300;
 const MIN_H_PX = 180;
+const ZOOMS = [1, 0.9, 0.8, 0.7, 0.6, 0.5];
 
 const btn = "rounded-md border border-black/20 px-2.5 py-1.5 text-xs font-medium hover:bg-black/5 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/10";
 const btnOn = "rounded-md bg-black px-2.5 py-1.5 text-xs font-medium text-white dark:bg-white dark:text-black";
@@ -78,6 +79,7 @@ function cleanConfig(config: WorkspaceConfig, modules: ModuleOption[]): Workspac
       tabs,
       active: w.active && tabs.includes(w.active) ? w.active : tabs[0] ?? null,
       restore: w.restore,
+      zoom: ZOOMS.includes(w.zoom ?? 1) ? w.zoom : undefined,
     };
   });
   return {
@@ -578,6 +580,15 @@ export default function DashboardClient({ modules, layouts: initialLayouts }: { 
                 <div className="flex shrink-0 gap-1 pb-1">
                   {win.active && (
                     <>
+                      <span className="flex items-center" title="Shrink the page to fit more on screen">
+                        <button className={btn} disabled={(win.zoom ?? 1) <= ZOOMS[ZOOMS.length - 1]} onClick={() => patchWindow(win.id, { zoom: ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(win.zoom ?? 1) + 1)] })}>
+                          -
+                        </button>
+                        <span className="w-9 text-center text-[11px] text-black/60 dark:text-white/60">{Math.round((win.zoom ?? 1) * 100)}%</span>
+                        <button className={btn} disabled={(win.zoom ?? 1) >= 1} onClick={() => patchWindow(win.id, { zoom: ZOOMS[Math.max(0, ZOOMS.indexOf(win.zoom ?? 1) - 1)] })}>
+                          +
+                        </button>
+                      </span>
                       <button className={btn} title="Reload this page" onClick={() => setReloads((r) => ({ ...r, [`${win.id}|${win.active}`]: (r[`${win.id}|${win.active}`] ?? 0) + 1 }))}>
                         ↻
                       </button>
@@ -607,7 +618,8 @@ export default function DashboardClient({ modules, layouts: initialLayouts }: { 
                       name={`hops-popout:embed-${win.id}-${href}`}
                       src={href}
                       title={labelOf.get(href) ?? href}
-                      className={`absolute inset-0 h-full w-full border-0 bg-white ${active ? "" : "hidden"} ${dragging || !focused ? "pointer-events-none" : ""}`}
+                      style={{ width: `${100 / (win.zoom ?? 1)}%`, height: `${100 / (win.zoom ?? 1)}%`, transform: `scale(${win.zoom ?? 1})`, transformOrigin: "top left" }}
+                      className={`absolute left-0 top-0 border-0 bg-white ${active ? "" : "hidden"} ${dragging || !focused ? "pointer-events-none" : ""}`}
                     />
                   );
                 })}

@@ -108,7 +108,7 @@ export default async function RootLayout({
                 </div>
                 {!isBrokerCarrier && <PushRegistration />}
                 <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
-                <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:px-0 print:py-0">
+                <main className="popout-main flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:px-0 print:py-0">
                   <div className="mx-auto w-full max-w-7xl">{children}</div>
                 </main>
               </div>
