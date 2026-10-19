@@ -641,7 +641,7 @@ export default function DashboardClient({ modules, layouts: initialLayouts }: { 
       {showStrip && (
         <div className="flex gap-3 overflow-x-auto pb-1" style={{ height: 190 }}>
           {widgetDefs.map((w) => (
-            <div key={w.id} className="h-full w-64 shrink-0 overflow-y-auto rounded-lg border border-black/10 p-3 dark:border-white/10">
+            <div key={w.id} className={`h-full shrink-0 overflow-y-auto rounded-lg border border-black/10 p-3 dark:border-white/10 ${w.id === "notes" ? "w-80" : "w-64"}`}>
               <div className="mb-2 flex items-center justify-between gap-2">
                 {w.href ? (
                   <button onClick={() => openFromWidget(w.href!)} className="text-left text-sm font-bold hover:underline" title="Open this page in a window">
@@ -654,7 +654,9 @@ export default function DashboardClient({ modules, layouts: initialLayouts }: { 
                   ×
                 </button>
               </div>
-              <WidgetBody id={w.id} data={data} notes={config.notes} onNotes={(notes) => setConfig((c) => ({ ...c, notes }))} />
+              <div className={w.id === "notes" ? "h-[138px]" : ""}>
+                <WidgetBody id={w.id} data={data} />
+              </div>
             </div>
           ))}
         </div>

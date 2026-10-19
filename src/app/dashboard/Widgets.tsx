@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import NotesPad from "@/components/notes/NotesPad";
 import type { DashboardData } from "@/lib/dashboardTypes";
 import { rgbaOf } from "@/lib/pendingOrders";
 
@@ -67,25 +68,11 @@ function Sparkline({ points }: { points: { date: string; value: number }[] }) {
 export function WidgetBody({
   id,
   data,
-  notes,
-  onNotes,
 }: {
   id: string;
   data: DashboardData | null;
-  notes: string;
-  onNotes: (text: string) => void;
 }) {
-  if (id === "notes") {
-    return (
-      <textarea
-        value={notes}
-        onChange={(e) => onNotes(e.target.value)}
-        placeholder="Jot things down - saved with this layout."
-        rows={5}
-        className="w-full resize-y rounded border border-black/15 bg-white/70 px-2 py-1 text-xs text-black placeholder:text-black/40 dark:border-white/20"
-      />
-    );
-  }
+  if (id === "notes") return <NotesPad compact />;
   if (!data) return <p className="text-xs text-black/40 dark:text-white/40">Loading...</p>;
   const missing = <p className="text-xs text-amber-600">Couldn&apos;t load this one.</p>;
 

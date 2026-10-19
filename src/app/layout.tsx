@@ -4,6 +4,7 @@ import AppHeader from "@/components/AppHeader";
 import ConfirmProvider from "@/components/ConfirmProvider";
 import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
+import NotesLauncher from "@/components/notes/NotesLauncher";
 import NotificationPopup from "@/components/NotificationPopup";
 import PushRegistration from "@/components/PushRegistration";
 import TimezoneSync from "@/components/TimezoneSync";
@@ -103,6 +104,7 @@ export default async function RootLayout({
                 <div className="popout-hide contents">
                   {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
                   {!isBrokerCarrier && <NotificationPopup />}
+                  {!isBrokerCarrier && <NotesLauncher />}
                 </div>
                 {!isBrokerCarrier && <PushRegistration />}
                 <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
