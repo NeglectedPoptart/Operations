@@ -133,11 +133,12 @@ export default function BoardClient({
                 ))}
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className={section.value === "complete" ? "space-y-1.5" : "grid gap-3 sm:grid-cols-2"}>
                 {sectionLoads.map((load) => (
                   <LoadCard
                     key={load.id}
                     load={load}
+                    compact={section.value === "complete"}
                     onEdit={() => setEditingLoad(load)}
                     selectedLotGrowers={selectedLotsByLoadId[load.id]}
                   />

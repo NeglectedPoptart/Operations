@@ -28,7 +28,9 @@ function DeliveryLine({ stop }: { stop: LoadStop }) {
 // `dateFirst` moves the loading date above the client name instead of into
 // the detail line below - used by the Logistics Summary page's Pending to
 // Load section, which is already grouped into per-date subsections.
-export default function LoadSummary({ load, dateFirst = false }: { load: Load; dateFirst?: boolean }) {
+// `compact` lays the same information out across the width in about half the
+// height - used for the Completed list.
+export default function LoadSummary({ load, dateFirst = false, compact = false }: { load: Load; dateFirst?: boolean; compact?: boolean }) {
   const [dropsExpanded, setDropsExpanded] = useState(false);
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const pickups = [...load.load_pickups].sort((a, b) => a.position - b.position);
@@ -44,8 +46,8 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
           {formatDate(load.loading_date) || "No date set"}
         </p>
       )}
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
+      <div className={compact ? "flex flex-wrap items-baseline gap-x-4 gap-y-0" : "flex flex-wrap items-start justify-between gap-2"}>
+        <div className={compact ? "flex flex-wrap items-baseline gap-x-3" : undefined}>
           <p className="font-medium">
             {multiDrop ? (
               <span className="text-black/50 dark:text-white/50">
@@ -76,7 +78,7 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
             {firstStop?.destination_state && `, ${firstStop.destination_state}`}
           </p>
         </div>
-        <div className="text-right text-sm">
+        <div className={compact ? "flex flex-wrap items-baseline gap-x-3 text-sm" : "text-right text-sm"}>
           {load.rate != null && (
             <p className="font-semibold text-emerald-700 dark:text-emerald-400">
               ${load.rate.toLocaleString()}
@@ -87,7 +89,7 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
       </div>
 
       {pickups.length > 0 && (
-        <div className="mt-2 space-y-0.5 text-xs text-black/60 dark:text-white/60">
+        <div className={`${compact ? "mt-0.5" : "mt-2"} space-y-0.5 text-xs text-black/60 dark:text-white/60`}>
           {pickups.map((p, i) => (
             <p key={p.id}>
               <span className="font-medium">Pickup {i + 1}: </span>
@@ -97,7 +99,7 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
         </div>
       )}
 
-      <div className="mt-2 space-y-1.5 text-xs text-black/60 dark:text-white/60">
+      <div className={`${compact ? "mt-0.5" : "mt-2"} space-y-1.5 text-xs text-black/60 dark:text-white/60`}>
         {multiDrop
           ? (!manyDrops || dropsExpanded) &&
             stops.map((stop, i) => (
@@ -139,7 +141,7 @@ export default function LoadSummary({ load, dateFirst = false }: { load: Load; d
         )}
       </div>
 
-      {load.notes && <p className="mt-1 text-xs italic text-black/50 dark:text-white/50">{load.notes}</p>}
+      {load.notes && <p className={`${compact ? "mt-0" : "mt-1"} text-xs italic text-black/50 dark:text-white/50`}>{load.notes}</p>}
     </>
   );
 }

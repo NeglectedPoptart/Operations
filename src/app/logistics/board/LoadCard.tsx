@@ -10,11 +10,14 @@ export default function LoadCard({
   load,
   onEdit,
   dateFirst = false,
+  compact = false,
   selectedLotGrowers,
 }: {
   load: Load;
   onEdit: () => void;
   dateFirst?: boolean;
+  // One slim row (the same details across the width) instead of a tall card.
+  compact?: boolean;
   // Grower name(s) from any Mexico Arrivals row paired with this load -
   // undefined/empty means nothing's been paired to it.
   selectedLotGrowers?: string[];
@@ -45,6 +48,50 @@ export default function LoadCard({
         ? "border-green-400 dark:border-green-600"
         : "border-red-300 dark:border-red-800"
       : "border-black/10 dark:border-white/10";
+
+  const statusSelect = (
+    <select
+      value={load.status}
+      disabled={pending}
+      onChange={(e) => handleStatusChange(e.target.value as LoadStatus)}
+      className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-black"
+    >
+      {LOAD_STATUSES.map((s) => (
+        <option key={s.value} value={s.value}>
+          {s.label}
+        </option>
+      ))}
+    </select>
+  );
+  const actions = (
+    <div className="flex gap-2 text-xs">
+      <button onClick={onEdit} className="font-medium text-green-600 hover:underline">
+        Edit
+      </button>
+      <button onClick={handleDelete} disabled={pending} className="font-medium text-red-600 hover:underline">
+        Delete
+      </button>
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border px-3 py-1.5 shadow-sm ${borderClass}`}>
+        <div className="min-w-0 flex-1">
+          {selectedLotGrowers && selectedLotGrowers.length > 0 && (
+            <p className="mb-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              📦 Selected Lot: {selectedLotGrowers.join(", ")}
+            </p>
+          )}
+          <LoadSummary load={load} dateFirst={dateFirst} compact />
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          {statusSelect}
+          {actions}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`rounded-lg border p-3 shadow-sm ${borderClass}`}>
@@ -93,26 +140,8 @@ export default function LoadCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <select
-          value={load.status}
-          disabled={pending}
-          onChange={(e) => handleStatusChange(e.target.value as LoadStatus)}
-          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-black"
-        >
-          {LOAD_STATUSES.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <div className="flex gap-2 text-xs">
-          <button onClick={onEdit} className="font-medium text-green-600 hover:underline">
-            Edit
-          </button>
-          <button onClick={handleDelete} disabled={pending} className="font-medium text-red-600 hover:underline">
-            Delete
-          </button>
-        </div>
+        {statusSelect}
+        {actions}
       </div>
     </div>
   );
