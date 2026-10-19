@@ -1,5 +1,6 @@
 "use client";
 
+import SidebarClock from "./SidebarClock";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -222,11 +223,14 @@ export default function NavBar({
   email,
   access,
   roleLabel,
+  nflTeam = null,
 }: {
   role: Role | null;
   email: string | null;
   access: RoleAccess;
   roleLabel: string | null;
+  // The NFL team abbreviation this person picked (or "none"); null = not asked yet.
+  nflTeam?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -303,16 +307,12 @@ export default function NavBar({
 
   const sidebarInner = (
     <>
-      <div className="border-b border-sidebar-border px-4 py-4">
-        <img
-          src="/logo-hbi-2025.png"
-          alt="Harvest Best"
-          className="mx-auto h-16 w-auto object-contain"
-        />
-        <div className="mt-2 text-center leading-tight">
+      <div className="border-b border-sidebar-border px-4 py-3">
+        <div className="text-center leading-tight">
           <p className="text-sm font-bold text-white">HOPS</p>
           <p className="text-[11px] text-sidebar-text-muted">Harvest Best Operations Platform</p>
         </div>
+        {!isBrokerCarrier && <SidebarClock team={nflTeam} />}
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
@@ -420,6 +420,11 @@ export default function NavBar({
         >
           Sign out
         </button>
+        <img
+          src="/logo-hbi-2025.png"
+          alt="Harvest Best"
+          className="mx-auto mt-3 h-12 w-auto object-contain"
+        />
       </div>
     </>
   );
@@ -440,6 +445,7 @@ export default function NavBar({
           />
           <span className="text-sm font-bold text-white">HOPS</span>
         </div>
+        {!isBrokerCarrier && <SidebarClock team={nflTeam} compact />}
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"

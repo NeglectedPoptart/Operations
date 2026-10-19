@@ -4,10 +4,12 @@ import AppHeader from "@/components/AppHeader";
 import ConfirmProvider from "@/components/ConfirmProvider";
 import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
+import NflTeamPrompt from "@/components/NflTeamPrompt";
 import NotesLauncher from "@/components/notes/NotesLauncher";
 import NotificationPopup from "@/components/NotificationPopup";
 import PushRegistration from "@/components/PushRegistration";
 import TimezoneSync from "@/components/TimezoneSync";
+import { NFL_NO_TEAM } from "@/lib/nfl";
 import { todayISO } from "@/lib/dates";
 import { getDailyReminderCheck, type DailyReminderCheck } from "@/lib/dailyReminders";
 import { createClient } from "@/lib/supabase/server";
@@ -61,6 +63,8 @@ export default async function RootLayout({
   let reminderCheck: DailyReminderCheck | null = null;
   let savedTimezone: string | null = null;
   let timezoneIsManual = false;
+  // null = not asked yet. If the column is missing (migration not run) don't ask.
+  let nflTeam: string | null = NFL_NO_TEAM;
   if (user) {
     const { data: profile } = await supabase
       .from("profiles")
@@ -75,6 +79,8 @@ export default async function RootLayout({
     const { data: tzRow } = await supabase.from("profiles").select("timezone, timezone_source").eq("id", user.id).maybeSingle();
     savedTimezone = (tzRow?.timezone as string | null | undefined) ?? null;
     timezoneIsManual = tzRow?.timezone_source === "manual";
+    const { data: nflRow, error: nflError } = await supabase.from("profiles").select("nfl_team").eq("id", user.id).maybeSingle();
+    if (!nflError) nflTeam = (nflRow?.nfl_team as string | null | undefined) ?? null;
     const lastSeen = profile?.last_reminder_seen_date as string | null;
     if (isWarehouseQcLike(role) && lastSeen !== todayISO()) {
       reminderCheck = await getDailyReminderCheck(supabase);
@@ -98,13 +104,14 @@ export default async function RootLayout({
           {user ? (
             <div className="flex h-screen flex-col lg:flex-row print:h-auto">
               <div className="popout-hide contents">
-                <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} />
+                <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} nflTeam={nflTeam} />
               </div>
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
                 <div className="popout-hide contents">
                   {!isBrokerCarrier && reminderCheck && <DailyReminderModal check={reminderCheck} />}
                   {!isBrokerCarrier && <NotificationPopup />}
                   {!isBrokerCarrier && <NotesLauncher />}
+                  {!isBrokerCarrier && <NflTeamPrompt team={nflTeam} />}
                 </div>
                 {!isBrokerCarrier && <PushRegistration />}
                 <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
