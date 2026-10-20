@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import DeliveredEmailButton from "@/components/DeliveredEmailButton";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import { copyOrDownloadPng, groupFobItems, roundUpToNickel } from "@/lib/fobPricing";
@@ -110,27 +111,32 @@ export default function DeliveredPricingClient({
     updateDeliveredMessage(lane, e.target.value).catch(() => {});
   }
 
-  async function handleCopyImage() {
+  // The price sheet picture - used by both Copy as Image and Email to customers.
+  async function buildBlob(): Promise<Blob> {
     const messageEl = document.getElementById("delivered-message") as HTMLTextAreaElement | null;
     const message = messageEl?.value ?? initialMessage;
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
+    const priceValues = (item: FobItem) => {
+      const { ltl, ftl } = computeDelivered(item, freightRate);
+      return [formatMoney(ltl) || "CALL", formatMoney(ftl) || "CALL"];
+    };
+    const blocks = [
+      ...buildCategoryBlocks(westernGroups, priceValues),
+      ...buildCategoryBlocks(hotHouseGroups, priceValues),
+    ];
+    return renderBrandedPriceSheetPng({
+      subheaderText: `${laneLabel} Delivered`,
+      priceColumns: ["LTL", "FTL"],
+      subtitle: message,
+      blocks,
+      showSoldOutSection: true,
+    });
+  }
+
+  async function handleCopyImage() {
     try {
-      const westernGroups = groupFobItems(items, "western_veg");
-      const hotHouseGroups = groupFobItems(items, "hot_house");
-      const priceValues = (item: FobItem) => {
-        const { ltl, ftl } = computeDelivered(item, freightRate);
-        return [formatMoney(ltl) || "CALL", formatMoney(ftl) || "CALL"];
-      };
-      const blocks = [
-        ...buildCategoryBlocks(westernGroups, priceValues),
-        ...buildCategoryBlocks(hotHouseGroups, priceValues),
-      ];
-      const blob = await renderBrandedPriceSheetPng({
-        subheaderText: `${laneLabel} Delivered`,
-        priceColumns: ["LTL", "FTL"],
-        subtitle: message,
-        blocks,
-        showSoldOutSection: true,
-      });
+      const blob = await buildBlob();
       const result = await copyOrDownloadPng(blob, `${lane}-delivered-pricing.png`);
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
       setTimeout(() => setImageStatus(null), 2500);
@@ -145,7 +151,8 @@ export default function DeliveredPricingClient({
         <UpdateStatusButton pageKey="fob-pharr" readOnly />
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">{laneLabel} Delivered Pricing</h1>
-          <div className="flex gap-2">
+          <div className="flex items-start gap-2">
+            <DeliveredEmailButton lane={lane.toLowerCase()} buildBlob={buildBlob} />
             <button
               onClick={handleCopyImage}
               className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"

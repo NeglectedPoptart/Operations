@@ -63,6 +63,8 @@ export interface EmailAttachment {
   name: string;
   contentType: string;
   data: Uint8Array;
+  // Set to show the file inside the message body (<img src="cid:...">) instead of as a download.
+  contentId?: string;
 }
 
 // Small files go in one request; bigger ones (a report with 30 photos can be
@@ -78,6 +80,7 @@ async function addAttachment(mailbox: string, messageId: string, file: EmailAtta
         "@odata.type": "#microsoft.graph.fileAttachment",
         name: file.name,
         contentType: file.contentType,
+        ...(file.contentId ? { isInline: true, contentId: file.contentId } : {}),
         contentBytes: Buffer.from(file.data).toString("base64"),
       }),
     });
@@ -86,7 +89,7 @@ async function addAttachment(mailbox: string, messageId: string, file: EmailAtta
 
   const sessionRes = await graph(`/users/${mailbox}/messages/${messageId}/attachments/createUploadSession`, {
     method: "POST",
-    body: JSON.stringify({ AttachmentItem: { attachmentType: "file", name: file.name, size: file.data.length, contentType: file.contentType } }),
+    body: JSON.stringify({ AttachmentItem: { attachmentType: "file", name: file.name, size: file.data.length, contentType: file.contentType, ...(file.contentId ? { isInline: true, contentId: file.contentId } : {}) } }),
   });
   const { uploadUrl } = (await sessionRes.json()) as { uploadUrl: string };
   for (let start = 0; start < file.data.length; start += UPLOAD_CHUNK) {
@@ -106,9 +109,13 @@ async function addAttachment(mailbox: string, messageId: string, file: EmailAtta
 
 export async function sendEmail(input: {
   to: string[];
+  cc?: string[];
+  bcc?: string[];
   replyTo?: string[];
   subject: string;
   body: string;
+  // When given, the message is HTML (body is then only the plain-text fallback and is not sent).
+  html?: string;
   attachments?: EmailAttachment[];
 }): Promise<{ messageId: string; conversationId: string }> {
   const mailbox = encodeURIComponent(agentMailbox());
@@ -116,8 +123,10 @@ export async function sendEmail(input: {
     method: "POST",
     body: JSON.stringify({
       subject: input.subject,
-      body: { contentType: "Text", content: input.body },
+      body: input.html ? { contentType: "HTML", content: input.html } : { contentType: "Text", content: input.body },
       toRecipients: input.to.map((address) => ({ emailAddress: { address } })),
+      ...(input.cc?.length ? { ccRecipients: input.cc.map((address) => ({ emailAddress: { address } })) } : {}),
+      ...(input.bcc?.length ? { bccRecipients: input.bcc.map((address) => ({ emailAddress: { address } })) } : {}),
       ...(input.replyTo?.length ? { replyTo: input.replyTo.map((address) => ({ emailAddress: { address } })) } : {}),
     }),
   });

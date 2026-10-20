@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState } from "react";
+import DeliveredEmailButton from "@/components/DeliveredEmailButton";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import { copyOrDownloadPng, groupFobItems, roundUpToNickel } from "@/lib/fobPricing";
@@ -109,29 +110,34 @@ export default function EastCoastPricingClient({
     updateEastCoastMessage(e.target.value).catch(() => {});
   }
 
-  async function handleCopyImage() {
+  // The price sheet picture - used by both Copy as Image and Email to customers.
+  async function buildBlob(): Promise<Blob> {
     const messageEl = document.getElementById("east-coast-message") as HTMLTextAreaElement | null;
     const message = messageEl?.value ?? initialMessage;
-    try {
-      const westernGroups = groupFobItems(items, "western_veg");
-      const hotHouseGroups = groupFobItems(items, "hot_house");
-      const priceValues = (item: FobItem) =>
-        lanes.map((lane) => {
-          const price = computeDelivered(item, freightByLane[lane]);
-          return price === null ? "CALL" : formatMoney(price);
-        });
-      const blocks = [
-        ...buildCategoryBlocks(westernGroups, priceValues),
-        ...buildCategoryBlocks(hotHouseGroups, priceValues),
-      ];
-      const blob = await renderBrandedPriceSheetPng({
-        subheaderText: "East Coast Delivered",
-        priceColumns: lanes,
-        subtitle: message,
-        blocks,
-        columns: 2,
-        showSoldOutSection: true,
+    const westernGroups = groupFobItems(items, "western_veg");
+    const hotHouseGroups = groupFobItems(items, "hot_house");
+    const priceValues = (item: FobItem) =>
+      lanes.map((lane) => {
+        const price = computeDelivered(item, freightByLane[lane]);
+        return price === null ? "CALL" : formatMoney(price);
       });
+    const blocks = [
+      ...buildCategoryBlocks(westernGroups, priceValues),
+      ...buildCategoryBlocks(hotHouseGroups, priceValues),
+    ];
+    return renderBrandedPriceSheetPng({
+      subheaderText: "East Coast Delivered",
+      priceColumns: lanes,
+      subtitle: message,
+      blocks,
+      columns: 2,
+      showSoldOutSection: true,
+    });
+  }
+
+  async function handleCopyImage() {
+    try {
+      const blob = await buildBlob();
       const result = await copyOrDownloadPng(blob, "east-coast-delivered-pricing.png");
       setImageStatus(result === "copied" ? "Image copied!" : "Image downloaded!");
       setTimeout(() => setImageStatus(null), 2500);
@@ -146,7 +152,8 @@ export default function EastCoastPricingClient({
         <UpdateStatusButton pageKey="fob-pharr" readOnly />
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">East Coast Delivered Pricing</h1>
-          <div className="flex gap-2">
+          <div className="flex items-start gap-2">
+            <DeliveredEmailButton lane="east-coast" buildBlob={buildBlob} />
             <button
               onClick={handleCopyImage}
               className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-800"
