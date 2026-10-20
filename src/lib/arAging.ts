@@ -1,8 +1,11 @@
-// Aging bucket is computed live from due_date vs. today, never stored - a
+// Aging bucket is computed live from the invoice date vs. today, never stored - a
 // bucket baked in at import time would silently go stale (an invoice that
 // was "1-20 days" the day it was pulled reads exactly the same weeks later
-// once it's actually "61+"). Bucket boundaries match the source "AR Aging
-// Detail by Customer" report exactly (Current / 1-20 / 21-40 / 41-60 / 61+).
+// once it's actually "61+"). Both the boundaries and the basis match the source
+// "AR Aging Detail by Customer" report (Current / 1-20 / 21-40 / 41-60 / 61+ days
+// since the INVOICE date - an invoice dated 35 days ago sits in 21-40 even though
+// its due date is only 14 days past; checked against a real report). The due
+// date is only a fallback for an invoice with no invoice date.
 import { daysSince } from "./dates";
 
 export type ArAgingBucket = "current" | "1-20" | "21-40" | "41-60" | "61+";
@@ -15,8 +18,13 @@ export const AR_AGING_BUCKETS: { key: ArAgingBucket; label: string }[] = [
   { key: "61+", label: "61+" },
 ];
 
-export function arAgingBucket(dueDate: string | null): ArAgingBucket {
-  const days = daysSince(dueDate);
+// Days an invoice has aged, the way the report counts it.
+export function arAgeDays(inv: { invoice_date: string | null; due_date: string | null }): number | null {
+  return daysSince(inv.invoice_date ?? inv.due_date);
+}
+
+export function arAgingBucket(inv: { invoice_date: string | null; due_date: string | null }): ArAgingBucket {
+  const days = arAgeDays(inv);
   if (days === null || days <= 0) return "current";
   if (days <= 20) return "1-20";
   if (days <= 40) return "21-40";

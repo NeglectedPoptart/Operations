@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import HorizontalBarChart from "@/components/HorizontalBarChart";
-import { AR_AGING_BUCKETS, arAgingBucket, type ArAgingBucket } from "@/lib/arAging";
+import { AR_AGING_BUCKETS, arAgeDays, arAgingBucket, type ArAgingBucket } from "@/lib/arAging";
 import {
   BUCKET_BADGE,
   DiscrepancyBadge,
@@ -22,7 +22,7 @@ import {
   type CustomerGroup,
 } from "@/lib/arShared";
 import { parsePdfArReport, type ParsedArInvoice } from "@/lib/arReportParse";
-import { daysSince, formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
+import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
 import { deleteArInvoiceRow, extractPdfText, importArReport, logArOpened, saveArBaseline, updateArInvoiceRow } from "./actions";
@@ -54,7 +54,7 @@ function creditsText(invoice: ArInvoice): string {
 }
 
 function arRowValues(invoice: ArInvoice, customerName: string): string[] {
-  const bucket = arAgingBucket(invoice.due_date);
+  const bucket = arAgingBucket(invoice);
   const discrepancy = payDiscrepancy(invoice);
   return [
     customerName,
@@ -253,7 +253,7 @@ export default function ArClient({
     let overTotal = 0;
     for (const inv of nonTroubleInvoices) {
       total += inv.balance;
-      byBucket.set(arAgingBucket(inv.due_date), (byBucket.get(arAgingBucket(inv.due_date)) ?? 0) + inv.balance);
+      byBucket.set(arAgingBucket(inv), (byBucket.get(arAgingBucket(inv)) ?? 0) + inv.balance);
       if (inv.highlight === "red") escalated++;
       if (inv.highlight === "yellow") needsContact++;
       const d = payDiscrepancy(inv);
@@ -278,8 +278,8 @@ export default function ArClient({
       .map((g) => {
         let invs = g.invoices;
         if (filterTrouble) invs = invs.filter((i) => i.trouble_status === "pending");
-        // 21+ days past due - the 21-40, 41-60 and 61+ aging buckets.
-        if (filter21) invs = invs.filter((i) => (daysSince(i.due_date) ?? 0) >= 21);
+        // 21+ days old - the 21-40, 41-60 and 61+ aging buckets of the report.
+        if (filter21) invs = invs.filter((i) => (arAgeDays(i) ?? 0) >= 21);
         if (highlightFilterActive) {
           invs = invs.filter((i) => (filterRed && i.highlight === "red") || (filterYellow && i.highlight === "yellow"));
         }
@@ -776,7 +776,7 @@ export default function ArClient({
                   </thead>
                   <tbody>
                     {g.invoices.map((inv) => {
-                      const bucket = arAgingBucket(inv.due_date);
+                      const bucket = arAgingBucket(inv);
                       const discrepancy = payDiscrepancy(inv);
                       return (
                         <tr

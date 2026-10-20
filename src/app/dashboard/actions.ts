@@ -116,12 +116,12 @@ export async function getDashboardData(): Promise<DashboardData | null> {
       return data ?? [];
     }),
     section(async () => {
-      const { data, error } = await supabase.from("ar_invoices").select("due_date, balance, highlight, trouble_status");
+      const { data, error } = await supabase.from("ar_invoices").select("invoice_date, due_date, balance, highlight, trouble_status");
       if (error) throw new Error(error.message);
       const invoices = (data ?? []).filter((i) => i.trouble_status !== "pending");
       const totals = new Map(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
       for (const inv of invoices) {
-        const k = arAgingBucket(inv.due_date as string | null);
+        const k = arAgingBucket({ invoice_date: inv.invoice_date as string | null, due_date: inv.due_date as string | null });
         totals.set(k, (totals.get(k) ?? 0) + Number(inv.balance));
       }
       return {

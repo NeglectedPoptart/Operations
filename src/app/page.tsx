@@ -160,7 +160,7 @@ export default async function HomePage() {
       .select("*", { count: "exact", head: true })
       .eq("rate_con_sent", false)
       .neq("status", "complete"),
-    supabase.from("ar_invoices").select("due_date, balance, highlight, trouble_status"),
+    supabase.from("ar_invoices").select("invoice_date, due_date, balance, highlight, trouble_status"),
     supabase.from("vendors").select("*", { count: "exact", head: true }),
     supabase.from("vendors").select("*", { count: "exact", head: true }).eq("sheet_date", today),
   ]);
@@ -221,13 +221,13 @@ export default async function HomePage() {
   // they're left out of this tile too - it matches the AR page's Summary.
   // Resolved ones ("T", already adjusted) count like any other invoice.
   const arInvoices = (
-    (arInvoicesRes.data ?? []) as { due_date: string | null; balance: number; highlight: string; trouble_status: string }[]
+    (arInvoicesRes.data ?? []) as { invoice_date: string | null; due_date: string | null; balance: number; highlight: string; trouble_status: string }[]
   ).filter((i) => i.trouble_status !== "pending");
   const arTotalOutstanding = arInvoices.reduce((sum, i) => sum + i.balance, 0);
   const arEscalatedCount = arInvoices.filter((i) => i.highlight === "red").length;
   const arBucketTotals = new Map(AR_AGING_BUCKETS.map((b) => [b.key, 0]));
   for (const inv of arInvoices) {
-    const bucket = arAgingBucket(inv.due_date);
+    const bucket = arAgingBucket(inv);
     arBucketTotals.set(bucket, (arBucketTotals.get(bucket) ?? 0) + inv.balance);
   }
   const arBucketChartData = AR_AGING_BUCKETS.map((b) => ({ label: b.label, value: arBucketTotals.get(b.key) ?? 0 }));
