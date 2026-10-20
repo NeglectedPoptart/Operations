@@ -420,11 +420,6 @@ export default function NavBar({
         >
           Sign out
         </button>
-        <img
-          src="/logo-hbi-2025.png"
-          alt="Harvest Best"
-          className="mx-auto mt-3 h-12 w-auto object-contain"
-        />
       </div>
     </>
   );
