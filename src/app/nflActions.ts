@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
-import { NFL_NO_TEAM, NFL_TEAMS, loadNflGame, type NflGame } from "@/lib/nfl";
+import { NFL_NO_TEAM, NFL_TEAMS, loadNflSummary, type NflSummary } from "@/lib/nfl";
 
 // Saves the NFL team a person picked (or "none" if they don't follow it).
 // Regular logins can't update their own profile row (row-level security only
@@ -20,12 +20,12 @@ export async function saveNflTeam(abbr: string): Promise<{ ok: true } | { error:
   return { ok: true };
 }
 
-// This week's game for a team, for the clock at the top of the menu.
-export async function getNflGame(abbr: string): Promise<NflGame | null> {
+// Record, last score and next game for a team, for the clock at the top of the menu.
+export async function getNflSummary(abbr: string): Promise<NflSummary | null> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user || !NFL_TEAMS.some((t) => t.abbr === abbr)) return null;
-  return loadNflGame(abbr);
+  return loadNflSummary(abbr);
 }

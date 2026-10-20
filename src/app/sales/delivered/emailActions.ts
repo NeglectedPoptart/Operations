@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { canOpenPage } from "@/lib/pageAccess";
+import { personName } from "@/lib/displayName";
 import { todayISO } from "@/lib/dates";
 import { graphConfigured, sendEmail } from "@/lib/agents/graph";
 
@@ -104,8 +105,7 @@ export async function sendDeliveredSheet(
     return { error: e instanceof Error ? e.message : "The email could not be sent." };
   }
 
-  const { data: emp } = await ctx.supabase.from("employees").select("name").eq("linked_user_id", ctx.user.id).maybeSingle();
-  const who = (emp?.name as string | undefined)?.trim() || (ctx.user.email ?? "Unknown").split("@")[0];
+  const who = await personName(ctx.supabase, ctx.user);
   await ctx.supabase.from("delivered_email_lists").update({ last_sent_at: new Date().toISOString(), last_sent_by: who }).eq("lane", lane);
   return { ok: true, to: list.to.length, cc: list.cc.length, bcc: list.bcc.length, subject };
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { personName } from "@/lib/displayName";
 import { APP_TIMEZONE } from "@/lib/dates";
 import { buildSeries, metricOptions, metricValue, resultCounts, type GroupBy } from "@/lib/qcCharts";
 import { buildDashboardPdf, type PdfTableRow } from "@/lib/qcDashboardPdf";
@@ -51,9 +52,8 @@ export async function GET(request: Request) {
     return { title: m.label, unit: m.unit, fromZero: m.fromZero, series: built.series, stats: built.stats, groupCount: built.groupCount };
   });
 
-  // Who is exporting: their employee name if linked, otherwise their login name.
-  const { data: emp } = await supabase.from("employees").select("name").eq("linked_user_id", user.id).maybeSingle();
-  const exportedBy = emp?.name?.trim() || (user.email ?? "Unknown").split("@")[0];
+  // Who is exporting: the name they go by (their choice, else employee record, else login name).
+  const exportedBy = await personName(supabase, user);
 
   // Logo from the site's own public folder; plain text header if it can't be read.
   let logo: Uint8Array | null = null;

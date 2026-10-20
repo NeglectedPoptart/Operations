@@ -1,5 +1,6 @@
 "use client";
 
+import ProfileMenu from "./ProfileMenu";
 import SidebarClock from "./SidebarClock";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -224,6 +225,7 @@ export default function NavBar({
   access,
   roleLabel,
   nflTeam = null,
+  userName = null,
 }: {
   role: Role | null;
   email: string | null;
@@ -231,6 +233,8 @@ export default function NavBar({
   roleLabel: string | null;
   // The NFL team abbreviation this person picked (or "none"); null = not asked yet.
   nflTeam?: string | null;
+  // The name this person goes by (their own choice, else employee record); null = show the email.
+  userName?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -297,8 +301,6 @@ export default function NavBar({
     router.push("/login");
     router.refresh();
   }
-
-  const initials = (email ?? "?").trim().slice(0, 1).toUpperCase();
 
   const topLevelClass = (active: boolean) =>
     `flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm font-medium transition ${
@@ -398,29 +400,7 @@ export default function NavBar({
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-2.5 rounded-md px-1 py-1.5">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand text-sm font-bold text-white">
-            {initials}
-          </div>
-          <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-sm font-medium text-white">{email ?? "Signed in"}</p>
-            {roleLabel && <p className="truncate text-[11px] text-sidebar-text-muted">{roleLabel}</p>}
-          </div>
-        </div>
-        <button
-          onClick={() => setShowPassword(true)}
-          className="mt-1 w-full rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
-        >
-          Change password
-        </button>
-        <button
-          onClick={signOut}
-          className="mt-1 w-full rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-sidebar-text-muted hover:bg-sidebar-hover hover:text-white"
-        >
-          Sign out
-        </button>
-      </div>
+      <ProfileMenu name={userName} email={email} roleLabel={roleLabel} onChangePassword={() => setShowPassword(true)} onSignOut={signOut} />
     </>
   );
 

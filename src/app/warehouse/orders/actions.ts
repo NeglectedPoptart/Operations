@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getDocumentProxy } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
+import { personName } from "@/lib/displayName";
 import { parseOrdersReport, type ParsedOrder, type PdfRow, type PendingOrder } from "@/lib/pendingOrders";
 
 function revalidateAll() {
@@ -15,8 +16,7 @@ async function currentName(): Promise<string> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return "Unknown";
-  const { data: emp } = await supabase.from("employees").select("name").eq("linked_user_id", user.id).maybeSingle();
-  return (emp?.name as string | undefined)?.trim() || (user.email ?? "Unknown").split("@")[0];
+  return personName(supabase, user);
 }
 
 export interface OrdersReadResult {

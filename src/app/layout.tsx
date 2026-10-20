@@ -64,6 +64,7 @@ export default async function RootLayout({
   let savedTimezone: string | null = null;
   let timezoneIsManual = false;
   // null = not asked yet. If the column is missing (migration not run) don't ask.
+  let userName: string | null = null;
   let nflTeam: string | null = NFL_NO_TEAM;
   if (user) {
     const { data: profile } = await supabase
@@ -81,6 +82,13 @@ export default async function RootLayout({
     timezoneIsManual = tzRow?.timezone_source === "manual";
     const { data: nflRow, error: nflError } = await supabase.from("profiles").select("nfl_team").eq("id", user.id).maybeSingle();
     if (!nflError) nflTeam = (nflRow?.nfl_team as string | null | undefined) ?? null;
+    // The name they chose, else their employee record - tolerant of the column/link not existing.
+    const { data: nameRow } = await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
+    userName = (nameRow?.display_name as string | null | undefined)?.trim() || null;
+    if (!userName) {
+      const { data: emp } = await supabase.from("employees").select("name").eq("linked_user_id", user.id).maybeSingle();
+      userName = (emp?.name as string | null | undefined)?.trim() || null;
+    }
     const lastSeen = profile?.last_reminder_seen_date as string | null;
     if (isWarehouseQcLike(role) && lastSeen !== todayISO()) {
       reminderCheck = await getDailyReminderCheck(supabase);
@@ -104,7 +112,7 @@ export default async function RootLayout({
           {user ? (
             <div className="flex h-screen flex-col lg:flex-row print:h-auto">
               <div className="popout-hide contents">
-                <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} nflTeam={nflTeam} />
+                <NavBar role={role} email={user.email ?? null} access={access} roleLabel={roleLabel} nflTeam={nflTeam} userName={userName} />
               </div>
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
                 <div className="popout-hide contents">
