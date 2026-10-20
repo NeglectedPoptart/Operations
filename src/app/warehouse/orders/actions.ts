@@ -176,7 +176,7 @@ export async function importOrdersReport(input: {
 
 export async function updateOrder(
   id: string,
-  patch: { notes?: string; legend_id?: string | null; greyed?: boolean; moved_to?: string | null },
+  patch: { notes?: string; legend_id?: string | null; greyed?: boolean; moved_to?: string | null; important?: boolean },
 ): Promise<{ error: string } | { ok: true }> {
   const supabase = await createClient();
   const { error } = await supabase

@@ -49,6 +49,7 @@ export interface PendingOrder {
   legend_id: string | null;
   greyed: boolean;
   moved_to: string | null;
+  important: boolean;
   first_seen_at: string;
   last_seen_at: string;
   updated_at: string;

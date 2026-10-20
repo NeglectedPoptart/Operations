@@ -36,6 +36,11 @@ const btn = "rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50";
 const btnLine = `${btn} border border-black/20 hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10`;
 const btnGreen = `${btn} bg-green-600 text-white hover:bg-green-700`;
 
+// One flat list: earliest ship date first, then order number.
+function sortOrders(list: PendingOrder[]): PendingOrder[] {
+  return [...list].sort((a, b) => (a.ship_date ?? "9999").localeCompare(b.ship_date ?? "9999") || a.order_no.localeCompare(b.order_no));
+}
+
 function dayName(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "numeric", day: "numeric" });
 }
@@ -70,10 +75,12 @@ export default function OrdersClient({
   const legendById = useMemo(() => new Map(legend.map((l) => [l.id, l])), [legend]);
 
   const visible = useMemo(() => orders.filter((o) => !(hideGreyed && o.greyed)), [orders, hideGreyed]);
+  // Everything due today, and everything moved to tomorrow - starred orders are listed once, in
+  // the Important section at the top, whichever of these they belong to.
   const main = useMemo(() => visible.filter((o) => !isMovedAway(o, today)), [visible, today]);
-  const moved = useMemo(() => visible.filter((o) => isMovedAway(o, today)), [visible, today]);
-  const mainGroups = useMemo(() => groupByShipDate(main), [main]);
-  const movedGroups = useMemo(() => groupByShipDate(moved), [moved]);
+  const importantRows = useMemo(() => sortOrders(visible.filter((o) => o.important)), [visible]);
+  const mainRows = useMemo(() => sortOrders(visible.filter((o) => !o.important && !isMovedAway(o, today))), [visible, today]);
+  const movedRows = useMemo(() => sortOrders(visible.filter((o) => !o.important && isMovedAway(o, today))), [visible, today]);
 
   function flash(text: string) {
     setMessage(text);
@@ -81,7 +88,7 @@ export default function OrdersClient({
   }
 
   // ---- order edits (optimistic)
-  function patchOrder(id: string, patch: Partial<Pick<PendingOrder, "notes" | "legend_id" | "greyed" | "moved_to">>) {
+  function patchOrder(id: string, patch: Partial<Pick<PendingOrder, "notes" | "legend_id" | "greyed" | "moved_to" | "important">>) {
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...patch } : o)));
     updateOrder(id, patch).then((r) => {
       if ("error" in r) alert(`Couldn't save: ${r.error}`);
@@ -170,8 +177,9 @@ export default function OrdersClient({
 
   // ---- exports
   const sections: OrderSection[] = [
-    { title: "Today's pending orders", groups: mainGroups },
-    { title: `Moved to tomorrow (${dayName(tomorrow)})`, groups: movedGroups },
+    ...(importantRows.length > 0 ? [{ title: "Important - review first", groups: groupByShipDate(importantRows) }] : []),
+    { title: "Today's pending orders", groups: groupByShipDate(mainRows) },
+    { title: `Moved to tomorrow (${dayName(tomorrow)})`, groups: groupByShipDate(movedRows) },
   ];
   const heading = `Pending Orders - ${dayName(today)}`;
   const subheading = meta?.uploaded_at ? `From the report loaded ${formatTimestamp(meta.uploaded_at)}` : "";
@@ -230,22 +238,14 @@ export default function OrdersClient({
     };
   })();
 
-  function renderGroups(groups: ReturnType<typeof groupByShipDate>, isMoved: boolean) {
-    return groups.map((g) => (
-      <tbody key={`${isMoved}-${g.date ?? "none"}`}>
-        <tr className="bg-black/5 dark:bg-white/10">
-          <td colSpan={12} className="px-2 py-1.5 text-sm font-bold">
-            Ship date {shortDay(g.date)}
-            <span className="ml-2 font-normal text-black/60 dark:text-white/60">
-              {g.orders.length} order{g.orders.length === 1 ? "" : "s"} · {qty(g.orders.reduce((s, o) => s + o.ordered, 0))} ordered
-            </span>
-          </td>
-        </tr>
-        {g.orders.map((o) => {
+  function renderRows(list: PendingOrder[]) {
+    return (
+      <tbody>
+        {list.map((o) => {
           const item = o.legend_id ? legendById.get(o.legend_id) : undefined;
           const bg = o.greyed ? GREY_ROW : item ? rgbaOf(item.color, item.opacity) : undefined;
           return (
-            <tr key={o.id} style={bg ? { backgroundColor: bg } : undefined} className={`border-t border-black/10 align-top dark:border-white/10 ${o.greyed ? "text-gray-500" : ""}`}>
+            <tr key={o.id} style={bg ? { backgroundColor: bg } : undefined} className={`border-t border-black/10 align-top dark:border-white/10 ${o.greyed ? "text-gray-500" : ""} ${o.important ? "border-l-4 border-l-red-500" : ""}`}>
               <td className="relative px-1 py-1.5">
                 <button
                   onClick={(e) => {
@@ -286,6 +286,15 @@ export default function OrdersClient({
                   </div>
                 )}
               </td>
+              <td className="px-0.5 py-1.5 text-center">
+                <button
+                  onClick={() => patchOrder(o.id, { important: !o.important })}
+                  title={o.important ? "Important - click to unmark" : "Mark as important (pins it to the top)"}
+                  className={`text-lg leading-none ${o.important ? "text-red-600" : "text-black/25 hover:text-red-500 dark:text-white/30"}`}
+                >
+                  {o.important ? "★" : "☆"}
+                </button>
+              </td>
               <td className="px-2 py-1.5 font-medium">
                 <span className="whitespace-nowrap">{o.order_no}</span>
                 {item && (
@@ -299,6 +308,7 @@ export default function OrdersClient({
                 )}
               </td>
               <td className="whitespace-nowrap px-2 py-1.5">{o.status}</td>
+              <td className="whitespace-nowrap px-2 py-1.5">{shortDay(o.ship_date)}</td>
               <td className="px-2 py-1.5">
                 <span className="font-medium">{o.customer_code}</span>
                 {o.customer_name && o.customer_name !== o.customer_code && <span className="block text-xs opacity-70">{o.customer_name}</span>}
@@ -319,7 +329,7 @@ export default function OrdersClient({
                 >
                   {o.greyed ? "Un-grey" : "Shipped"}
                 </button>{" "}
-                {isMoved ? (
+                {isMovedAway(o, today) ? (
                   <button
                     onClick={() => patchOrder(o.id, { moved_to: null })}
                     className="rounded border border-black/20 px-1.5 py-0.5 text-xs hover:bg-black/10 dark:border-white/20 dark:hover:bg-white/10"
@@ -342,15 +352,17 @@ export default function OrdersClient({
           );
         })}
       </tbody>
-    ));
+    );
   }
 
   const head = (
     <thead className="bg-black/5 text-left text-xs dark:bg-white/10">
       <tr>
         <th className="w-8 px-1 py-2" />
+        <th className="w-6 px-0.5 py-2" />
         <th className="px-2 py-2">Order No</th>
         <th className="px-2 py-2">Status</th>
+        <th className="px-2 py-2">Ship date</th>
         <th className="px-2 py-2">Customer</th>
         <th className="px-2 py-2">Salesperson</th>
         <th className="px-2 py-2">Terms</th>
@@ -535,16 +547,26 @@ export default function OrdersClient({
         </p>
       ) : (
         <>
+          {importantRows.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border-2 border-red-500">
+              <div className="bg-red-600 px-3 py-1.5 text-sm font-bold text-white">★ Important - review first ({importantRows.length})</div>
+              <table className="w-full text-sm">
+                {head}
+                {renderRows(importantRows)}
+              </table>
+            </div>
+          )}
+
           <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
             <div className="bg-green-700 px-3 py-1.5 text-sm font-bold text-white">Today&apos;s pending orders ({dayName(today)})</div>
             <table className="w-full text-sm">
               {head}
-              {mainGroups.length > 0 ? (
-                renderGroups(mainGroups, false)
+              {mainRows.length > 0 ? (
+                renderRows(mainRows)
               ) : (
                 <tbody>
                   <tr>
-                    <td colSpan={11} className="px-3 py-6 text-center text-black/50 dark:text-white/50">
+                    <td colSpan={13} className="px-3 py-6 text-center text-black/50 dark:text-white/50">
                       Nothing pending.
                     </td>
                   </tr>
@@ -557,12 +579,12 @@ export default function OrdersClient({
             <div className="bg-green-900 px-3 py-1.5 text-sm font-bold text-white">Moved to tomorrow ({dayName(tomorrow)})</div>
             <table className="w-full text-sm">
               {head}
-              {movedGroups.length > 0 ? (
-                renderGroups(movedGroups, true)
+              {movedRows.length > 0 ? (
+                renderRows(movedRows)
               ) : (
                 <tbody>
                   <tr>
-                    <td colSpan={11} className="px-3 py-5 text-center text-black/50 dark:text-white/50">
+                    <td colSpan={13} className="px-3 py-5 text-center text-black/50 dark:text-white/50">
                       Nothing moved. Use “Tomorrow →” on an order to move it here.
                     </td>
                   </tr>
