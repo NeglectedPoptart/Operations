@@ -122,7 +122,7 @@ export default function ProfileMenu({
             }}
             className={item}
           >
-            🏈 My NFL team
+            🏈 My team
           </button>
           <button onClick={onSignOut} className={`${item} mt-1 border-t border-sidebar-border pt-2`}>
             Sign out

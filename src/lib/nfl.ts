@@ -39,6 +39,20 @@ export const NFL_TEAMS: { abbr: string; id: number; name: string }[] = [
 
 // What is saved on the profile when someone says they don't follow the NFL.
 export const NFL_NO_TEAM = "none";
+// ...or when they would rather follow the NBA's San Antonio Spurs (same panel, same saved field).
+export const SPURS_TEAM = "SPURS";
+
+// Is this a value that can be saved as someone's team?
+export function isTeamChoice(value: string): boolean {
+  return value === NFL_NO_TEAM || value === SPURS_TEAM || NFL_TEAMS.some((t) => t.abbr === value);
+}
+
+// Where a saved team's schedule comes from on ESPN.
+function sourceFor(value: string): { sport: string; id: number; abbr: string; fallbackName: string } | null {
+  if (value === SPURS_TEAM) return { sport: "basketball/nba", id: 24, abbr: "SA", fallbackName: "Spurs" };
+  const team = NFL_TEAMS.find((t) => t.abbr === value);
+  return team ? { sport: "football/nfl", id: team.id, abbr: team.abbr, fallbackName: team.name.split(" ").slice(-1)[0] } : null;
+}
 
 
 export interface NflGameInfo {
@@ -82,18 +96,18 @@ function scoreOf(c: EspnCompetitor): number {
 }
 
 // ESPN's public team schedule (no key needed), cached a few minutes on the server.
-export async function loadNflSummary(abbr: string): Promise<NflSummary | null> {
-  const team = NFL_TEAMS.find((t) => t.abbr === abbr);
-  if (!team) return null;
-  const fallbackName = team.name.split(" ").slice(-1)[0];
-  const empty: NflSummary = { team: fallbackName, logo: null, record: null, standing: null, last: null, live: null, next: null };
+export async function loadNflSummary(value: string): Promise<NflSummary | null> {
+  const source = sourceFor(value);
+  if (!source) return null;
+  const abbr = source.abbr;
+  const empty: NflSummary = { team: source.fallbackName, logo: null, record: null, standing: null, last: null, live: null, next: null };
   try {
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${team.id}/schedule`, { next: { revalidate: 300 } });
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${source.sport}/teams/${source.id}/schedule`, { next: { revalidate: 300 } });
     if (!res.ok) return empty;
     const sched = (await res.json()) as EspnSchedule;
     const summary: NflSummary = {
       ...empty,
-      team: sched.team?.shortDisplayName ?? sched.team?.name ?? fallbackName,
+      team: sched.team?.shortDisplayName ?? sched.team?.name ?? source.fallbackName,
       logo: sched.team?.logo ?? null,
       record: sched.team?.recordSummary ?? null,
       standing: sched.team?.standingSummary ?? null,

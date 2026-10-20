@@ -75,7 +75,7 @@ export default function SidebarClock({ team, compact = false }: { team: string |
         {time} <span className="text-xs font-medium text-sidebar-text-muted">{zone}</span>
       </p>
       {hasTeam ? (
-        <button onClick={openPicker} title="Change my NFL team" className="mt-1.5 block w-full border-t border-sidebar-border pt-1.5 text-left">
+        <button onClick={openPicker} title="Change my team" className="mt-1.5 block w-full border-t border-sidebar-border pt-1.5 text-left">
           {info ? (
             <>
               <span className="flex items-center gap-1.5">
@@ -125,7 +125,7 @@ export default function SidebarClock({ team, compact = false }: { team: string |
       ) : (
         <div className="mt-0.5 text-center">
           <button onClick={openPicker} className="text-[11px] text-sidebar-text-muted hover:text-white hover:underline">
-            🏈 Pick your NFL team
+            🏈 Pick your team
           </button>
         </div>
       )}

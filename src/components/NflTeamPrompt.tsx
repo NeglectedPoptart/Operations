@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { saveNflTeam } from "@/app/nflActions";
-import { NFL_NO_TEAM, NFL_TEAMS } from "@/lib/nfl";
+import { NFL_NO_TEAM, NFL_TEAMS, SPURS_TEAM } from "@/lib/nfl";
 
 export const NFL_CHANGE_EVENT = "hops-nfl-change";
 
@@ -40,9 +40,9 @@ export default function NflTeamPrompt({ team }: { team: string | null }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => !firstAsk && setOpen(false)}>
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-5 text-black shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold">🏈 Who&apos;s your NFL team?</h2>
+        <h2 className="text-lg font-bold">🏈 Who&apos;s your team?</h2>
         <p className="mt-1 text-sm text-black/60">
-          One quick question. We&apos;ll show who your team plays each week, and when, at the top of the menu.
+          One quick question. We&apos;ll show your team&apos;s record, last score and next game at the top of the menu. Pick an NFL team - or the Spurs if you&apos;d rather follow them.
         </p>
         <div className="mt-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
           {NFL_TEAMS.map((t) => (
@@ -56,9 +56,16 @@ export default function NflTeamPrompt({ team }: { team: string | null }) {
             </button>
           ))}
         </div>
+        <button
+          disabled={saving}
+          onClick={() => void choose(SPURS_TEAM)}
+          className={`mt-1.5 w-full rounded-md border px-2 py-2 text-left text-sm hover:bg-green-50 disabled:opacity-50 ${team === SPURS_TEAM ? "border-green-600 bg-green-50 font-semibold" : "border-black/15"}`}
+        >
+          🏀 San Antonio Spurs (NBA)
+        </button>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <button disabled={saving} onClick={() => void choose(NFL_NO_TEAM)} className="rounded-md border border-black/20 px-3 py-1.5 text-sm hover:bg-black/5 disabled:opacity-50">
-            I don&apos;t follow the NFL
+            I don&apos;t follow either
           </button>
           {!firstAsk && (
             <button onClick={() => setOpen(false)} className="text-sm text-black/50 hover:underline">
