@@ -21,11 +21,14 @@ import {
   type ArSummaryTotals,
   type CustomerGroup,
 } from "@/lib/arShared";
-import { parsePdfArReport, type ParsedArInvoice } from "@/lib/arReportParse";
+import { parseArReportMeta, parsePdfArReport, type ArReportMeta, type ParsedArInvoice } from "@/lib/arReportParse";
 import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
 import { deleteArInvoiceRow, extractPdfText, importArReport, logArOpened, saveArBaseline, updateArInvoiceRow } from "./actions";
+import ArUploadConfirmModal from "./ArUploadConfirmModal";
+import ArUploadPreview from "./ArUploadPreview";
+import { checkReportDate, warningText, type LastReport } from "./uploadCheck";
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -193,10 +196,12 @@ export default function ArClient({
   initialCustomers,
   initialInvoices,
   initialBaseline,
+  initialLastReport,
 }: {
   initialCustomers: ArCustomer[];
   initialInvoices: ArInvoice[];
   initialBaseline: ArSummarySnapshot | null;
+  initialLastReport: LastReport | null;
 }) {
   const confirm = useConfirm();
   useEffect(() => {
@@ -208,6 +213,11 @@ export default function ArClient({
   const [previewInvoices, setPreviewInvoices] = useState<ParsedArInvoice[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  // What the chosen PDF says about itself, the last report on record, and which check pop-up is showing.
+  const [previewMeta, setPreviewMeta] = useState<ArReportMeta | null>(null);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
+  const [lastReport, setLastReport] = useState<LastReport | null>(initialLastReport);
+  const [confirmStep, setConfirmStep] = useState<"double" | "triple" | null>(null);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [search, setSearch] = useState("");
   const [filterRed, setFilterRed] = useState(false);
@@ -325,6 +335,8 @@ export default function ArClient({
         return;
       }
       setPreviewInvoices(parsed.invoices);
+      setPreviewMeta(parseArReportMeta(result.text));
+      setPreviewFile(file.name);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       setParseError(`Couldn't read that PDF (${detail}). It may be password protected or corrupted - try again.`);
@@ -347,10 +359,16 @@ export default function ArClient({
     if (!previewInvoices) return;
     setImporting(true);
     try {
-      const { customers: newCustomers, invoices: newInvoices } = await importArReport(previewInvoices);
+      const { customers: newCustomers, invoices: newInvoices } = await importArReport(previewInvoices, previewMeta ? { ...previewMeta, fileName: previewFile } : null);
       setCustomers(newCustomers);
       setInvoices(newInvoices);
+      if (previewMeta) {
+        setLastReport({ report_at: previewMeta.reportAt, uploaded_by: "you", uploaded_at: new Date().toISOString(), file_name: previewFile });
+      }
       setPreviewInvoices(null);
+      setPreviewMeta(null);
+      setPreviewFile(null);
+      setConfirmStep(null);
       setShowUpload(false);
     } catch (err) {
       alert(err instanceof Error ? `Couldn't sync: ${err.message}` : "Couldn't sync - try again.");
@@ -380,6 +398,9 @@ export default function ArClient({
 
   function handleCancelPreview() {
     setPreviewInvoices(null);
+    setPreviewMeta(null);
+    setPreviewFile(null);
+    setConfirmStep(null);
     setParseError(null);
   }
 
@@ -508,8 +529,43 @@ export default function ArClient({
 
   const bucketChartData = AR_AGING_BUCKETS.map((b) => ({ label: b.label, value: totals.byBucket.get(b.key) ?? 0 }));
 
+  // The upload safety checks: the report's own date against the last report loaded.
+  const dateWarning = previewMeta && lastReport ? checkReportDate(previewMeta.reportAt, lastReport) : null;
+  const missingDate = !!previewMeta && !previewMeta.reportAt;
+  const previewPanel =
+    previewInvoices && previewSummary && previewMeta ? (
+      <ArUploadPreview
+        fileName={previewFile}
+        meta={previewMeta}
+        invoices={previewInvoices}
+        summary={previewSummary}
+        existingCount={invoices.length}
+        lastReport={lastReport}
+        highlightWarning={!!dateWarning || missingDate}
+      />
+    ) : null;
+  const confirmWarnings = [
+    ...(missingDate ? ["Could not find a report date in this PDF - make sure it is the AR Aging Detail by Customer export."] : []),
+    ...(confirmStep === "triple" && dateWarning && lastReport ? [warningText(dateWarning, lastReport)] : []),
+  ];
+
   return (
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-4 sm:px-8">
+      {confirmStep && previewPanel && (
+        <ArUploadConfirmModal
+          key={confirmStep}
+          level={confirmStep}
+          warnings={confirmWarnings}
+          preview={previewPanel}
+          busy={importing}
+          onCancel={() => setConfirmStep(null)}
+          onConfirm={() => {
+            // A date that is too close to (or older than) the last report gets a second, stricter check.
+            if (confirmStep === "double" && dateWarning) setConfirmStep("triple");
+            else void handleConfirmImport();
+          }}
+        />
+      )}
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">Accounts Receivable</h1>
@@ -621,22 +677,19 @@ export default function ArClient({
                 <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={uploadingPdf} className="hidden" />
               </label>
             )}
-            {previewInvoices && previewSummary && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium">
-                  Found {previewInvoices.length} invoice{previewInvoices.length === 1 ? "" : "s"}: {previewSummary.added} new,{" "}
-                  {previewSummary.updated} updated, {previewSummary.removed} will be removed (no longer open).
-                </p>
+            {previewInvoices && previewSummary && previewMeta && (
+              <div className="space-y-3">
+                {previewPanel}
                 <p className="text-xs text-black/60 dark:text-white/60">
                   Last Contact, Notes and Highlight on every invoice that stays on the report are kept as they are.
                 </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={handleConfirmImport}
+                    onClick={() => setConfirmStep("double")}
                     disabled={importing}
                     className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
                   >
-                    {importing ? "Syncing..." : "Confirm & Sync"}
+                    Confirm &amp; Sync
                   </button>
                   <button
                     onClick={handleCancelPreview}

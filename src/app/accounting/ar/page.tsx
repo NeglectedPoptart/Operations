@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ArCustomer, ArInvoice, ArSummarySnapshot } from "@/lib/types";
 import ArClient from "./ArClient";
+import type { LastReport } from "./uploadCheck";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,15 @@ export default async function AccountsReceivablePage() {
     supabase.from("ar_summary_snapshot").select("*").limit(1).maybeSingle(),
   ]);
 
+  // The last AR report loaded (when it says it was generated). Tolerant: the table comes from migration 153.
+  const { data: lastReport } = await supabase
+    .from("report_uploads")
+    .select("report_at, uploaded_by, uploaded_at, file_name")
+    .eq("kind", "ar")
+    .order("uploaded_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   if (customersError) {
     return <p className="text-red-600">Failed to load AR customers: {customersError.message}</p>;
   }
@@ -32,6 +42,7 @@ export default async function AccountsReceivablePage() {
       initialCustomers={(customers ?? []) as ArCustomer[]}
       initialInvoices={(invoices ?? []) as ArInvoice[]}
       initialBaseline={(baseline ?? null) as ArSummarySnapshot | null}
+      initialLastReport={(lastReport ?? null) as LastReport | null}
     />
   );
 }

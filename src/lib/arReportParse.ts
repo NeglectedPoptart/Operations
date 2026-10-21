@@ -347,3 +347,38 @@ function parseCreditsReport(raw: string): ParseArReportResult {
 export function parsePdfArReport(raw: string): ParseArReportResult {
   return /Including Credits/.test(raw) ? parseCreditsReport(raw) : parseLegacyArReport(raw);
 }
+
+// ---- When the report was generated -------------------------------------------------
+// Every export carries a header like
+//   "AR Aging Detail by Customer 10/7/2026 9:20:59AM"  then the run-by login on the next line,
+// and a parameters line ("...; Date: 10/7/2026; ...") with the as-of date.
+export interface ArReportMeta {
+  // When the report was run, as local time "YYYY-MM-DDTHH:MM:SS" (the clock of whoever ran it).
+  reportAt: string | null;
+  // The report's "Date:" parameter (YYYY-MM-DD) - what the aging was figured as of.
+  asOf: string | null;
+  runBy: string | null;
+}
+
+const RUN_STAMP_RE = /(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)/i;
+
+function runStampToIso(m: RegExpMatchArray): string | null {
+  const date = parseUsDate(m[1]);
+  if (!date) return null;
+  let hour = Number(m[2]) % 12;
+  if (m[5].toUpperCase() === "PM") hour += 12;
+  return `${date}T${String(hour).padStart(2, "0")}:${m[3]}:${m[4]}`;
+}
+
+export function parseArReportMeta(raw: string): ArReportMeta {
+  const lines = raw.split("\n").map((l) => l.trim());
+  const headerIdx = lines.findIndex((l) => l.startsWith("AR Aging Detail"));
+  const stamp = (headerIdx >= 0 ? lines[headerIdx].match(RUN_STAMP_RE) : null) ?? raw.match(RUN_STAMP_RE);
+  const runBy = headerIdx >= 0 ? lines[headerIdx + 1] : "";
+  const asOf = raw.match(/Date:\s*(\d{1,2}\/\d{1,2}\/\d{4})/);
+  return {
+    reportAt: stamp ? runStampToIso(stamp) : null,
+    asOf: asOf ? parseUsDate(asOf[1]) : null,
+    runBy: runBy && !/\s/.test(runBy) ? runBy : null,
+  };
+}

@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import { computeArSummaryTotals } from "@/lib/arShared";
 import { logActivity } from "@/lib/auditLog";
+import { personName } from "@/lib/displayName";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedArInvoice } from "@/lib/arReportParse";
 import type { ArCustomer, ArInvoice, ArSummarySnapshot } from "@/lib/types";
@@ -38,6 +39,8 @@ export async function extractPdfText(formData: FormData): Promise<{ text: string
 // or closed) is deleted. A new one is inserted.
 export async function importArReport(
   rows: ParsedArInvoice[],
+  // What the PDF says about itself - saved so the next upload can be compared with this one.
+  meta: { reportAt: string | null; asOf: string | null; runBy: string | null; fileName: string | null } | null = null,
 ): Promise<{ customers: ArCustomer[]; invoices: ArInvoice[] }> {
   const supabase = await createClient();
 
@@ -139,6 +142,24 @@ export async function importArReport(
     const { error: strayError } = await supabase.from("ar_customers").delete().in("id", strayIds);
     if (strayError) throw new Error(strayError.message);
     finalCustomers = (finalCustomers ?? []).filter((c) => !strayIds.includes(c.id as string));
+  }
+
+  // Remember when this report was generated. Never lets a hiccup here undo the sync.
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    await supabase.from("report_uploads").insert({
+      kind: "ar",
+      report_at: meta?.reportAt ?? null,
+      as_of: meta?.asOf ?? null,
+      run_by: meta?.runBy ?? null,
+      file_name: meta?.fileName ?? null,
+      record_count: rows.length,
+      uploaded_by: user ? await personName(supabase, user) : null,
+    });
+  } catch {
+    // intentionally swallowed
   }
 
   await logActivity(
