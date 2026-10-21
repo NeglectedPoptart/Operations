@@ -75,7 +75,8 @@ export async function saveDeliveredEmailList(
 // Subject is always "M/D/YYYY DESTINATION DELIVERED PRICE SHEET"; the body is just the sheet's image.
 export async function sendDeliveredSheet(
   lane: string,
-  pngBase64: string,
+  imageBase64: string,
+  contentType: "image/png" | "image/jpeg" = "image/png",
 ): Promise<{ ok: true; to: number; cc: number; bcc: number; subject: string } | { error: string }> {
   const ctx = await allowed(lane);
   if (!ctx) return { error: "Not allowed." };
@@ -87,7 +88,7 @@ export async function sendDeliveredSheet(
 
   const [y, m, d] = todayISO().split("-").map(Number);
   const subject = `${m}/${d}/${y} ${DESTINATIONS[lane]} DELIVERED PRICE SHEET`;
-  const data = Buffer.from(pngBase64, "base64");
+  const data = Buffer.from(imageBase64, "base64");
   if (data.length < 1000) return { error: "The price sheet image came out empty - try again." };
 
   try {
@@ -99,13 +100,18 @@ export async function sendDeliveredSheet(
       subject,
       body: "",
       html: `<img src="cid:pricesheet" alt="${subject}" style="max-width:100%;height:auto;" />`,
-      attachments: [{ name: `${lane}-delivered-price-sheet.png`, contentType: "image/png", data: new Uint8Array(data), contentId: "pricesheet" }],
+      attachments: [{ name: `${lane}-delivered-price-sheet.${contentType === "image/jpeg" ? "jpg" : "png"}`, contentType, data: new Uint8Array(data), contentId: "pricesheet" }],
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "The email could not be sent." };
   }
 
-  const who = await personName(ctx.supabase, ctx.user);
-  await ctx.supabase.from("delivered_email_lists").update({ last_sent_at: new Date().toISOString(), last_sent_by: who }).eq("lane", lane);
+  // The email is already out - never let the "last sent" note turn that into an error.
+  try {
+    const who = await personName(ctx.supabase, ctx.user);
+    await ctx.supabase.from("delivered_email_lists").update({ last_sent_at: new Date().toISOString(), last_sent_by: who }).eq("lane", lane);
+  } catch {
+    // intentionally swallowed
+  }
   return { ok: true, to: list.to.length, cc: list.cc.length, bcc: list.bcc.length, subject };
 }

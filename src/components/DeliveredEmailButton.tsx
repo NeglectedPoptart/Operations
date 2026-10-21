@@ -16,6 +16,30 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+// Hosting caps what one request can carry (about 4.5 MB), and a tall price sheet as a PNG can be
+// bigger than that - so a big one is re-saved as a high-quality JPEG, scaled down only if it must be.
+const MAX_IMAGE_BYTES = 2_800_000;
+
+async function emailImage(blob: Blob): Promise<{ data: string; contentType: "image/png" | "image/jpeg" }> {
+  if (blob.size <= MAX_IMAGE_BYTES) return { data: await blobToBase64(blob), contentType: "image/png" };
+  const bitmap = await createImageBitmap(blob);
+  let jpeg: Blob | null = null;
+  for (const scale of [1, 0.85, 0.7, 0.55]) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) break;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    if (jpeg && jpeg.size <= MAX_IMAGE_BYTES) break;
+  }
+  if (!jpeg) throw new Error("Could not prepare the image.");
+  return { data: await blobToBase64(jpeg), contentType: "image/jpeg" };
+}
+
 // "Email to customers" for a Delivered page: sends the price sheet image to the lane's
 // To / Cc / Bcc lists in one click, from the HOPS mailbox (replies go to Sales).
 export default function DeliveredEmailButton({ lane, buildBlob }: { lane: string; buildBlob: () => Promise<Blob> }) {
@@ -44,8 +68,8 @@ export default function DeliveredEmailButton({ lane, buildBlob }: { lane: string
     setBusy(true);
     setStatus("Sending...");
     try {
-      const png = await blobToBase64(await buildBlob());
-      const result = await sendDeliveredSheet(lane, png);
+      const image = await emailImage(await buildBlob());
+      const result = await sendDeliveredSheet(lane, image.data, image.contentType);
       if ("error" in result) {
         setStatus(null);
         alert(result.error);
@@ -54,9 +78,9 @@ export default function DeliveredEmailButton({ lane, buildBlob }: { lane: string
       setStatus(`Sent: ${result.subject}`);
       const refreshed = await getDeliveredEmailList(lane);
       if (!("error" in refreshed)) setList(refreshed);
-    } catch {
+    } catch (e) {
       setStatus(null);
-      alert("Could not send - try again.");
+      alert(`Could not send - try again. (${e instanceof Error ? e.message : "unknown error"})`);
     } finally {
       setBusy(false);
       setTimeout(() => setStatus(null), 6000);
