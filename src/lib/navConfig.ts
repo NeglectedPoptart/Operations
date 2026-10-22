@@ -102,6 +102,7 @@ export const NAV: NavCategory[] = [
       { href: "/sales/delivered/dallas", label: "Dallas Delivered" },
       { href: "/sales/delivered/east-coast", label: "East Coast Delivered" },
       { href: "/sales/calculator", label: "Sales Calculator" },
+      { href: "/sales/custom-sheets", label: "Custom Price Sheets" },
     ],
   },
   {
