@@ -95,11 +95,23 @@ export default function FreightCalculatorClient() {
   // Arrow keys move between cells like a spreadsheet instead of nudging
   // the number - each cell selects its full value on focus (below), so
   // typing just replaces it rather than needing an in-place text cursor to
-  // navigate around with the arrow keys.
+  // navigate around with the arrow keys. Enter moves along the way you type:
+  // Pallets -> Qty/Pallet on the same line, then Qty/Pallet -> the next line's
+  // Pallets (a new line is added when you finish the last one).
   function handleCellKeyDown(e: KeyboardEvent<HTMLInputElement>, rowIndex: number, col: Col) {
     switch (e.key) {
-      case "ArrowDown":
       case "Enter":
+        e.preventDefault();
+        if (col === "pallets") {
+          focusCell(rowIndex, "qtyPerPallet");
+        } else if (rowIndex + 1 < rows.length) {
+          focusCell(rowIndex + 1, "pallets");
+        } else {
+          addRow();
+          setTimeout(() => focusCell(rowIndex + 1, "pallets"), 0);
+        }
+        break;
+      case "ArrowDown":
         e.preventDefault();
         focusCell(rowIndex + 1, col);
         break;
@@ -136,6 +148,12 @@ export default function FreightCalculatorClient() {
             value={totalFreight}
             onChange={(e) => setTotalFreight(sanitizeNumeric(e.target.value))}
             onFocus={(e) => e.target.select()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === "ArrowDown") {
+                e.preventDefault();
+                focusCell(0, "pallets");
+              }
+            }}
             placeholder="0.00"
             className="w-24 rounded border border-gray-300 bg-white px-1.5 py-1 text-sm text-black"
           />
