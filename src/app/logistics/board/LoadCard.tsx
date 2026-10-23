@@ -83,6 +83,11 @@ export default function LoadCard({
               📦 Selected Lot: {selectedLotGrowers.join(", ")}
             </p>
           )}
+          {load.claim_flag && (
+            <p className="mb-1 inline-block rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
+              🚩 CLAIM{load.claim_note ? ` - ${load.claim_note}` : ""}
+            </p>
+          )}
           <LoadSummary load={load} dateFirst={dateFirst} compact />
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -98,6 +103,11 @@ export default function LoadCard({
       {selectedLotGrowers && selectedLotGrowers.length > 0 && (
         <p className="mb-2 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
           📦 Selected Lot: {selectedLotGrowers.join(", ")}
+        </p>
+      )}
+      {load.claim_flag && (
+        <p className="mb-2 rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white">
+          🚩 CLAIM{load.claim_note ? ` - ${load.claim_note}` : ""}
         </p>
       )}
       <LoadSummary load={load} dateFirst={dateFirst} />

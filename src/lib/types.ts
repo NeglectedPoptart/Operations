@@ -128,6 +128,11 @@ export interface Load {
   rate_con_sent: boolean;
   // Carrier says it's delivered but the signed POD hasn't arrived yet.
   pod_pending: boolean;
+  // Flagged as a Claim (something bad happened) to review later - see migration 155.
+  claim_flag?: boolean;
+  claim_note?: string | null;
+  claim_flagged_at?: string | null;
+  claim_flagged_by?: string | null;
   created_at: string;
   updated_at: string;
   load_stops: LoadStop[];

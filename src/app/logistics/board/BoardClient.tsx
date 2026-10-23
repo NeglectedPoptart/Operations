@@ -3,10 +3,11 @@
 import { useMemo, useState } from "react";
 import { formatDate } from "@/lib/dates";
 import { groupByLoadingDate } from "@/lib/loadGrouping";
+import type { LoadCharge } from "@/lib/loadCharges";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
-import PendingOrdersPopup from "./PendingOrdersPopup";
+import PendingOrdersCheck from "./PendingOrdersCheck";
 import RateConfirmationImport from "./RateConfirmationImport";
 
 export default function BoardClient({
@@ -15,6 +16,7 @@ export default function BoardClient({
   hubOptions,
   cityOptions,
   initialOverdueLoads,
+  chargesByLoadId,
   selectedLotsByLoadId,
 }: {
   loads: Load[];
@@ -22,6 +24,7 @@ export default function BoardClient({
   hubOptions: string[];
   cityOptions: string[];
   initialOverdueLoads: Load[] | null;
+  chargesByLoadId: Record<string, LoadCharge[]>;
   selectedLotsByLoadId: Record<string, string[]>;
 }) {
   const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(undefined);
@@ -49,9 +52,16 @@ export default function BoardClient({
 
   return (
     <div className="space-y-8">
-      {initialOverdueLoads !== null && <PendingOrdersPopup initialLoads={initialOverdueLoads} />}
-
       <div className="flex flex-wrap items-center gap-2">
+        {/* The check opens by itself the first time each day; this button opens it any time. */}
+        <PendingOrdersCheck
+          loads={loads}
+          chargesByLoadId={chargesByLoadId}
+          brokers={brokers}
+          hubOptions={hubOptions}
+          cityOptions={cityOptions}
+          autoOpen={initialOverdueLoads !== null}
+        />
         <label className="flex items-center gap-2 text-sm">
           <span className="font-medium">Filter by customer</span>
           <select

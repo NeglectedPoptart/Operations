@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import zipcodes from "zipcodes";
 import { createClient } from "@/lib/supabase/server";
+import { personName } from "@/lib/displayName";
 import { todayISO } from "@/lib/dates";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
 import { splitDestinationLabel } from "@/lib/destination";
@@ -352,4 +353,68 @@ export async function lookupZipCityState(zip: string): Promise<{ city: string; s
   const info = zipcodes.lookup(zip);
   if (!info) return null;
   return { city: info.city, state: info.state };
+}
+
+// ---- Pending Orders Check: quick edits, claims and extra charges -------------------
+
+export async function updateLoadQuick(
+  id: string,
+  patch: { loading_date?: string | null; rate?: number | null; notes?: string | null; eta_note?: string | null },
+): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const clean: Record<string, unknown> = {};
+  if ("loading_date" in patch) clean.loading_date = patch.loading_date || null;
+  if ("rate" in patch) clean.rate = patch.rate === null || patch.rate === undefined || !Number.isFinite(patch.rate) ? null : patch.rate;
+  if ("notes" in patch) clean.notes = patch.notes?.trim() ? patch.notes.trim() : null;
+  if ("eta_note" in patch) clean.eta_note = patch.eta_note?.trim() ? patch.eta_note.trim() : null;
+  const { error } = await supabase.from("loads").update(clean).eq("id", id);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+// Flags a truck as a Claim (or clears it). The note says what happened; clearing keeps it.
+export async function setLoadClaim(id: string, flag: boolean, note: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const patch = flag
+    ? {
+        claim_flag: true,
+        claim_note: note.trim() || null,
+        claim_flagged_at: new Date().toISOString(),
+        claim_flagged_by: user ? await personName(supabase, user) : null,
+      }
+    : { claim_flag: false };
+  const { error } = await supabase.from("loads").update(patch).eq("id", id);
+  if (error) return { error: /claim_/.test(error.message) ? "Claims aren't set up yet - ask the admin to run migration 155." : error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+export async function addLoadCharge(input: { loadId: string; kind: string; amount: number; note: string }): Promise<{ ok: true } | { error: string }> {
+  if (!Number.isFinite(input.amount) || input.amount === 0) return { error: "Enter the charge amount (use a minus sign for a credit)." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { error } = await supabase.from("load_charges").insert({
+    load_id: input.loadId,
+    kind: input.kind.trim() || "Other",
+    amount: Math.round(input.amount * 100) / 100,
+    note: input.note.trim() || null,
+    created_by: user ? await personName(supabase, user) : null,
+  });
+  if (error) return { error: /load_charges/.test(error.message) ? "Charges aren't set up yet - ask the admin to run migration 155." : error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+export async function deleteLoadCharge(id: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("load_charges").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
 }

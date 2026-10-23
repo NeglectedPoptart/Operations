@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/dates";
+import type { LoadCharge } from "@/lib/loadCharges";
 import type { Broker, DestinationCity, Hub, Load } from "@/lib/types";
 import BoardClient from "./BoardClient";
 
@@ -52,6 +53,11 @@ export default async function BoardPage() {
     (selectedLotsByLoadId[a.linked_load_id] ??= []).push(growerName);
   }
 
+  // Extra freight charges (migration 155). Fetched on its own so the board still loads if it is not set up yet.
+  const { data: chargeRows } = await supabase.from("load_charges").select("*").order("created_at", { ascending: true });
+  const chargesByLoadId: Record<string, LoadCharge[]> = {};
+  for (const c of (chargeRows ?? []) as LoadCharge[]) (chargesByLoadId[c.load_id] ??= []).push(c);
+
   const hubOptions = ((hubs ?? []) as Hub[]).map((h) => h.name);
   const cityOptions = ((destinationCities ?? []) as DestinationCity[]).map((c) => `${c.city}, ${c.state}`);
   const allLoads = (loads ?? []) as unknown as Load[];
@@ -85,6 +91,7 @@ export default async function BoardPage() {
       hubOptions={hubOptions}
       cityOptions={cityOptions}
       initialOverdueLoads={initialOverdueLoads}
+      chargesByLoadId={chargesByLoadId}
       selectedLotsByLoadId={selectedLotsByLoadId}
     />
   );
