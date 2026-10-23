@@ -1,8 +1,16 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import { deleteLoad, updateLoadRateConSent, updateLoadReady, updateLoadStatus } from "./actions";
+import {
+  deleteLoad,
+  setPodPending,
+  updateLoadRateConSent,
+  updateLoadReady,
+  updateLoadStatus,
+} from "./actions";
+import { ClaimBanner, LoadClaimCharges } from "./LoadExtras";
+import type { LoadCharge } from "@/lib/loadCharges";
 import { LOAD_STATUSES, type Load, type LoadStatus } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
 
@@ -11,6 +19,7 @@ export default function LoadCard({
   onEdit,
   dateFirst = false,
   compact = false,
+  charges = [],
   selectedLotGrowers,
 }: {
   load: Load;
@@ -18,12 +27,15 @@ export default function LoadCard({
   dateFirst?: boolean;
   // One slim row (the same details across the width) instead of a tall card.
   compact?: boolean;
+  // Extra freight charges on this load (migration 155).
+  charges?: LoadCharge[];
   // Grower name(s) from any Mexico Arrivals row paired with this load -
   // undefined/empty means nothing's been paired to it.
   selectedLotGrowers?: string[];
 }) {
   const [pending, startTransition] = useTransition();
   const confirm = useConfirm();
+  const [showExtras, setShowExtras] = useState(false);
 
   function handleStatusChange(status: LoadStatus) {
     startTransition(() => updateLoadStatus(load.id, status));
@@ -36,6 +48,10 @@ export default function LoadCard({
 
   function handleToggleReady() {
     startTransition(() => updateLoadReady(load.id, !load.ready_to_load));
+  }
+
+  function handleTogglePod() {
+    startTransition(() => setPodPending(load.id, !load.pod_pending));
   }
 
   function handleToggleRateCon() {
@@ -65,10 +81,17 @@ export default function LoadCard({
   );
   const actions = (
     <div className="flex gap-2 text-xs">
-      <button onClick={onEdit} className="font-medium text-green-600 hover:underline">
+      <button
+        onClick={onEdit}
+        className="font-medium text-green-600 hover:underline"
+      >
         Edit
       </button>
-      <button onClick={handleDelete} disabled={pending} className="font-medium text-red-600 hover:underline">
+      <button
+        onClick={handleDelete}
+        disabled={pending}
+        className="font-medium text-red-600 hover:underline"
+      >
         Delete
       </button>
     </div>
@@ -76,24 +99,38 @@ export default function LoadCard({
 
   if (compact) {
     return (
-      <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-lg border px-3 py-1.5 shadow-sm ${borderClass}`}>
-        <div className="min-w-0 flex-1">
-          {selectedLotGrowers && selectedLotGrowers.length > 0 && (
-            <p className="mb-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-              📦 Selected Lot: {selectedLotGrowers.join(", ")}
-            </p>
-          )}
-          {load.claim_flag && (
-            <p className="mb-1 inline-block rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
-              🚩 CLAIM{load.claim_note ? ` - ${load.claim_note}` : ""}
-            </p>
-          )}
-          <LoadSummary load={load} dateFirst={dateFirst} compact />
+      <div className={`rounded-lg border px-3 py-1.5 shadow-sm ${borderClass}`}>
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <div className="min-w-0 flex-1">
+            {selectedLotGrowers && selectedLotGrowers.length > 0 && (
+              <p className="mb-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                📦 Selected Lot: {selectedLotGrowers.join(", ")}
+              </p>
+            )}
+            {load.claim_flag && (
+              <div className="mb-1">
+                <ClaimBanner load={load} />
+              </div>
+            )}
+            <LoadSummary load={load} dateFirst={dateFirst} compact />
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <button
+              onClick={() => setShowExtras((v) => !v)}
+              className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+              title="Freight charges and claim flag"
+            >
+              💲 Charges{charges.length > 0 ? ` (${charges.length})` : ""}
+            </button>
+            {statusSelect}
+            {actions}
+          </div>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {statusSelect}
-          {actions}
-        </div>
+        {showExtras && (
+          <div className="mt-2">
+            <LoadClaimCharges load={load} charges={charges} />
+          </div>
+        )}
       </div>
     );
   }
@@ -106,47 +143,57 @@ export default function LoadCard({
         </p>
       )}
       {load.claim_flag && (
-        <p className="mb-2 rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white">
-          🚩 CLAIM{load.claim_note ? ` - ${load.claim_note}` : ""}
-        </p>
+        <div className="mb-2">
+          <ClaimBanner load={load} />
+        </div>
       )}
       <LoadSummary load={load} dateFirst={dateFirst} />
 
-      <div className="mt-2 flex flex-wrap gap-2">
-        {load.status === "pending_to_load" && (
-          <button
-            onClick={handleToggleReady}
-            disabled={pending}
-            className={`rounded px-2 py-0.5 text-xs font-medium ${
-              load.ready_to_load
-                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-            }`}
-          >
-            {load.ready_to_load ? "Ready to Load" : "Not Ready"}
-          </button>
-        )}
-        {load.status !== "complete" && (
-          <button
-            onClick={handleToggleRateCon}
-            disabled={pending}
-            className={`rounded px-2 py-0.5 text-xs font-medium ${
-              load.rate_con_sent
-                ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-            }`}
-          >
-            {load.rate_con_sent ? "Rate Con Sent" : "⚠ Rate Con Not Sent"}
-          </button>
-        )}
-        {load.status === "on_the_road" && load.pod_pending && (
-          <span
-            className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-            title="The carrier says this load is delivered - waiting on the signed POD"
-          >
-            📄 Pending POD
-          </span>
-        )}
+      <div className="mt-2">
+        <LoadClaimCharges
+          load={load}
+          charges={charges}
+          flags={
+            <>
+              {load.status === "pending_to_load" && (
+                <button
+                  onClick={handleToggleReady}
+                  disabled={pending}
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${
+                    load.ready_to_load
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                      : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                  }`}
+                >
+                  {load.ready_to_load ? "Ready to Load" : "Not Ready"}
+                </button>
+              )}
+              {load.status !== "complete" && (
+                <button
+                  onClick={handleToggleRateCon}
+                  disabled={pending}
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${
+                    load.rate_con_sent
+                      ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                      : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                  }`}
+                >
+                  {load.rate_con_sent ? "Rate Con Sent" : "⚠ Rate Con Not Sent"}
+                </button>
+              )}
+              {load.status === "on_the_road" && (
+                <button
+                  onClick={handleTogglePod}
+                  disabled={pending}
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${load.pod_pending ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "border border-black/20 hover:bg-black/5 dark:border-white/20"}`}
+                  title="The carrier says this load is delivered - waiting on the signed POD"
+                >
+                  📄 {load.pod_pending ? "Pending POD" : "Mark pending POD"}
+                </button>
+              )}
+            </>
+          }
+        />
       </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">

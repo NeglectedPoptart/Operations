@@ -4,7 +4,12 @@ import { useMemo, useState } from "react";
 import { formatDate } from "@/lib/dates";
 import { groupByLoadingDate } from "@/lib/loadGrouping";
 import type { LoadCharge } from "@/lib/loadCharges";
-import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
+import {
+  LOAD_STATUSES,
+  type Broker,
+  type Load,
+  type LoadStatus,
+} from "@/lib/types";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
 import PendingOrdersCheck from "./PendingOrdersCheck";
@@ -27,7 +32,9 @@ export default function BoardClient({
   chargesByLoadId: Record<string, LoadCharge[]>;
   selectedLotsByLoadId: Record<string, string[]>;
 }) {
-  const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(undefined);
+  const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(
+    undefined,
+  );
   const [newStatus, setNewStatus] = useState<LoadStatus>("pending_to_load");
   const [customerFilter, setCustomerFilter] = useState("");
 
@@ -47,7 +54,9 @@ export default function BoardClient({
 
   const filteredLoads = useMemo(() => {
     if (!customerFilter) return loads;
-    return loads.filter((l) => l.load_stops.some((s) => s.client_name?.trim() === customerFilter));
+    return loads.filter((l) =>
+      l.load_stops.some((s) => s.client_name?.trim() === customerFilter),
+    );
   }, [loads, customerFilter]);
 
   return (
@@ -87,23 +96,34 @@ export default function BoardClient({
         )}
       </div>
 
-      <RateConfirmationImport brokers={brokers} hubOptions={hubOptions} cityOptions={cityOptions} />
+      <RateConfirmationImport
+        brokers={brokers}
+        hubOptions={hubOptions}
+        cityOptions={cityOptions}
+      />
 
       {LOAD_STATUSES.map((section) => {
-        const rawSectionLoads = filteredLoads.filter((l) => l.status === section.value);
+        const rawSectionLoads = filteredLoads.filter(
+          (l) => l.status === section.value,
+        );
         // Completed loads read newest-first - everything else keeps the
         // server's oldest-first order (loads are fetched sorted ascending by
         // loading_date, which is what "Pending to Load"'s day-by-day
         // grouping below expects).
         const sectionLoads =
           section.value === "complete"
-            ? [...rawSectionLoads].sort((a, b) => (b.loading_date ?? "").localeCompare(a.loading_date ?? ""))
+            ? [...rawSectionLoads].sort((a, b) =>
+                (b.loading_date ?? "").localeCompare(a.loading_date ?? ""),
+              )
             : rawSectionLoads;
         return (
           <section key={section.value}>
             <div className="mb-3 flex items-center justify-between border-b-2 border-green-600 pb-2">
               <h2 className="text-lg font-bold text-green-700 dark:text-green-400">
-                {section.label} <span className="text-sm font-normal text-black/40">({sectionLoads.length})</span>
+                {section.label}{" "}
+                <span className="text-sm font-normal text-black/40">
+                  ({sectionLoads.length})
+                </span>
               </h2>
               <button
                 onClick={() => {
@@ -116,17 +136,25 @@ export default function BoardClient({
               </button>
             </div>
             {sectionLoads.length === 0 ? (
-              <p className="text-sm text-black/40 dark:text-white/40">No loads here.</p>
+              <p className="text-sm text-black/40 dark:text-white/40">
+                No loads here.
+              </p>
             ) : section.value === "pending_to_load" ? (
               <div className="space-y-5">
                 {groupByLoadingDate(sectionLoads).map((group, idx) => (
                   <div
                     key={group.date ?? "no-date"}
-                    className={idx > 0 ? "border-t border-dashed border-black/15 pt-4 dark:border-white/20" : undefined}
+                    className={
+                      idx > 0
+                        ? "border-t border-dashed border-black/15 pt-4 dark:border-white/20"
+                        : undefined
+                    }
                   >
                     <h3 className="mb-2 text-sm font-semibold text-black/60 dark:text-white/60">
                       {group.date ? formatDate(group.date) : "No Date Set"}{" "}
-                      <span className="font-normal text-black/40">({group.loads.length})</span>
+                      <span className="font-normal text-black/40">
+                        ({group.loads.length})
+                      </span>
                     </h3>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {group.loads.map((load) => (
@@ -135,6 +163,7 @@ export default function BoardClient({
                           load={load}
                           onEdit={() => setEditingLoad(load)}
                           dateFirst
+                          charges={chargesByLoadId[load.id]}
                           selectedLotGrowers={selectedLotsByLoadId[load.id]}
                         />
                       ))}
@@ -143,13 +172,20 @@ export default function BoardClient({
                 ))}
               </div>
             ) : (
-              <div className={section.value === "complete" ? "space-y-1.5" : "grid gap-3 sm:grid-cols-2"}>
+              <div
+                className={
+                  section.value === "complete"
+                    ? "space-y-1.5"
+                    : "grid gap-3 sm:grid-cols-2"
+                }
+              >
                 {sectionLoads.map((load) => (
                   <LoadCard
                     key={load.id}
                     load={load}
                     compact={section.value === "complete"}
                     onEdit={() => setEditingLoad(load)}
+                    charges={chargesByLoadId[load.id]}
                     selectedLotGrowers={selectedLotsByLoadId[load.id]}
                   />
                 ))}
