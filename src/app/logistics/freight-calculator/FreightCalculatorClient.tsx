@@ -29,12 +29,18 @@ function formatMoney(n: number) {
 
 const cellField = "w-16 rounded border border-gray-300 bg-white px-1 py-0.5 text-right text-xs text-black";
 
+// The calculator opens with this many empty lines; + Add Row adds more.
+const STARTING_ROWS = 10;
+function startingRows(): Row[] {
+  return Array.from({ length: STARTING_ROWS }, () => makeRow());
+}
+
 type Col = "pallets" | "qtyPerPallet";
 
 export default function FreightCalculatorClient() {
   const confirm = useConfirm();
   const [totalFreight, setTotalFreight] = useState("");
-  const [rows, setRows] = useState<Row[]>([makeRow(), makeRow(), makeRow()]);
+  const [rows, setRows] = useState<Row[]>(startingRows);
   const cellRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   const freight = parseFloat(totalFreight) || 0;
@@ -67,7 +73,7 @@ export default function FreightCalculatorClient() {
   async function clearAll() {
     if (!(await confirm("Clear the total freight and all rows?"))) return;
     setTotalFreight("");
-    setRows([makeRow(), makeRow(), makeRow()]);
+    setRows(startingRows());
   }
 
   function cellKey(rowIndex: number, col: Col) {
