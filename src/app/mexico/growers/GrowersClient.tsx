@@ -272,6 +272,27 @@ export default function GrowersClient({
                       className={`${field} mt-1`}
                     />
                   </label>
+                  <label className="text-xs font-medium">
+                    AP Terms (days after arrival)
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      defaultValue={g.ap_terms_days ?? ""}
+                      onBlur={(e) => handleGrowerSave(g.id, { ap_terms_days: e.target.value === "" ? null : Math.max(0, Math.round(Number(e.target.value))) })}
+                      placeholder="e.g. 7 for Net 7"
+                      className={`${field} mt-1`}
+                    />
+                  </label>
+                  <label className="text-xs font-medium">
+                    AP Terms note
+                    <input
+                      defaultValue={g.ap_terms_note ?? ""}
+                      onBlur={(e) => handleGrowerSave(g.id, { ap_terms_note: e.target.value })}
+                      placeholder="e.g. pays every Friday"
+                      className={`${field} mt-1`}
+                    />
+                  </label>
                   <label className="text-xs font-medium sm:col-span-2">
                     Notes / Issues
                     <textarea

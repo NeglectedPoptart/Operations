@@ -185,6 +185,7 @@ export const NAV: NavCategory[] = [
       { href: "/mexico/orders", label: "Orders" },
       { href: "/mexico/growers", label: "Growers", excludeRoles: ["warehouse_qc", "qc_manager"] },
       { href: "/mexico/carton-inventory", label: "Carton Inventory", excludeRoles: ["warehouse_qc", "qc_manager"] },
+      { href: "/mexico/ap-summary", label: "AP Summary", excludeRoles: ["warehouse_qc", "qc_manager"] },
     ],
   },
   {

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 function revalidateAll() {
   revalidatePath("/mexico/growers");
   revalidatePath("/mexico/arrivals");
+  revalidatePath("/mexico/ap-summary");
 }
 
 // Growers -----------------------------------------------------------------------
@@ -30,6 +31,8 @@ export async function updateGrower(
     address?: string | null;
     city?: string | null;
     state?: string | null;
+    ap_terms_days?: number | null;
+    ap_terms_note?: string | null;
   },
 ) {
   const supabase = await createClient();

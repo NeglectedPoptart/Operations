@@ -1016,6 +1016,9 @@ export interface MxGrower {
   address: string | null;
   city: string | null;
   state: string | null;
+  // How many days after a load arrives this grower is paid (Net 7, Net 14...) - migration 156.
+  ap_terms_days?: number | null;
+  ap_terms_note?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1130,6 +1133,10 @@ export interface MxArrival {
   // deleted/moved off) so Carton Inventory's deduction and the historical
   // record are unaffected; this just greys it out in the UI.
   arrived: boolean;
+  // When the Arrived box was ticked, and when/who marked it paid on the AP Summary - migration 156.
+  arrived_at?: string | null;
+  ap_paid_at?: string | null;
+  ap_paid_by?: string | null;
   created_at: string;
   updated_at: string;
 }

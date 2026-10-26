@@ -258,16 +258,26 @@ export async function updateArrivalRow(
     truck_group?: string | null;
     truck_position?: MxTruckPosition | null;
     linked_load_id?: string | null;
+    arrived?: boolean;
   },
 ) {
   const supabase = await createClient();
-  const { error } = await supabase.from("mx_arrivals").update(patch).eq("id", id);
+  // Ticking Arrived also records when (the AP Summary counts days from it). If that column is not
+  // there yet (migration 156 not run) the tick is still saved without it.
+  let { error } = await supabase
+    .from("mx_arrivals")
+    .update("arrived" in patch ? { ...patch, arrived_at: patch.arrived ? new Date().toISOString() : null } : patch)
+    .eq("id", id);
+  if (error && /arrived_at/.test(error.message)) {
+    ({ error } = await supabase.from("mx_arrivals").update(patch).eq("id", id));
+  }
   if (error) throw new Error(error.message);
   if ("grower_id" in patch || "carton_type_id" in patch || "arrival_day" in patch || "week_start_date" in patch || COMMODITY_QTY_SLOTS.some((s) => s.idKey in patch || s.qtyKey in patch)) {
     await syncCartonDeductionsForArrival(supabase, id).catch(() => {});
   }
   revalidateAll();
   revalidatePath("/mexico/carton-inventory");
+  revalidatePath("/mexico/ap-summary");
 }
 
 export async function deleteArrivalRow(id: string) {
