@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
+import { formatDate, todayISO } from "@/lib/dates";
 import {
   isBellPepper,
   isBroccoli,
@@ -11,7 +12,7 @@ import {
   type ParsedColdInventoryItem,
 } from "@/lib/coldInventoryParse";
 import type { ColdInventoryItem, ColdInventoryStatus } from "@/lib/types";
-import { importColdInventory, updateColdInventoryNotes, updateColdInventoryStatus } from "./actions";
+import { importColdInventory, readColdInventoryXlsx, updateColdInventoryNotes, updateColdInventoryStatus } from "./actions";
 
 const STATUS_CYCLE: (ColdInventoryStatus | null)[] = [null, "good", "issue", "dump"];
 
@@ -263,6 +264,9 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
   const [previewItems, setPreviewItems] = useState<ParsedColdInventoryItem[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  // Set when the report came from an Excel file: what the report says about itself.
+  const [reportMeta, setReportMeta] = useState<{ fileName: string; reportDate: string | null } | null>(null);
+  const [readingFile, setReadingFile] = useState(false);
 
   const sections = useMemo(() => {
     const bellPeppers: ColdInventoryItem[] = [];
@@ -305,6 +309,7 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
       const result = await importColdInventory(previewItems);
       setItems(result);
       setPreviewItems(null);
+      setReportMeta(null);
       setPasteText("");
       setShowPaste(false);
     } finally {
@@ -312,8 +317,35 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
     }
   }
 
+  // The Excel file straight from the cold storage - same report, no copy and paste.
+  async function handleFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setReadingFile(true);
+    setParseError(null);
+    setPreviewItems(null);
+    setReportMeta(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const result = await readColdInventoryXlsx(form);
+      if ("error" in result) {
+        setParseError(result.error);
+        return;
+      }
+      setPreviewItems(result.items);
+      setReportMeta({ fileName: result.fileName, reportDate: result.reportDate });
+    } catch {
+      setParseError("Couldn't read that file - try again.");
+    } finally {
+      setReadingFile(false);
+    }
+  }
+
   function handleCancelPreview() {
     setPreviewItems(null);
+    setReportMeta(null);
     setParseError(null);
   }
 
@@ -338,14 +370,21 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
             onClick={() => setShowPaste((s) => !s)}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
           >
-            {showPaste ? "Hide paste box" : "Paste from Excel"}
+            {showPaste ? "Hide upload box" : "Upload inventory"}
           </button>
         </div>
 
         {showPaste && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-block cursor-pointer rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700">
+                {readingFile ? "Reading file..." : "Upload Excel report (.xlsx)"}
+                <input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleFile} disabled={readingFile} className="hidden" />
+              </label>
+              <span className="text-xs text-black/50 dark:text-white/50">Choose the cold storage Inventory Report as it comes - or paste it below instead.</span>
+            </div>
             <p className="text-sm text-black/60 dark:text-white/60">
-              Copy the full pivot report from Excel (both header rows, every manifest) and paste below.
+              Upload the Excel report, or copy the full pivot report from Excel (both header rows, every manifest) and paste below.
               This replaces the entire current inventory - anything not in the new paste is removed.
               Good/unmarked items always reset for a fresh review. Issue/Dump items that reappear
               unchanged keep their status and notes, marked with a ↺ so you know they carried over
@@ -376,6 +415,16 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
 
             {previewItems && (
               <div className="space-y-2">
+                {reportMeta && (
+                  <div className={`rounded-lg border-2 px-3 py-2 ${reportMeta.reportDate && reportMeta.reportDate !== todayISO() ? "border-red-500 bg-red-50 text-black" : "border-yellow-400 bg-yellow-100 text-black"}`}>
+                    <p className="text-xs font-bold uppercase tracking-wide text-black/60">Report date - when this report was generated</p>
+                    <p className="text-lg font-extrabold">{reportMeta.reportDate ? formatDate(reportMeta.reportDate) : "Not found in this file"}</p>
+                    <p className="text-xs text-black/60">{reportMeta.fileName}</p>
+                    {reportMeta.reportDate && reportMeta.reportDate !== todayISO() && (
+                      <p className="mt-1 text-sm font-semibold text-red-700">⚠ This report is not dated today - make sure it is the latest one before importing.</p>
+                    )}
+                  </div>
+                )}
                 <p className="text-sm font-medium">
                   Found {previewItems.length} line item{previewItems.length === 1 ? "" : "s"}:
                 </p>

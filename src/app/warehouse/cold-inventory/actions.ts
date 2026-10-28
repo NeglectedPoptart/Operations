@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import ExcelJS from "exceljs";
 import { createClient } from "@/lib/supabase/server";
+import { findColdInventoryTable, parseColdInventoryPaste } from "@/lib/coldInventoryParse";
 import type { ColdInventoryItem, ColdInventoryStatus } from "@/lib/types";
 import type { ParsedColdInventoryItem } from "@/lib/coldInventoryParse";
 
@@ -12,6 +14,62 @@ function revalidateAll() {
 
 function keyOf(i: { manifest: string; commodity: string; size: string }) {
   return `${i.manifest}|${i.commodity}|${i.size}`;
+}
+
+// One cell of the Excel report as text (merged cells and formulas included).
+function cellText(cell: ExcelJS.Cell): string {
+  try {
+    const v = cell.value as unknown;
+    if (v === null || v === undefined) return "";
+    if (v instanceof Date) return v.toISOString().slice(0, 10);
+    if (typeof v === "object") {
+      const o = v as { result?: unknown; richText?: { text: string }[]; text?: unknown };
+      if ("result" in o) return String(o.result ?? "");
+      if (o.richText) return o.richText.map((t) => t.text).join("");
+      if (o.text !== undefined) return String(o.text);
+      return "";
+    }
+    return String(v);
+  } catch {
+    return "";
+  }
+}
+
+export interface ColdInventoryXlsxResult {
+  items: ParsedColdInventoryItem[];
+  reportDate: string | null; // YYYY-MM-DD, from the report's own "Date:" line
+  customer: string | null;
+  fileName: string;
+}
+
+// Reads the cold storage "Inventory Report" .xlsx - the same pivot report that used to be copied
+// and pasted - into the line items the import shows for review. Nothing is saved here.
+export async function readColdInventoryXlsx(formData: FormData): Promise<ColdInventoryXlsxResult | { error: string }> {
+  const file = formData.get("file");
+  if (!(file instanceof Blob)) return { error: "No file received." };
+  const fileName = file instanceof File ? file.name : "inventory.xlsx";
+  if (/.xls$/i.test(fileName)) return { error: "That is an old .xls file - open it in Excel and Save As .xlsx, then upload that." };
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await file.arrayBuffer());
+    const sheet = workbook.worksheets[0];
+    if (!sheet) return { error: "The workbook has no sheets." };
+    const rows: string[][] = [];
+    for (let r = 1; r <= sheet.rowCount; r++) {
+      const row = sheet.getRow(r);
+      const cells: string[] = [];
+      for (let c = 1; c <= sheet.columnCount; c++) cells.push(cellText(row.getCell(c)));
+      rows.push(cells);
+    }
+    const table = findColdInventoryTable(rows);
+    if (!table) return { error: "Could not find the inventory table (a header row starting with \"Manifest\" and \"Commodity\") - is this the cold storage Inventory Report?" };
+    const parsed = parseColdInventoryPaste(table.tsv);
+    if (parsed.error) return { error: parsed.error };
+    return { items: parsed.items, reportDate: table.reportDate, customer: table.customer, fileName };
+  } catch (err) {
+    return { error: `Couldn't read that file (${err instanceof Error ? err.message : String(err)}). Make sure it's an .xlsx.` };
+  }
 }
 
 // Full-replace import, reviewed fresh every day: Good/unmarked items always

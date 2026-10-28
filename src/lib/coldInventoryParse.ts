@@ -139,6 +139,43 @@ export function parseColdInventoryPaste(raw: string): { items: ParsedColdInvento
   return { items, error: null };
 }
 
+// The same report as an Excel file: the sheet has a title block on top ("Inventory ...",
+// Customer, Date) and then the pivot table. Takes the sheet as rows of text, finds where
+// the table starts (the row with "Manifest" in the first column and "Commodity" after it),
+// and hands back that table as the tab-separated text parseColdInventoryPaste reads - plus
+// the report date and customer from the title block. Merged cells arrive repeated across
+// their span, which the parser's forward-fill and "first non-empty cell" rules already cope with.
+export function findColdInventoryTable(rows: string[][]): { tsv: string; reportDate: string | null; customer: string | null } | null {
+  const headerIdx = rows.findIndex((r) => {
+    const cells = r.map((c) => normCell(c).toLowerCase());
+    const first = cells.findIndex((c) => c !== "");
+    return first !== -1 && cells[first] === "manifest" && cells.includes("commodity");
+  });
+  if (headerIdx === -1) return null;
+
+  // Title block: the cell after a "Date:" / "Customer:" label.
+  const after = (label: string): string | null => {
+    for (const r of rows.slice(0, headerIdx)) {
+      const cells = r.map(normCell);
+      const at = cells.findIndex((c) => c.toLowerCase() === label);
+      if (at === -1) continue;
+      // (a label over merged cells is repeated across them, so skip those repeats)
+      const next = cells.slice(at + 1).find((c) => c !== "" && c.toLowerCase() !== label);
+      if (next) return next;
+    }
+    return null;
+  };
+  const rawDate = after("date:");
+  const m = rawDate?.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const reportDate = m ? `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}` : null;
+
+  const tsv = rows
+    .slice(headerIdx)
+    .map((r) => r.map(normCell).join("\t"))
+    .join("\n");
+  return { tsv, reportDate, customer: after("customer:") };
+}
+
 // Each of these gets its own section per the warehouse's request, checked in
 // this order (a commodity matching an earlier one won't also land in a
 // later one); anything left over falls into a final "Everything Else"
