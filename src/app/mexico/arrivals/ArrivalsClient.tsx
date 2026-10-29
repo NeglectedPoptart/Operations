@@ -22,6 +22,7 @@ import {
   type MxGrowerLabel,
   type MxTruckPosition,
 } from "@/lib/types";
+import ArrivalDocsModal from "./ArrivalDocsModal";
 import { addArrivalRow, clearMxArrivals, deleteArrivalRow, importMxArrivals, notifyArrivalsUpdated, updateArrivalRow } from "./actions";
 
 // Compact fields for the dense table view - small enough to sit shoulder to
@@ -160,6 +161,7 @@ export default function ArrivalsClient({
   labels,
   commodities,
   initialArrivals,
+  initialDocCounts,
   loadOptions,
   cartonTypes,
   cartonInactiveGrowerIds,
@@ -169,6 +171,8 @@ export default function ArrivalsClient({
   labels: MxGrowerLabel[];
   commodities: MxCommodity[];
   initialArrivals: MxArrival[];
+  // arrival id -> number of attached documents (purchase orders etc.)
+  initialDocCounts: Record<string, number>;
   loadOptions: LoadOption[];
   cartonTypes: CartonType[];
   // Growers marked inactive in Carton Inventory: they still ship to us, but
@@ -200,6 +204,8 @@ export default function ArrivalsClient({
     options: { cartonTypeId: string; qty: number }[];
   } | null>(null);
   const [dayFilter, setDayFilter] = useState<Set<MxArrivalDay>>(new Set());
+  const [docCounts, setDocCounts] = useState<Record<string, number>>(initialDocCounts);
+  const [docsFor, setDocsFor] = useState<MxArrival | null>(null);
 
   const week = cache[weekStart] ?? { arrivals: [] };
   const loading = !(weekStart in cache);
@@ -215,7 +221,19 @@ export default function ArrivalsClient({
       .eq("week_start_date", target)
       .order("position", { ascending: true })
       .then(({ data }) => {
-        setCache((prev) => ({ ...prev, [target]: { arrivals: (data ?? []) as MxArrival[] } }));
+        const rows = (data ?? []) as MxArrival[];
+        setCache((prev) => ({ ...prev, [target]: { arrivals: rows } }));
+        if (rows.length > 0) {
+          supabase
+            .from("mx_arrival_documents")
+            .select("arrival_id")
+            .in("arrival_id", rows.map((r) => r.id))
+            .then(({ data: docRows }) => {
+              const counts: Record<string, number> = {};
+              for (const d of docRows ?? []) counts[d.arrival_id as string] = (counts[d.arrival_id as string] ?? 0) + 1;
+              setDocCounts((prev) => ({ ...prev, ...counts }));
+            });
+        }
       });
   }
 
@@ -618,6 +636,7 @@ export default function ArrivalsClient({
                       <th className="px-1.5 py-1 font-medium">Truck</th>
                       <th className="px-1.5 py-1 font-medium">Pos</th>
                       <th className="px-1.5 py-1" />
+                      <th className="px-1.5 py-1" />
                     </tr>
                   </thead>
                   <tbody>
@@ -840,6 +859,15 @@ export default function ArrivalsClient({
                           </td>
                           <td className="px-1.5 py-1">
                             <button
+                              onClick={() => setDocsFor(row)}
+                              className="whitespace-nowrap text-[11px] font-medium text-green-700 hover:underline dark:text-green-400"
+                              title="Documents for this load - e.g. the purchase order sent to the grower"
+                            >
+                              {docCounts[row.id] ? `Docs (${docCounts[row.id]})` : "Docs"}
+                            </button>
+                          </td>
+                          <td className="px-1.5 py-1">
+                            <button
                               onClick={() => handleRowDelete(row.id)}
                               className="text-[11px] font-medium text-red-600 hover:underline"
                             >
@@ -868,6 +896,14 @@ export default function ArrivalsClient({
         );
       })}
     </div>
+    {docsFor && (
+      <ArrivalDocsModal
+        arrivalId={docsFor.id}
+        title={[growers.find((g) => g.id === docsFor.grower_id)?.name, commodityIdsOf(docsFor).map((id) => commodityName(id, commodities)).filter(Boolean).join(" / "), dayInfo(docsFor.arrival_day)?.label].filter(Boolean).join(" · ") || "Arrival"}
+        onClose={() => setDocsFor(null)}
+        onCountChange={(id, count) => setDocCounts((prev) => ({ ...prev, [id]: count }))}
+      />
+    )}
     {cartonPicker && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setCartonPicker(null)}>
         <div

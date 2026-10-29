@@ -63,6 +63,14 @@ export default async function ArrivalsPage() {
     return <p className="text-red-600">Failed to load Arrivals: {error.message}</p>;
   }
 
+  // How many documents each arrival has - fetched on its own so the page still works before migration 158 is run.
+  const docCounts: Record<string, number> = {};
+  const arrivalIds = (arrivals ?? []).map((a) => a.id as string);
+  if (arrivalIds.length > 0) {
+    const { data: docRows } = await supabase.from("mx_arrival_documents").select("arrival_id").in("arrival_id", arrivalIds);
+    for (const d of docRows ?? []) docCounts[d.arrival_id as string] = (docCounts[d.arrival_id as string] ?? 0) + 1;
+  }
+
   const loadOptions: LoadOption[] = ((loadsForOptions ?? []) as unknown as LoadForOption[]).map((l) => ({
     id: l.id,
     label: loadOptionLabel(l),
@@ -75,6 +83,7 @@ export default async function ArrivalsPage() {
       labels={(labels ?? []) as MxGrowerLabel[]}
       commodities={(commodities ?? []) as MxCommodity[]}
       initialArrivals={(arrivals ?? []) as MxArrival[]}
+      initialDocCounts={docCounts}
       loadOptions={loadOptions}
       cartonTypes={(cartonTypes ?? []) as CartonType[]}
       cartonInactiveGrowerIds={(cartonLocations ?? []).map((l) => l.grower_id as string).filter(Boolean)}

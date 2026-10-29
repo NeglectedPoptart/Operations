@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { sendNotification } from "@/app/supreme/notifications/actions";
 import { addDays } from "@/lib/dates";
+import { personName } from "@/lib/displayName";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedMxArrivalRow } from "@/lib/mxArrivalsParse";
 import type { Role } from "@/lib/roles";
@@ -286,8 +287,81 @@ export async function deleteArrivalRow(id: string) {
   // reverses its balance effect) - otherwise the FK's on-delete-set-null
   // would just orphan it, permanently leaving the deduction in place.
   await supabase.from("carton_transactions").delete().eq("source_arrival_id", id);
+  // Its attached documents: the rows go with the arrival (cascade), the files are removed here.
+  const { data: docs } = await supabase.from("mx_arrival_documents").select("storage_path").eq("arrival_id", id);
+  if (docs && docs.length > 0) await supabase.storage.from("load-documents").remove(docs.map((d) => d.storage_path as string));
   const { error } = await supabase.from("mx_arrivals").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/mexico/carton-inventory");
   revalidateAll();
+}
+
+// --- Documents attached to an arrival (e.g. the purchase order sent to the grower) ---
+
+export interface ArrivalDocument {
+  id: string;
+  kind: "purchase_order" | "other";
+  file_name: string;
+  size_bytes: number | null;
+  created_by: string | null;
+  created_at: string;
+  url: string | null;
+}
+
+// A file the browser already put in the load-documents bucket (done client-side, since a
+// server action's body is capped far below a scan's size), recorded against the arrival.
+export async function recordArrivalDocument(input: {
+  arrivalId: string;
+  kind: "purchase_order" | "other";
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+}) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { error } = await supabase.from("mx_arrival_documents").insert({
+    arrival_id: input.arrivalId,
+    kind: input.kind,
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    content_type: input.contentType,
+    size_bytes: input.sizeBytes,
+    created_by: user ? await personName(supabase, user) : null,
+  });
+  if (error) throw new Error(error.message);
+}
+
+export async function getArrivalDocuments(arrivalId: string): Promise<ArrivalDocument[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("mx_arrival_documents")
+    .select("id, kind, file_name, storage_path, size_bytes, created_by, created_at")
+    .eq("arrival_id", arrivalId)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return Promise.all(
+    (data ?? []).map(async (d) => {
+      const { data: signed } = await supabase.storage.from("load-documents").createSignedUrl(d.storage_path as string, 3600);
+      return {
+        id: d.id as string,
+        kind: d.kind as "purchase_order" | "other",
+        file_name: d.file_name as string,
+        size_bytes: (d.size_bytes as number | null) ?? null,
+        created_by: (d.created_by as string | null) ?? null,
+        created_at: d.created_at as string,
+        url: signed?.signedUrl ?? null,
+      };
+    }),
+  );
+}
+
+export async function deleteArrivalDocument(id: string) {
+  const supabase = await createClient();
+  const { data: doc } = await supabase.from("mx_arrival_documents").select("storage_path").eq("id", id).maybeSingle();
+  const { error } = await supabase.from("mx_arrival_documents").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  if (doc) await supabase.storage.from("load-documents").remove([doc.storage_path as string]);
 }
