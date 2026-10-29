@@ -1,5 +1,6 @@
-import { currentWeekStart, prevWeekStart } from "@/lib/dates";
+import { addDays, currentWeekStart, prevWeekStart, todayISO } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
+import { loadRepacks } from "@/lib/repacksLoad";
 import { createClient } from "@/lib/supabase/server";
 import type { Broker, BrokerRateEntry, Lane, QcInspection } from "@/lib/types";
 import WeeklyCompanyCallClient, { type LaneRateRow } from "./WeeklyCompanyCallClient";
@@ -10,6 +11,9 @@ export default async function WeeklyCompanyCallPage() {
   const supabase = await createClient();
   const currWeek = currentWeekStart();
   const prevWeek = prevWeekStart(currWeek);
+
+  // Repacks (migration 157) - fetched on their own: if that is not set up yet, the rest of the page still works.
+  const repacksLoaded = await loadRepacks(supabase, addDays(todayISO(), -60));
 
   const [inspectionsRes, lanesRes, brokersRes, entriesRes, salesOrdersReportRes] = await Promise.all([
     supabase.from("qc_inspections").select("*").order("entry_date", { ascending: true }),
@@ -57,6 +61,8 @@ export default async function WeeklyCompanyCallPage() {
     <WeeklyCompanyCallClient
       qcInspections={(inspectionsRes.data ?? []) as QcInspection[]}
       laneRates={laneRates}
+      repacks={"repacks" in repacksLoaded ? repacksLoaded.repacks : []}
+      repacksError={"error" in repacksLoaded ? repacksLoaded.error : null}
       initialSalesOrdersReport={{
         rawText: (reportRow?.raw_text as string | null) ?? null,
         updatedByEmail: salesOrdersUpdatedByEmail,

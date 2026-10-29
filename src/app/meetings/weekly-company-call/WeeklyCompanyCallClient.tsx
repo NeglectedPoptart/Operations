@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import HorizontalBarChart, { type BarDatum } from "@/components/HorizontalBarChart";
 import { addDays, formatDate, formatTimestamp, todayISO } from "@/lib/dates";
+import { costPerCase, money as repackMoney, qtyText, type Repack } from "@/lib/repacks";
 import { parseSalesOrderText, type SalesOrderRow } from "@/lib/salesOrderParse";
 import { QC_RESULT_SCORE, QC_RESULTS, type QcInspection } from "@/lib/types";
 import { extractPdfText, saveWeeklySalesOrdersReport, type WeeklySalesOrdersReportInfo } from "./actions";
@@ -68,7 +69,94 @@ const QC_LABEL_CLASS: Record<string, string> = {
   Fail: "text-red-800 dark:text-red-300",
 };
 
-function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
+// Lead Quality Control: the repacks done in the chosen date range (the last 7 days by default).
+function LeadQualityControlSection({ repacks, error, startDate, endDate }: { repacks: Repack[]; error: string | null; startDate: string; endDate: string }) {
+  const inRange = repacks.filter((r) => r.repack_date >= startDate && r.repack_date <= endDate);
+  const totalCost = inRange.reduce((s, r) => s + (r.cost ?? 0), 0);
+  const totalOut = inRange.reduce((s, r) => s + (r.qty_out ?? 0), 0);
+  const totalCartons = inRange.reduce((s, r) => s + (r.cartons_used ?? 0), 0);
+
+  return (
+    <div className="space-y-4 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Lead Quality Control</h2>
+        <a href="/warehouse/repacks" className="text-xs font-medium text-green-700 hover:underline dark:text-green-400">
+          Open Repacks →
+        </a>
+      </div>
+      <p className="text-sm font-medium text-black/60 dark:text-white/60">
+        Repacks done {formatDate(startDate)} - {formatDate(endDate)}
+      </p>
+
+      {error ? (
+        <p className="text-sm text-amber-600">Repacks aren&apos;t available yet ({error}). The admin needs to run migration 157.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              ["Repacks", String(inRange.length)],
+              ["Cases out", qtyText(totalOut) || "0"],
+              ["Cartons used", qtyText(totalCartons) || "0"],
+              ["Total cost", repackMoney(totalCost)],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-md bg-black/5 p-3 dark:bg-white/5">
+                <p className="text-xs text-black/60 dark:text-white/60">{label}</p>
+                <p className="text-2xl font-bold">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {inRange.length === 0 ? (
+            <p className="text-sm text-black/40 dark:text-white/40">No repacks in this date range.</p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-black/10 dark:border-white/10">
+              <table className="w-full text-sm">
+                <thead className="bg-black/5 text-left dark:bg-white/5">
+                  <tr>
+                    <th className="px-3 py-1.5">Date</th>
+                    <th className="px-3 py-1.5">Product in</th>
+                    <th className="px-3 py-1.5">Product out</th>
+                    <th className="px-3 py-1.5 text-right">Cartons used</th>
+                    <th className="px-3 py-1.5 text-right">Cost</th>
+                    <th className="px-3 py-1.5 text-right">Cost / case out</th>
+                    <th className="px-3 py-1.5">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inRange.map((r) => {
+                    const per = costPerCase(r);
+                    return (
+                      <tr key={r.id} className="border-t border-black/10 align-top dark:border-white/10">
+                        <td className="whitespace-nowrap px-3 py-1.5">{formatDate(r.repack_date)}</td>
+                        <td className="px-3 py-1.5">
+                          {r.product_in}
+                          {r.qty_in !== null && <span className="block text-xs opacity-60">{qtyText(r.qty_in)} cases</span>}
+                        </td>
+                        <td className="px-3 py-1.5">
+                          {r.product_out}
+                          {r.qty_out !== null && <span className="block text-xs opacity-60">{qtyText(r.qty_out)} cases</span>}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          {r.cartons_used !== null ? qtyText(r.cartons_used) : ""}
+                          {r.carton_type && <span className="block text-xs opacity-60">{r.carton_type}</span>}
+                        </td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{r.cost !== null ? repackMoney(r.cost) : ""}</td>
+                        <td className="px-3 py-1.5 text-right text-xs tabular-nums">{per !== null ? repackMoney(per) : ""}</td>
+                        <td className="max-w-xs px-3 py-1.5 text-xs">{r.notes}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function QualityControl1Section({ items }: { items: QcInspection[] }) {
   const stats = useMemo(() => {
     // A row without both Chat and Report checked hasn't actually been
     // worked yet - it's a placeholder on the QC Inspections sheet, not a
@@ -106,7 +194,7 @@ function LeadQualityControlSection({ items }: { items: QcInspection[] }) {
 
   return (
     <div className="space-y-4 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
-      <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Lead Quality Control</h2>
+      <h2 className="text-lg font-bold text-green-700 dark:text-green-400">Quality Control 1</h2>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-md bg-black/5 p-3 dark:bg-white/5">
@@ -505,10 +593,14 @@ function DirectorOperationsSection({ rows }: { rows: LaneRateRow[] }) {
 export default function WeeklyCompanyCallClient({
   qcInspections,
   laneRates,
+  repacks,
+  repacksError,
   initialSalesOrdersReport,
 }: {
   qcInspections: QcInspection[];
   laneRates: LaneRateRow[];
+  repacks: Repack[];
+  repacksError: string | null;
   initialSalesOrdersReport: WeeklySalesOrdersReportInfo;
 }) {
   const [startDate, setStartDate] = useState(() => addDays(todayISO(), -6));
@@ -551,7 +643,9 @@ export default function WeeklyCompanyCallClient({
         </p>
       </div>
 
-      <LeadQualityControlSection items={itemsInRange} />
+      <LeadQualityControlSection repacks={repacks} error={repacksError} startDate={startDate} endDate={endDate} />
+
+      <QualityControl1Section items={itemsInRange} />
 
       <SalesOrdersSection initialReport={initialSalesOrdersReport} />
 
