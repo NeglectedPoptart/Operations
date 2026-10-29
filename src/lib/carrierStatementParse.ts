@@ -411,16 +411,19 @@ export function parseAmpPdfText(text: string): ParseResult {
 }
 
 // Ali-Mat Logistics LLC's own statement PDF - unpdf extracts it in normal
-// reading order, one row per line:
-//   Date  "Invoice #NNNN: Due MM/DD/YYYY."  Amount  Open Amount
+// reading order, one row per line. Two layouts have been seen:
+//   1. Date  "Invoice #NNNN: Due MM/DD/YYYY."  Amount  Open Amount
+//   2. Date  "Invoice #NNNN"  Amount  Running Balance   (the "Statement NO." layout,
+//      which also has Balance Forward and Payment lines and an aging summary on top)
 // The invoice number is embedded inside the Description text rather than
-// its own column, and the due date repeated in that same text is dropped -
-// neither is needed on this list. No Customer PO column exists in this
-// format. Amount and Open Amount happen to always match on this statement,
-// but Amount (the original invoiced amount) is read, same choice as
-// Jerue's parser above.
+// its own column, and a repeated due date is dropped - neither is needed on
+// this list. No Customer PO column exists in this format. Amount (the
+// original invoiced amount) is read, same choice as Jerue's parser above.
+// Only Invoice lines are read: Balance Forward (invoices from before this
+// statement's first row, not itemized) and Payment lines never match, so
+// older invoices already on the list are not touched.
 const ALIMAT_LINE_RE =
-  /^(\d{1,2}\/\d{1,2}\/\d{4})\s+Invoice #(\d+):\s+Due\s+\d{1,2}\/\d{1,2}\/\d{4}\.\s+([\d,]+\.\d{2})\s+[\d,]+\.\d{2}\s*$/;
+  /^(\d{1,2}\/\d{1,2}\/\d{4})\s+Invoice\s*#\s*(\d+):?(?:\s+Due\s+\d{1,2}\/\d{1,2}\/\d{4}\.?)?\s+([\d,]+\.\d{2})\s+-?[\d,]+\.\d{2}\s*$/;
 
 function parseAlimatLine(rawLine: string): ParsedInvoiceRow | null {
   const m = rawLine.trim().match(ALIMAT_LINE_RE);
