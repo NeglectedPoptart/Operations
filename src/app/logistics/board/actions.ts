@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import zipcodes from "zipcodes";
 import { createClient } from "@/lib/supabase/server";
+import { requestLoadUpdate } from "@/lib/agents/run";
 import { personName } from "@/lib/displayName";
 import { todayISO } from "@/lib/dates";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
@@ -246,6 +247,24 @@ export async function getLoadDocuments(loadId: string): Promise<{ id: string; fi
       return { id: d.id as string, file_name: d.file_name as string, source: d.source as string, url: signed?.signedUrl ?? null };
     }),
   );
+}
+
+// Emails the carrier asking for a location / ETA (and the POD if delivered) on one On the Road
+// load - the same email the Load ETA agent sends, sent now. Returns what happened for the button.
+export async function requestCarrierUpdate(loadId: string): Promise<{ sent: string } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+  try {
+    const result = await requestLoadUpdate(supabase, loadId);
+    if ("error" in result) return result;
+    revalidateAll();
+    return { sent: `Asked ${result.carrier} (${result.sentTo.join(", ")}) for an update.` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't send the email." };
+  }
 }
 
 // Marks the Pending Orders Check popup seen for today - same one-per-day-

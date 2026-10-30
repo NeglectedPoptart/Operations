@@ -6,7 +6,7 @@ import { todayISO } from "@/lib/dates";
 import type { LoadCharge } from "@/lib/loadCharges";
 import type { Broker, Load } from "@/lib/types";
 import LoadModal from "./LoadModal";
-import { ClaimBanner, LoadClaimCharges, inputClass, smallBtn, useRun } from "./LoadExtras";
+import { ClaimBanner, LoadClaimCharges, RequestUpdateButton, inputClass, smallBtn, useRun } from "./LoadExtras";
 import {
   markPendingOrdersSeen,
   setPodPending,
@@ -238,6 +238,7 @@ function CheckCard({ load, kind, charges, onFullEdit }: { load: Load; kind: "pen
                 📄 {load.pod_pending ? "Pending POD" : "Mark pending POD"}
               </button>
             )}
+            {kind === "road" && <RequestUpdateButton load={load} className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 disabled:opacity-50 dark:border-white/20" />}
           </>
         }
       />

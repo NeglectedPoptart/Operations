@@ -5,7 +5,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate } from "@/lib/dates";
 import { CHARGE_KINDS, type LoadCharge } from "@/lib/loadCharges";
 import type { Load } from "@/lib/types";
-import { addLoadCharge, deleteLoadCharge, setLoadClaim } from "./actions";
+import { addLoadCharge, deleteLoadCharge, requestCarrierUpdate, setLoadClaim } from "./actions";
 
 // The Claim flag and the extra freight charges on a load - shared by the List's load
 // cards and the Order Check window, so they work the same in both.
@@ -31,6 +31,43 @@ export function useRun(onDone?: () => void) {
     }
   }
   return { busy, run };
+}
+
+// Emails the load's carrier asking for a location / ETA (and the signed POD if it is delivered).
+// Sends the same email the Load ETA agent sends, right now; replies are read back the same way.
+export function RequestUpdateButton({ load, className = smallBtn }: { load: Load; className?: string }) {
+  const confirm = useConfirm();
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+  const carrier = load.brokers?.name ?? "the carrier";
+
+  async function send() {
+    if (!(await confirm(`Email ${carrier} asking for a location and ETA on this load?`))) return;
+    setState("sending");
+    try {
+      const result = await requestCarrierUpdate(load.id);
+      if ("error" in result) {
+        alert(result.error);
+        setState("idle");
+      } else {
+        setState("sent");
+        setTimeout(() => setState("idle"), 8000);
+      }
+    } catch {
+      alert("Couldn't send the email - try again.");
+      setState("idle");
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void send()}
+      disabled={state === "sending"}
+      title={`Email ${carrier} asking for a current location and ETA (and the POD if delivered)`}
+      className={`${className} ${state === "sent" ? "!border-green-600 !text-green-700" : ""}`}
+    >
+      {state === "sending" ? "Sending..." : state === "sent" ? "✓ Update requested" : "✉ Request update"}
+    </button>
+  );
 }
 
 // The red bar across a load that is flagged as a Claim.

@@ -358,6 +358,61 @@ async function runLoadEta(db: SupabaseClient, agent: Agent, force: boolean): Pro
   return created;
 }
 
+// A person clicking "Request update" on an On the Road load in Order Check / the List: sends the
+// carrier the same ETA email the Load ETA agent sends (same tag, so the reply is read back and
+// applied the same way), for that one load, right now. The click is the approval, so it is not
+// held as a draft - but the overnight window still applies, and a load asked in the last 20
+// minutes is not asked again.
+export async function requestLoadUpdate(
+  db: SupabaseClient,
+  loadId: string,
+): Promise<{ sentTo: string[]; carrier: string } | { error: string }> {
+  if (!graphConfigured()) return { error: "Outlook isn't connected yet, so HOPS can't send email." };
+
+  const { data: agent } = await db.from("agents").select("*").eq("key", "load_eta").maybeSingle<Agent>();
+  if (!agent) return { error: "The Load ETA agent isn't set up yet (HOPS Agents)." };
+
+  const { data: load, error } = await db
+    .from("loads")
+    .select("*, brokers(*), load_stops(*)")
+    .eq("id", loadId)
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!load) return { error: "Load not found." };
+  if (load.status !== "on_the_road") return { error: "Only loads that are On the Road can be asked for an update." };
+
+  type CarrierLoad = Load & { brokers: (Load["brokers"] & { followup_email?: string | null }) | null };
+  const carrierLoad = load as CarrierLoad;
+  const carrier = carrierLoad.brokers;
+  const carrierName = carrier?.name ?? "the carrier";
+  const to = splitEmails(carrier?.followup_email);
+  if (to.length === 0) return { error: `No follow-up email on file for ${carrierName}. Add one under HOPS Agents > Carrier Emails.` };
+
+  if (!inWindow(new Date(), agent.config)) {
+    const start = agent.config.window_start ?? "05:00";
+    const end = agent.config.window_end ?? "21:30";
+    return { error: `Carrier emails only go out between ${start} and ${end} Central - try again then.` };
+  }
+
+  const threads = await recentThreads(db, agent.id);
+  const recent = threads.find(
+    (t) => t.status !== "draft" && t.status !== "discarded" && t.record_ids.includes(loadId) && t.sent_at && Date.now() - new Date(t.sent_at).getTime() < 20 * 60_000,
+  );
+  if (recent) {
+    const minutes = Math.max(1, Math.round((Date.now() - new Date(recent.sent_at!).getTime()) / 60_000));
+    return { error: `${carrierName} was already asked about this load ${minutes} minute${minutes === 1 ? "" : "s"} ago.` };
+  }
+
+  const tag = newTag();
+  const email = carrierUpdateEmail(carrier?.name ?? "team", [carrierLoad], tag, readsReplies(agent));
+  const thread = await createThread(db, agent, { tag, recordIds: [loadId], to, ...email });
+  await sendThread(db, thread.id);
+
+  const { data: after } = await db.from("agent_threads").select("status, error").eq("id", thread.id).single();
+  if (after?.status !== "sent") return { error: after?.error ?? "The email could not be sent." };
+  return { sentTo: to, carrier: carrierName };
+}
+
 // The Buyers List, numbered, to the buyers. One email per send slot.
 function buyersListEmail(
   items: BuyersListItem[],
