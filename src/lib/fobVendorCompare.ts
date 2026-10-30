@@ -5,9 +5,18 @@
 import { BROCCOLI_CROWNS_CATEGORY, classify, classifyBroccoliGrade, normalizeCategory } from "./priceSheetParse";
 import type { PriceSheetItem, Vendor } from "./types";
 
+// One vendor quote that went into an average - shown when hovering a FOB row's % badge.
+export interface VendorQuote {
+  vendor: string;
+  item: string;
+  size: string | null;
+  price: number;
+}
+
 export interface VendorAverage {
   average: number;
   count: number;
+  quotes: VendorQuote[];
 }
 
 // Broccoli / Crowns is graded #1/#2 (see classifyBroccoliGrade) - every
@@ -61,20 +70,26 @@ export function computeTodayVendorAverages(
   vendors: Vendor[],
   today: string,
 ): Map<string, VendorAverage> {
-  const currentVendorIds = new Set(vendors.filter((v) => v.sheet_date === today).map((v) => v.id));
-  const byKey = new Map<string, number[]>();
+  const currentVendors = vendors.filter((v) => v.sheet_date === today);
+  const currentVendorIds = new Set(currentVendors.map((v) => v.id));
+  const vendorNames = new Map(currentVendors.map((v) => [v.id, v.name]));
+  const byKey = new Map<string, VendorQuote[]>();
   for (const item of items) {
     if (item.price === null || !currentVendorIds.has(item.vendor_id)) continue;
     const category = normalizeCategory(item.category);
     const grade = gradeFor(category, `${item.item_label} ${item.size ?? ""}`);
     const key = averageKey(category, grade);
     if (!byKey.has(key)) byKey.set(key, []);
-    byKey.get(key)!.push(item.price);
+    byKey.get(key)!.push({ vendor: vendorNames.get(item.vendor_id) ?? "?", item: item.item_label, size: item.size, price: item.price });
   }
 
   const result = new Map<string, VendorAverage>();
-  for (const [key, prices] of byKey) {
-    result.set(key, { average: prices.reduce((a, b) => a + b, 0) / prices.length, count: prices.length });
+  for (const [key, quotes] of byKey) {
+    result.set(key, {
+      average: quotes.reduce((a, q) => a + q.price, 0) / quotes.length,
+      count: quotes.length,
+      quotes: [...quotes].sort((a, b) => a.price - b.price),
+    });
   }
   return result;
 }

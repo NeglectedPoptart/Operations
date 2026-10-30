@@ -285,9 +285,18 @@ function FobVsVendorBadge({
 
   const pct = ((fob - avg.average) / avg.average) * 100;
   const over = pct >= 0;
+  // Hover text: the commodity compared against, then every vendor quote in the average
+  // (vendor - item and size - price), cheapest first.
+  const shown = avg.quotes.slice(0, 15);
+  const tooltip = [
+    `Compared with today's vendor average for ${label}: $${avg.average.toFixed(2)} across ${avg.count} quote${avg.count === 1 ? "" : "s"}`,
+    "",
+    ...shown.map((q) => `${q.vendor} - ${[q.item, q.size].filter(Boolean).join(" ")} - $${q.price.toFixed(2)}`),
+    ...(avg.quotes.length > shown.length ? [`...and ${avg.quotes.length - shown.length} more`] : []),
+  ].join("\n");
   return (
     <span
-      title={`Today's vendor average for ${label}: $${avg.average.toFixed(2)} across ${avg.count} quote${avg.count === 1 ? "" : "s"}`}
+      title={tooltip}
       className={`whitespace-nowrap text-xs font-semibold ${
         over ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
       }`}
@@ -797,6 +806,16 @@ export default function FobPharrClient({
             </button>
           </div>
         </div>
+
+        {isToday && (
+          <p className="rounded-md bg-black/5 px-3 py-1.5 text-xs text-black/70 dark:bg-white/5 dark:text-white/70">
+            <b>Legend:</b>{" "}
+            <span className="font-semibold text-red-600 dark:text-red-400">▲ 16%</span> our FOB is above today&apos;s vendor average ·{" "}
+            <span className="font-semibold text-green-600 dark:text-green-400">▼ 16%</span> our FOB is below it · no % = no vendor quotes today for
+            that item. Hover a % to see the commodity and every vendor quote behind it. The grey <b>▲ ▼</b> before Delete just move the row up or
+            down in its category.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <FobItemsSection
