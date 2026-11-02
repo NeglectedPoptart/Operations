@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 
 interface Row {
@@ -145,11 +145,55 @@ function DropSection({
   );
 }
 
+// The lines stay between visits (kept in this browser): Commodity, Qty Per Pallet and Weight Per
+// Case. Pallets are per load, so they start empty each time. A line goes only when it is deleted.
+const STORAGE_KEY = "hops-weight-calculator-lines";
+type SavedLine = Pick<Row, "commodity" | "qtyPerPallet" | "weightPerCase">;
+
+function readSaved(): { d1: SavedLine[]; d2: SavedLine[] } | null {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+    if (!parsed || !Array.isArray(parsed.d1) || !Array.isArray(parsed.d2)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function fromSaved(lines: SavedLine[]): Row[] {
+  return lines.map((l) => ({ ...makeRow(), commodity: l.commodity ?? "", qtyPerPallet: l.qtyPerPallet ?? "", weightPerCase: l.weightPerCase ?? "" }));
+}
+
+function toSaved(rows: Row[]): SavedLine[] {
+  return rows.map(({ commodity, qtyPerPallet, weightPerCase }) => ({ commodity, qtyPerPallet, weightPerCase }));
+}
+
 export default function WeightCalculatorClient() {
   const confirm = useConfirm();
   const [palletWeight, setPalletWeight] = useState("40");
   const [rows1, setRows1] = useState<Row[]>([makeRow(), makeRow(), makeRow()]);
   const [rows2, setRows2] = useState<Row[]>([makeRow(), makeRow(), makeRow()]);
+  const [loaded, setLoaded] = useState(false);
+
+  // Saving waits for the load below, so the empty starting rows never overwrite what was saved.
+  useEffect(() => {
+    if (!loaded) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ d1: toSaved(rows1), d2: toSaved(rows2) }));
+    } catch {
+      // storage blocked - the calculator still works, the lines just are not kept
+    }
+  }, [loaded, rows1, rows2]);
+
+  useEffect(() => {
+    const saved = readSaved();
+    if (saved) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRows1(fromSaved(saved.d1));
+      setRows2(fromSaved(saved.d2));
+    }
+    setLoaded(true);
+  }, []);
 
   const pw = parseFloat(palletWeight) || 0;
 
@@ -165,8 +209,14 @@ export default function WeightCalculatorClient() {
 
   const grandTotal = computeGross(rows1) + computeGross(rows2);
 
-  async function clearAll() {
-    if (!(await confirm("Clear both drop sections?"))) return;
+  // New load: empties the pallet counts but keeps the lines.
+  function clearPallets() {
+    setRows1(rows1.map((r) => ({ ...r, pallets: "" })));
+    setRows2(rows2.map((r) => ({ ...r, pallets: "" })));
+  }
+
+  async function deleteAllLines() {
+    if (!(await confirm("Delete every saved line in both drop sections?"))) return;
     setRows1([makeRow(), makeRow(), makeRow()]);
     setRows2([makeRow(), makeRow(), makeRow()]);
   }
@@ -176,9 +226,14 @@ export default function WeightCalculatorClient() {
       <div className="mx-auto max-w-5xl space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Weight Calculator</h1>
-          <button onClick={clearAll} className="text-sm font-medium text-red-600 hover:underline">
-            Clear All
-          </button>
+          <div className="flex items-center gap-4">
+            <button onClick={clearPallets} className="text-sm font-medium text-green-700 hover:underline dark:text-green-400" title="Empty the pallet counts for a new load - the lines stay">
+              Clear Pallets
+            </button>
+            <button onClick={() => void deleteAllLines()} className="text-sm font-medium text-red-600 hover:underline">
+              Delete All Lines
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-6 rounded-lg border border-black/10 p-4 shadow-sm dark:border-white/10">
