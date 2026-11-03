@@ -945,15 +945,25 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
     await markRead(msg.id).catch(() => {});
 
     const podsOk = attachments.every((a) => !a.is_pod || (a.confident && a.load_id !== null));
+    // Carrier ETA replies (Load ETA agent) go straight onto the load whatever the agent's
+    // auto-apply setting says - the ETA and notes are low-risk and the point is not to make
+    // someone click Apply. A reply Claude was unsure about (or that raises a problem like damage
+    // or a claim) is still applied, and the owner is told to take a look. A POD Claude could not
+    // match with confidence, or anything Claude could not read, still goes to Review.
+    const carrierEta = agent?.key === "load_eta";
     const autoOk =
       !!agent &&
-      appliesRepliesAutomatically(agent) &&
       !parseError &&
       proposed.length > 0 &&
       podsOk &&
-      proposed.every((u) => u.confident && !u.new_status);
+      (carrierEta
+        ? true
+        : appliesRepliesAutomatically(agent) && proposed.every((u) => u.confident && !u.new_status));
     if (autoOk) {
       await applyReply(db, reply.id, proposed, "auto_applied");
+      if (carrierEta && proposed.some((u) => !u.confident)) {
+        await notifyOwner(db, "HOPS Agents", `Carrier reply applied, but worth a look: ${summary ?? msg.subject}`);
+      }
     } else if (reply.status === "pending_review") {
       await logEvent(db, thread.agent_id, "reply", `Reply from ${msg.fromEmail} needs review: ${summary ?? parseError}`, thread.id);
       await notifyOwner(db, "HOPS Agents", `Reply to review: ${summary ?? msg.subject}`);
