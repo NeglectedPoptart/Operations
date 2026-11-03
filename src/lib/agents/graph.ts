@@ -226,6 +226,30 @@ export async function listAttachments(messageId: string): Promise<MailAttachment
   return out;
 }
 
+// Excel (.xlsx) files attached to a message, e.g. the cold storage Inventory Report. With
+// onlyNamed, only files whose name matches are downloaded.
+export async function listXlsxAttachments(messageId: string, onlyNamed?: RegExp): Promise<{ fileName: string; data: Buffer }[]> {
+  const mailbox = encodeURIComponent(agentMailbox());
+  const res = await graph(`/users/${mailbox}/messages/${messageId}/attachments?$select=id,name,contentType,size,isInline`);
+  const json = (await res.json()) as {
+    value: { "@odata.type"?: string; id: string; name?: string; size?: number; isInline?: boolean }[];
+  };
+
+  const out: { fileName: string; data: Buffer }[] = [];
+  for (const a of json.value) {
+    if (out.length >= 3) break;
+    const name = a.name ?? "";
+    if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || a.isInline) continue;
+    if (!/\.xlsx$/i.test(name) || (a.size ?? 0) > MAX_ATTACHMENT_BYTES) continue;
+    if (onlyNamed && !onlyNamed.test(name)) continue;
+    const fileRes = await graph(`/users/${mailbox}/messages/${messageId}/attachments/${a.id}/$value`, {
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    out.push({ fileName: name, data: Buffer.from(await fileRes.arrayBuffer()) });
+  }
+  return out;
+}
+
 export async function markRead(messageId: string): Promise<void> {
   const mailbox = encodeURIComponent(agentMailbox());
   await graph(`/users/${mailbox}/messages/${messageId}`, {

@@ -682,6 +682,18 @@ export interface FobItem {
   updated_at: string;
 }
 
+// One emailed cold storage Inventory Report (migration 161) - see lib/coldInventoryImport.ts.
+export interface ColdInventoryImport {
+  id: string;
+  received_at: string;
+  from_email: string | null;
+  file_name: string | null;
+  report_date: string | null;
+  status: "applied" | "skipped" | "error";
+  items_count: number;
+  note: string | null;
+}
+
 // One Availability pricing email read from the inbox (migration 159) - see lib/fobEmailImport.ts.
 export interface FobEmailImport {
   id: string;

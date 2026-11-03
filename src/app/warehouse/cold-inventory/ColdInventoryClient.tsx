@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
-import { formatDate, todayISO } from "@/lib/dates";
+import { APP_TIMEZONE, formatDate, todayISO } from "@/lib/dates";
 import {
   isBellPepper,
   isBroccoli,
@@ -11,8 +11,8 @@ import {
   parseColdInventoryPaste,
   type ParsedColdInventoryItem,
 } from "@/lib/coldInventoryParse";
-import type { ColdInventoryItem, ColdInventoryStatus } from "@/lib/types";
-import { importColdInventory, readColdInventoryXlsx, updateColdInventoryNotes, updateColdInventoryStatus } from "./actions";
+import type { ColdInventoryImport, ColdInventoryItem, ColdInventoryStatus } from "@/lib/types";
+import { applyColdInventoryEmail, importColdInventory, readColdInventoryXlsx, updateColdInventoryNotes, updateColdInventoryStatus } from "./actions";
 
 const STATUS_CYCLE: (ColdInventoryStatus | null)[] = [null, "good", "issue", "dump"];
 
@@ -257,7 +257,61 @@ function FlaggedItemsTable({
   );
 }
 
-export default function ColdInventoryClient({ initialItems }: { initialItems: ColdInventoryItem[] }) {
+// What happened with the latest Inventory Report emailed to HOPS by the warehouse.
+function EmailedReportBanner({ report }: { report: ColdInventoryImport | null }) {
+  const [busy, setBusy] = useState(false);
+  if (!report) return null;
+
+  const received = new Date(report.received_at);
+  const time = received.toLocaleString("en-US", { timeZone: APP_TIMEZONE, month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const stale = report.report_date !== null && report.report_date !== todayISO();
+  const tone =
+    report.status === "applied" && !stale
+      ? "border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200"
+      : report.status === "error"
+        ? "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200"
+        : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200";
+
+  async function apply() {
+    setBusy(true);
+    const result = await applyColdInventoryEmail(report!.id).catch(() => ({ error: "Could not apply that report." }));
+    if ("error" in result) {
+      alert(result.error);
+      setBusy(false);
+    } else {
+      window.location.reload();
+    }
+  }
+
+  return (
+    <div className={`flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm ${tone}`}>
+      <span>
+        <b>Emailed report</b> ({report.file_name ?? "Inventory Report"}), received {time}
+        {report.report_date && (
+          <>
+            {" "}
+            - report date <b>{formatDate(report.report_date)}</b>
+          </>
+        )}
+        :{" "}
+        {report.status === "applied" && (
+          <>
+            loaded automatically, {report.items_count} lines.
+            {stale && <b> This report is not dated today - check with the warehouse.</b>}
+          </>
+        )}
+        {report.status !== "applied" && (report.note ?? "Not loaded.")}
+      </span>
+      {report.status === "skipped" && (
+        <button onClick={() => void apply()} disabled={busy} className="rounded-md bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+          {busy ? "Applying..." : "Apply anyway"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export default function ColdInventoryClient({ initialItems, lastEmail }: { initialItems: ColdInventoryItem[]; lastEmail: ColdInventoryImport | null }) {
   const [items, setItems] = useState(initialItems);
   const [showPaste, setShowPaste] = useState(initialItems.length === 0);
   const [pasteText, setPasteText] = useState("");
@@ -364,6 +418,7 @@ export default function ColdInventoryClient({ initialItems }: { initialItems: Co
     <div className="relative left-1/2 right-1/2 -mx-[50vw] w-screen lg:mx-[calc(7.5rem-50vw)] lg:w-[calc(100vw-15rem)] px-2 sm:px-4">
       <div className="mx-auto max-w-[110rem] space-y-6">
         <UpdateStatusButton pageKey="cold-inventory" />
+        <EmailedReportBanner report={lastEmail} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">Cold Inventory</h1>
           <button

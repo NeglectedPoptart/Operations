@@ -1,5 +1,6 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { APP_TIMEZONE, addDays, todayISO } from "@/lib/dates";
+import { importColdInventoryEmail } from "@/lib/coldInventoryImport";
 import { customerKey } from "./customerKey";
 import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
 import { sendPushToTokens } from "@/lib/push";
@@ -10,6 +11,7 @@ import {
   graphConfigured,
   listAttachments,
   listInboxSince,
+  listXlsxAttachments,
   markRead,
   sendEmail,
   type InboxMessage,
@@ -984,7 +986,22 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
       const tag = msg.subject.match(TAG_RE)?.[1]?.toUpperCase();
       if (tag) ({ data: thread } = await db.from("agent_threads").select("*").eq("tag", tag).maybeSingle<AgentThread>());
     }
-    if (!thread) continue; // not a reply to an agent email - left unread for a person
+    if (!thread) {
+      // The warehouse's morning Inventory Report (.xlsx): loaded into Warehouse > Cold Inventory.
+      if (msg.hasAttachments) {
+        try {
+          const named = /inventory/i.test(msg.subject) ? undefined : /inventory/i;
+          if (await importColdInventoryEmail(db, msg, () => listXlsxAttachments(msg.id, named))) {
+            processed++;
+            await logEvent(db, null, "info", `Inventory Report from ${msg.fromEmail} read for Cold Inventory (see the banner on Cold Inventory)`);
+            await markRead(msg.id).catch(() => {});
+          }
+        } catch (err) {
+          await logEvent(db, null, "error", `Inventory email could not be read: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      continue; // not a reply to an agent email - left unread for a person
+    }
 
     // The owner answering an "Approve?" email - never a carrier/buyer reply.
     if (msg.fromEmail === SUPREME_EMAIL.toLowerCase() && /approve\?/i.test(msg.subject)) {
