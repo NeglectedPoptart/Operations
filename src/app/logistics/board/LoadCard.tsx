@@ -149,6 +149,24 @@ export default function LoadCard({
       )}
       <LoadSummary load={load} dateFirst={dateFirst} />
 
+      {load.status === "on_the_road" && (
+        <p
+          className={`mt-2 rounded px-2 py-1.5 text-sm ${
+            load.eta_note?.trim()
+              ? "bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200"
+              : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+          }`}
+        >
+          {load.eta_note?.trim() ? (
+            <>
+              <b>Carrier ETA:</b> {load.eta_note}
+            </>
+          ) : (
+            <b>⚠ No carrier ETA yet</b>
+          )}
+        </p>
+      )}
+
       <div className="mt-2">
         <LoadClaimCharges
           load={load}
