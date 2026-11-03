@@ -1,5 +1,6 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { APP_TIMEZONE, addDays, todayISO } from "@/lib/dates";
+import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
@@ -811,6 +812,20 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
     if (processed >= MAX_REPLIES_PER_POLL || Date.now() - started > 40_000) break;
     cursor = msg.receivedAt;
     if (msg.fromEmail === mailbox) continue;
+
+    // The morning Availability pricing email: applied to today's FOB Pharr sheet, not an agent reply.
+    if (isAvailabilityEmail(msg)) {
+      const handled = await importFobEmail(db, msg).catch(async (err) => {
+        await logEvent(db, null, "error", `Availability email could not be read: ${err instanceof Error ? err.message : String(err)}`);
+        return false;
+      });
+      if (handled) {
+        processed++;
+        await logEvent(db, null, "info", `Availability email from ${msg.fromEmail} read for FOB Pharr (see the banner on FOB Pharr)`);
+        await markRead(msg.id).catch(() => {});
+      }
+      continue;
+    }
 
     const { data: existing } = await db.from("agent_replies").select("id").eq("graph_message_id", msg.id).maybeSingle();
     if (existing) continue;

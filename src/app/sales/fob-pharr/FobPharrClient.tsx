@@ -3,21 +3,98 @@
 import { Fragment, useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
-import { addDays, formatDate, todayISO } from "@/lib/dates";
+import { APP_TIMEZONE, addDays, formatDate, todayISO } from "@/lib/dates";
 import { categoryForFobRow, gradeForFobRow, vendorAverageKeyForFobRow, type VendorAverage } from "@/lib/fobVendorCompare";
 import { createClient } from "@/lib/supabase/client";
-import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
+import type { FobEmailImport, FobFreightRate, FobItem, FobSection } from "@/lib/types";
 import { copyOrDownloadPng, groupFobItems } from "@/lib/fobPricing";
 import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
 import { matchFobPriceLines, parseFobPriceEmail, type FobPriceMatch } from "@/lib/fobEmailParse";
 import {
   addFobItem,
   addFreightRate,
+  applyFobEmailImport,
   deleteFobItem,
   deleteFreightRate,
   updateFobItem,
   updateFreightRate,
 } from "./actions";
+
+// What happened with the morning Availability email (read from the inbox automatically).
+function AvailabilityEmailBanner({ imports }: { imports: FobEmailImport[] }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [showUnmatched, setShowUnmatched] = useState<string | null>(null);
+  if (imports.length === 0) return null;
+
+  async function apply(id: string) {
+    setBusy(id);
+    const result = await applyFobEmailImport(id).catch(() => ({ error: "Could not apply that email." }));
+    if ("error" in result) {
+      alert(result.error);
+      setBusy(null);
+    } else {
+      // The page's sheet is loaded once, so reload to show the new prices.
+      window.location.reload();
+    }
+  }
+
+  const time = (ts: string) => new Date(ts).toLocaleTimeString("en-US", { timeZone: APP_TIMEZONE, hour: "numeric", minute: "2-digit" });
+
+  return (
+    <div className="space-y-2">
+      {imports.map((imp) => {
+        const tone =
+          imp.status === "applied"
+            ? "border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-900/20 dark:text-green-200"
+            : imp.status === "skipped"
+              ? "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+              : "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200";
+        return (
+          <div key={imp.id} className={`space-y-1 rounded-md border px-3 py-2 text-sm ${tone}`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <b>Availability email</b> from {imp.from_email ?? "?"}, received {time(imp.received_at)}:{" "}
+                {imp.status === "applied" && (
+                  <>
+                    prices filled in automatically - <b>{imp.items_updated}</b> item{imp.items_updated === 1 ? "" : "s"} updated
+                    {imp.unmatched.length > 0 && (
+                      <>
+                        ,{" "}
+                        <button onClick={() => setShowUnmatched(showUnmatched === imp.id ? null : imp.id)} className="font-semibold underline">
+                          {imp.unmatched.length} line{imp.unmatched.length === 1 ? "" : "s"} didn&apos;t match
+                        </button>
+                      </>
+                    )}
+                    . Check the prices, then send.
+                  </>
+                )}
+                {imp.status !== "applied" && (imp.note ?? "Not applied.")}
+              </span>
+              {(imp.status === "skipped" || imp.status === "error") && (
+                <button
+                  onClick={() => void apply(imp.id)}
+                  disabled={busy === imp.id}
+                  className="rounded-md bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {busy === imp.id ? "Applying..." : "Apply now"}
+                </button>
+              )}
+            </div>
+            {showUnmatched === imp.id && imp.unmatched.length > 0 && (
+              <ul className="list-disc pl-5 text-xs">
+                {imp.unmatched.map((u, i) => (
+                  <li key={i}>
+                    {u.category} - {u.label}: ${u.price.toFixed(2)} (no matching item on the sheet - enter it by hand)
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
@@ -592,12 +669,14 @@ export default function FobPharrClient({
   initialItems,
   initialFreightRates,
   vendorAverages,
+  emailImports,
   isAdmin,
 }: {
   initialDate: string;
   initialItems: FobItem[];
   initialFreightRates: FobFreightRate[];
   vendorAverages: Record<string, VendorAverage>;
+  emailImports: FobEmailImport[];
   isAdmin: boolean;
 }) {
   const confirm = useConfirm();
@@ -785,6 +864,8 @@ export default function FobPharrClient({
         )}
 
         {isToday && <UpdateStatusButton pageKey="fob-pharr" canEdit={isAdmin} />}
+
+        {isToday && <AvailabilityEmailBanner imports={emailImports} />}
 
         {isToday && <PriceEmailPanel items={items} onApply={(id, fob) => handleItemFieldSave(id, { fob })} />}
 

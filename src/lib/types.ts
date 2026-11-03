@@ -682,6 +682,20 @@ export interface FobItem {
   updated_at: string;
 }
 
+// One Availability pricing email read from the inbox (migration 159) - see lib/fobEmailImport.ts.
+export interface FobEmailImport {
+  id: string;
+  received_at: string;
+  from_email: string | null;
+  subject: string | null;
+  entry_date: string;
+  status: "applied" | "skipped" | "nothing_found" | "error";
+  prices_found: number;
+  items_updated: number;
+  unmatched: { category: string; label: string; price: number }[];
+  note: string | null;
+}
+
 export interface FobFreightRate {
   id: string;
   lane: string;

@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/dates";
 import { ensureTodayFobItems } from "@/lib/fobDaily";
 import { computeTodayVendorAverages } from "@/lib/fobVendorCompare";
-import type { FobFreightRate, PriceSheetItem, Vendor } from "@/lib/types";
+import type { FobEmailImport, FobFreightRate, PriceSheetItem, Vendor } from "@/lib/types";
 import FobPharrClient from "./FobPharrClient";
 
 export const dynamic = "force-dynamic";
@@ -40,12 +40,22 @@ export default async function FobPharrPage() {
     todayISO(),
   );
 
+  // The morning Availability email(s) read from the inbox - fetched on its own so the page still
+  // works before migration 159 is run.
+  const { data: emailImports } = await supabase
+    .from("fob_email_imports")
+    .select("id, received_at, from_email, subject, entry_date, status, prices_found, items_updated, unmatched, note")
+    .eq("entry_date", today)
+    .order("received_at", { ascending: false })
+    .limit(3);
+
   return (
     <FobPharrClient
       initialDate={today}
       initialItems={items}
       initialFreightRates={(freightRates ?? []) as FobFreightRate[]}
       vendorAverages={Object.fromEntries(vendorAverages)}
+      emailImports={(emailImports ?? []) as FobEmailImport[]}
       isAdmin={(profile as { role: string } | null)?.role === "admin"}
     />
   );

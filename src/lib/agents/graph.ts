@@ -145,6 +145,8 @@ export interface InboxMessage {
   // Just the new part of a reply (Graph's uniqueBody), falling back to the
   // full body when Outlook can't separate it.
   text: string;
+  // The whole message, including anything quoted below a forward.
+  fullText: string;
   hasAttachments: boolean;
 }
 
@@ -176,6 +178,7 @@ export async function listInboxSince(sinceISO: string, limit: number): Promise<I
     receivedAt: m.receivedDateTime,
     conversationId: m.conversationId,
     text: (m.uniqueBody?.content || m.body?.content || "").trim(),
+    fullText: (m.body?.content || m.uniqueBody?.content || "").trim(),
     hasAttachments: m.hasAttachments === true,
   }));
 }
