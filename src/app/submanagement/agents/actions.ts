@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { customerKey } from "@/lib/agents/customerKey";
 import { createClient } from "@/lib/supabase/server";
 import { canOpenPage } from "@/lib/pageAccess";
 import { applyBuyersReply, applyOrdersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
@@ -109,6 +110,19 @@ export async function dismissReply(replyId: string) {
   const { error } = await supabase.from("agent_replies").update({ status: "dismissed" }).eq("id", replyId);
   if (error) throw new Error(error.message);
   revalidateAll();
+}
+
+// Where a customer's ETA emails go (To / CC, comma-separated). Customers are matched to loads by name.
+export async function saveCustomerEmail(name: string, toEmails: string, ccEmails: string) {
+  const supabase = await ownerClient();
+  const key = customerKey(name);
+  if (!key) throw new Error("Customer name is missing.");
+  const { error } = await supabase.from("customer_emails").upsert(
+    { name, name_key: key, to_emails: toEmails.trim() || null, cc_emails: ccEmails.trim() || null, updated_at: new Date().toISOString() },
+    { onConflict: "name_key" },
+  );
+  if (error) throw new Error(error.message);
+  revalidatePath("/submanagement/agents");
 }
 
 export async function saveCarrierEmail(brokerId: string, email: string) {

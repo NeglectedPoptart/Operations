@@ -1,5 +1,6 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 import { APP_TIMEZONE, addDays, todayISO } from "@/lib/dates";
+import { customerKey } from "./customerKey";
 import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
@@ -213,7 +214,7 @@ export async function sendThread(db: SupabaseClient, threadId: string): Promise<
 
   // Hard rule for carrier emails: nothing goes out overnight, whether a
   // person approves it late or a retry fires.
-  if (agent?.key === "load_eta" && !inWindow(new Date(), agent.config)) {
+  if ((agent?.key === "load_eta" || agent?.key === "customer_eta") && !inWindow(new Date(), agent.config)) {
     const start = agent.config.window_start ?? "05:00";
     const end = agent.config.window_end ?? "21:30";
     await db
@@ -226,6 +227,7 @@ export async function sendThread(db: SupabaseClient, threadId: string): Promise<
   try {
     const sent = await sendEmail({
       to: thread.to_emails,
+      cc: thread.cc_emails,
       replyTo: agent?.config.reply_to,
       subject: thread.subject,
       body: thread.body,
@@ -251,7 +253,7 @@ export async function sendThread(db: SupabaseClient, threadId: string): Promise<
 async function createThread(
   db: SupabaseClient,
   agent: Agent,
-  input: { tag: string; recordIds: string[]; to: string[]; subject: string; body: string },
+  input: { tag: string; recordIds: string[]; to: string[]; cc?: string[]; subject: string; body: string },
 ): Promise<AgentThread> {
   const { data, error } = await db
     .from("agent_threads")
@@ -260,6 +262,7 @@ async function createThread(
       tag: input.tag,
       record_ids: input.recordIds,
       to_emails: input.to,
+      ...(input.cc && input.cc.length > 0 ? { cc_emails: input.cc } : {}),
       subject: input.subject,
       body: input.body,
       status: "draft",
@@ -345,6 +348,145 @@ async function runLoadEta(db: SupabaseClient, agent: Agent, force: boolean): Pro
   if (missingEmail.size > 0) {
     // Every 15-minute tick of the slot would otherwise repeat this.
     const message = `No follow-up email on file for: ${[...missingEmail].join(", ")}. Add one under Carrier Emails.`;
+    const since = new Date(Date.now() - 6 * 3_600_000).toISOString();
+    const { data: already } = await db
+      .from("agent_events")
+      .select("id")
+      .eq("agent_id", agent.id)
+      .eq("kind", "skipped")
+      .eq("message", message)
+      .gte("created_at", since)
+      .limit(1);
+    if (!already || already.length === 0) await logEvent(db, agent.id, "skipped", message);
+  }
+  return created;
+}
+
+// ---------------------------------------------------------------------------
+// Customer ETA Updates: each customer gets the latest carrier ETA for their loads on the road.
+// One email per customer per send slot, covering all their On the Road drops that have a carrier
+// ETA. Nothing goes out unless something is new or changed since the last email to that customer,
+// and the customer never sees the carrier name or the freight rate.
+
+function customerStopBlock(load: Load, stop: NonNullable<Load["load_stops"]>[number]): string {
+  const refs = [stop.po_number && `PO ${stop.po_number}`, stop.order_number && `Order ${stop.order_number}`].filter(Boolean).join(" - ");
+  const delivery = [stop.delivery_date && shortDate(stop.delivery_date), stop.delivery_time, stop.appointment && `appt ${stop.appointment}`]
+    .filter(Boolean)
+    .join(" ");
+  return [
+    refs || "Your order",
+    ...(delivery ? [`   Scheduled delivery: ${delivery}`] : []),
+    `   Latest from the carrier: ${(load.eta_note ?? "").trim()}`,
+  ].join("\n");
+}
+
+function customerEtaEmail(blocks: string[]): { subject: string; body: string } {
+  const subject = blocks.length === 1 ? "Harvest Best - delivery ETA update" : `Harvest Best - delivery ETA update (${blocks.length} orders)`;
+  const body = [
+    "Hello,",
+    "",
+    "Here is the latest delivery update on your Harvest Best order" + (blocks.length === 1 ? ":" : "s:"),
+    "",
+    blocks.join("\n\n"),
+    "",
+    "If anything has changed on your end - receiving hours, your appointment or a contact - just reply to this email.",
+    "",
+    "Thank you,",
+    "Harvest Best Logistics",
+  ].join("\n");
+  return { subject, body };
+}
+
+async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, notes: string[]): Promise<number> {
+  const slot = force ? null : currentSlot(new Date(), agent.config);
+  if (!force && !slot) return 0;
+
+  const { data: customerRows, error: customerError } = await db.from("customer_emails").select("name, name_key, to_emails, cc_emails");
+  if (customerError) {
+    const why = "Customer emails aren't set up yet (run migration 160).";
+    if (force) notes.push(why);
+    await logEvent(db, agent.id, "skipped", why);
+    return 0;
+  }
+  const emailsByKey = new Map((customerRows ?? []).map((c) => [c.name_key as string, c]));
+
+  const { data: loads, error } = await db
+    .from("loads")
+    .select("*, load_stops(*)")
+    .eq("status", "on_the_road")
+    .order("loading_date", { ascending: true });
+  if (error) throw new Error(error.message);
+
+  // customer -> their stops that have a carrier ETA
+  type Entry = { load: Load; stop: NonNullable<Load["load_stops"]>[number] };
+  const byCustomer = new Map<string, { name: string; entries: Entry[] }>();
+  for (const load of (loads ?? []) as Load[]) {
+    if (!(load.eta_note ?? "").trim()) continue;
+    for (const stop of [...(load.load_stops ?? [])].sort((a, b) => a.position - b.position)) {
+      const key = customerKey(stop.client_name);
+      if (!key) continue;
+      const group = byCustomer.get(key) ?? { name: stop.client_name ?? key, entries: [] };
+      group.entries.push({ load, stop });
+      byCustomer.set(key, group);
+    }
+  }
+  if (byCustomer.size === 0) {
+    if (force) {
+      const why = "No customer emails to send: no On the Road load has a carrier ETA yet.";
+      notes.push(why);
+      await logEvent(db, agent.id, "skipped", why);
+    }
+    return 0;
+  }
+
+  const threads = await recentThreads(db, agent.id);
+  const missingEmail = new Set<string>();
+  let created = 0;
+
+  for (const [key, group] of byCustomer) {
+    if (created >= MAX_NEW_THREADS_PER_RUN) break;
+    const row = emailsByKey.get(key);
+    const to = splitEmails(row?.to_emails as string | null | undefined);
+    if (to.length === 0) {
+      missingEmail.add(group.name);
+      continue;
+    }
+    const cc = splitEmails(row?.cc_emails as string | null | undefined);
+
+    const mine = threads.filter((t) => t.to_emails.join(",") === to.join(","));
+    // Already emailed (or drafted) this slot.
+    if (slot && mine.some((t) => new Date(t.created_at) >= slot)) continue;
+    const draft = mine.find((t) => t.status === "draft");
+    if (draft) {
+      if (force) continue;
+      // A draft nobody approved before the next slot is stale - the new email replaces it.
+      await db.from("agent_threads").update({ status: "discarded" }).eq("id", draft.id);
+      await logEvent(db, agent.id, "discarded", `Replaced unsent draft "${draft.subject}" with the new slot's email`, draft.id);
+    }
+
+    // Only worth sending if at least one load's ETA is new or changed since the last email to them.
+    const blocks = group.entries.map((e) => customerStopBlock(e.load, e.stop));
+    const earlier = mine.filter((t) => t.status !== "draft").map((t) => t.body);
+    if (blocks.every((b) => earlier.some((body) => body.includes(b)))) continue;
+
+    const tag = newTag();
+    const email = customerEtaEmail(blocks);
+    const thread = await createThread(db, agent, {
+      tag,
+      recordIds: [...new Set(group.entries.map((e) => e.load.id))],
+      to,
+      cc,
+      ...email,
+    });
+    created++;
+    if (agent.mode === "auto") await sendThread(db, thread.id);
+    else await draftCreated(db, agent, thread);
+  }
+
+  if (missingEmail.size > 0) {
+    const message = `No ETA email address on file for: ${[...missingEmail].join(", ")}. Add them under Customer emails.`;
+    if (force) notes.push(message);
+    // Every 15-minute tick of the slot would otherwise repeat this.
     const since = new Date(Date.now() - 6 * 3_600_000).toISOString();
     const { data: already } = await db
       .from("agent_events")
@@ -679,12 +821,13 @@ export async function runAgents(
   const skipped: string[] = [];
   const notes: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
-    if (agent.key !== "load_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && !opts.ignoreHours && !withinActiveHours(agent)) {
+    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
       continue;
     }
     try {
       if (agent.key === "load_eta") created += await runLoadEta(db, agent, opts.ignoreHours === true);
+      else if (agent.key === "customer_eta") created += await runCustomerEta(db, agent, opts.ignoreHours === true, notes);
       else if (agent.key === "load_pending") created += await runLoadPending(db, agent);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
@@ -874,6 +1017,11 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
         status: "no_update",
       });
       await db.from("agent_threads").update({ last_reply_at: msg.receivedAt }).eq("id", thread.id);
+      // A customer answering an ETA email can matter (a changed appointment, a problem) - tell the owner.
+      if (agent.key === "customer_eta") {
+        await logEvent(db, agent.id, "reply", `Customer replied to "${thread.subject}" (${msg.fromEmail}) - read it in the HOP@ mailbox`, thread.id);
+        await notifyOwner(db, "HOPS Agents", `A customer replied to an ETA email: ${msg.subject}`);
+      }
       continue;
     }
     processed++;

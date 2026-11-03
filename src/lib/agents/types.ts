@@ -1,4 +1,4 @@
-export type AgentKey = "load_eta" | "load_pending" | "buyers_list" | "orders_pending";
+export type AgentKey = "load_eta" | "load_pending" | "buyers_list" | "orders_pending" | "customer_eta";
 export type AgentMode = "approve" | "auto";
 
 export interface Agent {
@@ -49,6 +49,8 @@ export interface AgentThread {
   record_ids: string[];
   status: ThreadStatus;
   to_emails: string[];
+  // Only present once migration 160 is run; used by the customer emails.
+  cc_emails?: string[];
   subject: string;
   body: string;
   graph_message_id: string | null;

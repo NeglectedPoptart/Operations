@@ -21,6 +21,7 @@ import {
   dismissReply,
   runAgentNow,
   saveCarrierEmail,
+  saveCustomerEmail,
   updateAgent,
 } from "./actions";
 
@@ -29,6 +30,12 @@ export interface CarrierRow {
   name: string;
   followup_email: string | null;
   active: boolean;
+}
+
+export interface CustomerRow {
+  name: string;
+  to: string;
+  cc: string;
 }
 
 export interface RoleOption {
@@ -121,7 +128,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
   const [replyTo, setReplyTo] = useState((agent.config.reply_to ?? []).join(", "));
   const readReplies = agent.config.read_replies !== false;
   const [sendTimes, setSendTimes] = useState((agent.config.send_times ?? []).join(", "));
-  const isSlotAgent = agent.key === "load_eta" || agent.key === "buyers_list" || agent.key === "orders_pending";
+  const isSlotAgent = agent.key === "load_eta" || agent.key === "customer_eta" || agent.key === "buyers_list" || agent.key === "orders_pending";
 
   const save = (patch: Parameters<typeof updateAgent>[1]) => start(() => updateAgent(agent.id, patch));
 
@@ -722,7 +729,60 @@ function CarrierEmails({ carriers }: { carriers: CarrierRow[] }) {
   );
 }
 
+function CustomerEmailRow({ customer }: { customer: CustomerRow }) {
+  const [to, setTo] = useState(customer.to);
+  const [cc, setCc] = useState(customer.cc);
+  const save = () => {
+    if (to !== customer.to || cc !== customer.cc) void saveCustomerEmail(customer.name, to, cc);
+  };
+  return (
+    <tr className="border-t border-black/10 first:border-t-0 dark:border-white/10">
+      <td className="w-1/4 px-2 py-1 align-top">{customer.name}</td>
+      <td className="px-2 py-1">
+        <input className={field} value={to} placeholder="receiving@customer.com" onChange={(e) => setTo(e.target.value)} onBlur={save} />
+      </td>
+      <td className="px-2 py-1">
+        <input className={field} value={cc} placeholder="optional CC" onChange={(e) => setCc(e.target.value)} onBlur={save} />
+      </td>
+    </tr>
+  );
+}
+
+function CustomerEmails({ customers }: { customers: CustomerRow[] }) {
+  const missing = customers.filter((c) => !c.to.trim()).length;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-black/60 dark:text-white/60">
+        Where each customer&apos;s ETA emails go (the Customer ETA Updates agent). Separate more than one address with commas. Customers come from
+        the loads that are pending or on the road.
+        {missing > 0 && <span className="ml-1 text-amber-600">{missing} customer{missing === 1 ? "" : "s"} with no email yet - they get nothing.</span>}
+      </p>
+      {customers.length === 0 ? (
+        <p className="text-sm text-black/50 dark:text-white/50">No customers yet.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left text-xs dark:bg-white/5">
+              <tr>
+                <th className="px-2 py-1">Customer</th>
+                <th className="px-2 py-1">To</th>
+                <th className="px-2 py-1">CC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((c) => (
+                <CustomerEmailRow key={c.name} customer={c} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AgentsClient({
+  customers,
   status,
   agents,
   drafts,
@@ -734,6 +794,7 @@ export default function AgentsClient({
   orderLabels,
 }: {
   status: { outlook: boolean; claude: boolean; scheduler: boolean; mailbox: string | null };
+  customers: CustomerRow[];
   agents: Agent[];
   drafts: AgentThread[];
   reviewItems: ReviewItem[];
@@ -807,6 +868,10 @@ export default function AgentsClient({
 
       <Section title="Carrier emails">
         <CarrierEmails carriers={carriers} />
+      </Section>
+
+      <Section title="Customer emails">
+        <CustomerEmails customers={customers} />
       </Section>
 
       <Section title="Activity">

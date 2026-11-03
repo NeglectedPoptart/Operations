@@ -3,7 +3,8 @@ import { canOpenPage } from "@/lib/pageAccess";
 import { setupStatus } from "@/lib/agents/run";
 import { loadRoles } from "@/lib/roleAccess";
 import type { Agent, AgentEvent, AgentReply, AgentThread } from "@/lib/agents/types";
-import AgentsClient, { type CarrierRow, type ReviewItem } from "./AgentsClient";
+import { customerKey } from "@/lib/agents/customerKey";
+import AgentsClient, { type CarrierRow, type CustomerRow, type ReviewItem } from "./AgentsClient";
 
 export const dynamic = "force-dynamic";
 // Approving a draft sends email through Outlook from a server action on this
@@ -124,8 +125,25 @@ export default async function AgentsPage() {
   const { data: legendRows } = await supabase.from("order_legend").select("id, name, color, opacity").order("position", { ascending: true }).order("created_at", { ascending: true });
   const orderLabels = (legendRows ?? []) as { id: string; name: string; color: string; opacity: number }[];
 
+  // Customer ETA emails: every customer on a load that is pending or on the road, with the
+  // addresses saved for them so far. Fetched on its own so the page works before migration 160.
+  const [{ data: customerRowsData }, { data: stopRows }] = await Promise.all([
+    supabase.from("customer_emails").select("name, to_emails, cc_emails"),
+    supabase.from("load_stops").select("client_name, loads!inner(status)").in("loads.status", ["pending_to_load", "on_the_road"]),
+  ]);
+  const customersByKey = new Map<string, CustomerRow>();
+  for (const c of (customerRowsData ?? []) as { name: string; to_emails: string | null; cc_emails: string | null }[]) {
+    customersByKey.set(customerKey(c.name), { name: c.name, to: c.to_emails ?? "", cc: c.cc_emails ?? "" });
+  }
+  for (const s of (stopRows ?? []) as { client_name: string | null }[]) {
+    const key = customerKey(s.client_name);
+    if (key && !customersByKey.has(key)) customersByKey.set(key, { name: s.client_name as string, to: "", cc: "" });
+  }
+  const customers = [...customersByKey.values()].sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <AgentsClient
+      customers={customers}
       orderLabels={orderLabels}
       roleOptions={roleOptions}
       people={people}
