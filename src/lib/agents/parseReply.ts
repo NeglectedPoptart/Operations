@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { APP_TIMEZONE } from "../dates";
 import type { ProposedBuyerUpdate, ProposedLoadUpdate, ProposedOrderUpdate } from "./types";
 
 // Turns a free-text email reply ("truck's in Amarillo, should deliver
@@ -41,7 +42,7 @@ const SYSTEM = `You read email replies to automated follow-ups sent by Harvest B
 
 For each load the reply gives information about, return one entry in "updates":
 - load_number: the number of the load in the original email (use 1 when the email covered a single load).
-- eta_note: a short ETA/location note in the style dispatchers write, e.g. "Amarillo TX 9/26 2pm - ETA 9/27 0600". Only when the reply gives location or timing for a load that is moving. Otherwise null.
+- eta_note: a short ETA/location note in the style dispatchers write, e.g. "Amarillo TX 9/26 2pm - ETA 9/27 0600". Only when the reply gives location or timing for a load that is moving. Otherwise null. Every time in the note must carry its date as M/D: if the carrier gives a time with no date ("10pm", "tonight", "by 6am"), it is that time on the day the reply was sent (given in <reply_sent>), e.g. a reply sent Tue 11/3 saying "Chattanooga TN eta 10pm" becomes "Chattanooga TN - ETA 11/3 10pm". "Tomorrow" and weekday names are turned into the real date counted from the day the reply was sent.
 - append_note: any other useful status for the load (loading time, delay reason, problem), written briefly. Otherwise null.
 - ready_to_load: true only if the reply clearly says the load is ready or loaded; false only if it clearly says it is not ready; otherwise null.
 - new_status: "on_the_road" if the reply says the truck has loaded and left; otherwise null. Never return "complete" - a delivered load is reported with "delivered" instead.
@@ -55,8 +56,19 @@ export async function parseReply(input: {
   originalBody: string;
   replyText: string;
   loadCount: number;
+  // When the reply was sent (ISO) - dates in an ETA with no date are counted from this day.
+  receivedAt?: string;
 }): Promise<{ summary: string; updates: ProposedLoadUpdate[] }> {
   const client = new Anthropic();
+  const sent = new Date(input.receivedAt ?? Date.now()).toLocaleString("en-US", {
+    timeZone: APP_TIMEZONE,
+    weekday: "long",
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
   // Haiku: reading a short reply into a fixed schema is simple extraction,
   // and it's ~5x cheaper than Opus. Anything it isn't sure about is flagged
@@ -71,7 +83,7 @@ export async function parseReply(input: {
     messages: [
       {
         role: "user",
-        content: `Agent: ${input.agentKey}\n\n<original_email>\n${input.originalBody}\n</original_email>\n\n<reply>\n${input.replyText}\n</reply>`,
+        content: `Agent: ${input.agentKey}\n\n<reply_sent>${sent} Central time</reply_sent>\n\n<original_email>\n${input.originalBody}\n</original_email>\n\n<reply>\n${input.replyText}\n</reply>`,
       },
     ],
   });

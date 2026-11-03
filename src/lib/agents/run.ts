@@ -1048,6 +1048,7 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
           originalBody: thread.body,
           replyText: msg.text,
           loadCount: thread.record_ids.length,
+          receivedAt: msg.receivedAt,
         });
         summary = result.summary;
         proposed = result.updates.map((u) => {
