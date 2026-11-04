@@ -231,7 +231,9 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
 
       <div className="flex flex-wrap gap-2 px-4 pb-3 text-xs">
         <Chip icon="🕒" label="Sends">
-          {scheduleText} <span className="font-normal text-black/50 dark:text-white/50">({windowText})</span>
+          {scheduleText}
+          {agent.key === "customer_eta" && agent.config.on_carrier_reply !== false && " + when a carrier replies"}{" "}
+          <span className="font-normal text-black/50 dark:text-white/50">({windowText})</span>
         </Chip>
         <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
           {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
@@ -348,6 +350,24 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
       </div>
       )}
 
+      {agent.key === "customer_eta" && (
+        <label className="flex items-start gap-2 rounded-lg border border-black/10 bg-white/60 p-2.5 text-xs dark:border-white/10 dark:bg-white/5">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={agent.config.on_carrier_reply !== false}
+            disabled={pending}
+            onChange={(e) => save({ on_carrier_reply: e.target.checked })}
+          />
+          <span>
+            <b>Also send as soon as a carrier replies with an ETA</b>
+            <span className="block text-black/60 dark:text-white/60">
+              When a carrier&apos;s ETA answer is added to a load, that load&apos;s customer gets their update right away instead of waiting for the next
+              time above. Only inside &quot;Never before / Never after&quot;; an answer outside those hours goes out at the next time.
+            </span>
+          </span>
+        </label>
+      )}
       <GroupLabel>Replies</GroupLabel>
       <div className="space-y-1 text-xs">
         <label className="flex items-center gap-2">

@@ -399,9 +399,22 @@ function customerEtaEmail(blocks: string[]): { subject: string; body: string } {
   return { subject, body };
 }
 
-async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, notes: string[]): Promise<number> {
-  const slot = force ? null : currentSlot(new Date(), agent.config);
-  if (!force && !slot) return 0;
+// A carrier's ETA reply has just been applied to these loads: if the Customer ETA agent is on,
+// the customers on those loads get their update now instead of at the next scheduled time. Same
+// email, same approve-first rule, same "only if something changed" check; it only goes out
+// inside the agent's sending window - an answer that arrives later waits for the next scheduled
+// time, which picks it up.
+export async function triggerCustomerEta(db: SupabaseClient, loadIds: string[]): Promise<void> {
+  if (loadIds.length === 0) return;
+  const { data: agent } = await db.from("agents").select("*").eq("key", "customer_eta").maybeSingle<Agent>();
+  if (!agent || !agent.enabled || agent.config.on_carrier_reply === false) return;
+  await runCustomerEta(db, agent, false, [], loadIds);
+}
+
+async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, notes: string[], triggerLoadIds?: string[]): Promise<number> {
+  const slot = force || triggerLoadIds ? null : currentSlot(new Date(), agent.config);
+  if (!force && !triggerLoadIds && !slot) return 0;
+  if (triggerLoadIds && !inWindow(new Date(), agent.config)) return 0;
 
   const { data: customerRows, error: customerError } = await db.from("customer_emails").select("name, name_key, to_emails, cc_emails");
   if (customerError) {
@@ -447,6 +460,8 @@ async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, 
 
   for (const [key, group] of byCustomer) {
     if (created >= MAX_NEW_THREADS_PER_RUN) break;
+    // Triggered by a carrier reply: only the customers on the loads that just got an ETA.
+    if (triggerLoadIds && !group.entries.some((e) => triggerLoadIds.includes(e.load.id))) continue;
     const row = emailsByKey.get(key);
     const to = splitEmails(row?.to_emails as string | null | undefined);
     if (to.length === 0) {
@@ -463,7 +478,7 @@ async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, 
       if (force) continue;
       // A draft nobody approved before the next slot is stale - the new email replaces it.
       await db.from("agent_threads").update({ status: "discarded" }).eq("id", draft.id);
-      await logEvent(db, agent.id, "discarded", `Replaced unsent draft "${draft.subject}" with the new slot's email`, draft.id);
+      await logEvent(db, agent.id, "discarded", `Replaced unsent draft "${draft.subject}" with the new ${triggerLoadIds ? "ETA" : "slot's"} email`, draft.id);
     }
 
     // Only worth sending if at least one load's ETA is new or changed since the last email to them.
@@ -1503,4 +1518,13 @@ export async function applyReply(
     `${status === "auto_applied" ? "Auto-applied" : "Applied"} reply from ${reply.from_email}: ${applied.join("; ") || "nothing to change"}`,
     reply.thread_id,
   );
+
+  // The carrier has finally answered with an ETA: the customer on that load hears about it now
+  // rather than at the next scheduled time (see triggerCustomerEta).
+  const etaLoadIds = work.filter((u) => u.eta_note && u.load_id).map((u) => u.load_id);
+  if (etaLoadIds.length > 0) {
+    await triggerCustomerEta(db, etaLoadIds).catch(async (err) => {
+      await logEvent(db, null, "error", `Customer ETA email could not be prepared: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
 }

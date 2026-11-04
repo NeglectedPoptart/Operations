@@ -32,6 +32,9 @@ export interface Agent {
     reply_to?: string[];
     // load_eta: fixed daily send times ("HH:MM", APP_TIMEZONE) and the hard
     // window nothing is sent outside of.
+    // customer_eta: also send as soon as a carrier's ETA reply is applied (inside the window),
+    // not only at the fixed times. Unset means yes.
+    on_carrier_reply?: boolean;
     send_times?: string[];
     window_start?: string;
     window_end?: string;

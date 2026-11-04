@@ -41,13 +41,14 @@ export async function updateAgent(
     send_times?: string[];
     window_start?: string;
     window_end?: string;
+    on_carrier_reply?: boolean;
   },
 ) {
   const supabase = await ownerClient();
-  const { recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, ...columns } = patch;
+  const { recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, on_carrier_reply, ...columns } = patch;
   const update: Record<string, unknown> = { ...columns };
   const configPatch = Object.fromEntries(
-    Object.entries({ recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end }).filter(
+    Object.entries({ recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, on_carrier_reply }).filter(
       ([, v]) => v !== undefined,
     ),
   );
