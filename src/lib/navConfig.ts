@@ -203,6 +203,8 @@ export const NAV: NavCategory[] = [
     label: "Supreme Tab",
     supremeOnly: true,
     items: [
+      { href: "/supreme/weekly-reports", label: "Weekly Reports" },
+      { href: "/supreme/upper-management-activity", label: "Upper Mgmt Activity" },
       { href: "/supreme/workflow", label: "Workflow" },
       { href: "/supreme/meal-plans", label: "Meal Plans" },
       { href: "/supreme/users", label: "User Roles" },

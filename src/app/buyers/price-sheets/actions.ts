@@ -138,6 +138,12 @@ export async function importPriceSheet(
   const { error: vendorError } = await supabase.from("vendors").update({ sheet_date: sheetDate }).eq("id", vendorId);
   if (vendorError) throw new Error(vendorError.message);
 
+  // One row per upload for the Weekly Reports (price sheets are overwritten, so this is the only history).
+  // Ignored if the log table is not there yet.
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: vendorRow } = await supabase.from("vendors").select("name").eq("id", vendorId).maybeSingle();
+  await supabase.from("price_sheet_uploads").insert({ vendor_id: vendorId, vendor_name: vendorRow?.name ?? null, item_count: items.length, uploaded_by: user?.email ?? null });
+
   const { data: finalItems, error: finalError } = await supabase
     .from("price_sheet_items")
     .select("*")
