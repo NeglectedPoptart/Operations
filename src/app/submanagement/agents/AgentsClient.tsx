@@ -115,6 +115,41 @@ function SetupChecklist({ status }: { status: { outlook: boolean; claude: boolea
   );
 }
 
+// How each agent looks on its card.
+const AGENT_ICON: Record<string, string> = {
+  load_eta: "🚚",
+  customer_eta: "📬",
+  load_pending: "📦",
+  buyers_list: "🛒",
+  orders_pending: "📋",
+};
+
+// "17:00" -> "5:00 PM"
+function fmtTime(hhmm: string): string {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return hhmm;
+  const h = Number(m[1]);
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
+function hourText(h: number): string {
+  return fmtTime(`${h % 24}:00`);
+}
+
+function Chip({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-lg bg-black/5 px-2.5 py-1 dark:bg-white/10">
+      <span>{icon}</span>
+      <span className="text-black/50 dark:text-white/50">{label}</span>
+      <span className="font-semibold">{children}</span>
+    </span>
+  );
+}
+
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return <p className="text-[11px] font-bold uppercase tracking-wide text-green-700 dark:text-green-400">{children}</p>;
+}
+
 function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; roleOptions: RoleOption[]; people: PersonOption[]; orderLabels: OrderLabelOption[] }) {
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
@@ -132,18 +167,94 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
 
   const save = (patch: Parameters<typeof updateAgent>[1]) => start(() => updateAgent(agent.id, patch));
 
+  const [open, setOpen] = useState(false);
+  const autoApply = agent.key === "load_eta" || (agent.config.auto_apply_replies ?? agent.mode === "auto");
+  const scheduleText = isSlotAgent
+    ? `${(agent.config.send_times ?? []).map(fmtTime).join(", ") || "set times"}`
+    : `Every ${agent.interval_hours}h`;
+  const windowText = isSlotAgent
+    ? `${fmtTime(agent.config.window_start ?? "05:00")} - ${fmtTime(agent.config.window_end ?? "21:30")}`
+    : `${hourText(agent.active_start_hour)} - ${hourText(agent.active_end_hour)}`;
+  const recipientCount = (agent.config.recipients ?? []).length;
+  const roleCount = (agent.config.recipient_roles ?? []).length;
+  const toText =
+    agent.key === "load_eta"
+      ? "Each carrier"
+      : agent.key === "customer_eta"
+        ? "Each customer"
+        : recipientCount + roleCount === 0
+          ? "Every Operations login"
+          : [roleCount > 0 && `${roleCount} role${roleCount === 1 ? "" : "s"}`, recipientCount > 0 && `${recipientCount} address${recipientCount === 1 ? "" : "es"}`].filter(Boolean).join(" + ");
+
   return (
-    <div className="space-y-2 rounded-lg border border-black/10 p-3 dark:border-white/10">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="font-semibold">{agent.name}</p>
-          <p className="text-xs text-black/60 dark:text-white/60">{agent.description}</p>
+    <div
+      className={`overflow-hidden rounded-xl border shadow-sm ${
+        agent.enabled ? "border-green-400 dark:border-green-700" : "border-black/10 dark:border-white/10"
+      }`}
+    >
+      <div className="flex items-start gap-3 p-4">
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-2xl ${
+            agent.enabled ? "bg-green-100 dark:bg-green-900/40" : "bg-black/5 grayscale dark:bg-white/10"
+          }`}
+        >
+          {AGENT_ICON[agent.key] ?? "🤖"}
         </div>
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <input type="checkbox" checked={agent.enabled} disabled={pending} onChange={(e) => save({ enabled: e.target.checked })} />
-          {agent.enabled ? "On" : "Off"}
-        </label>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-base font-bold">{agent.name}</p>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                agent.enabled ? "bg-green-600 text-white" : "bg-black/10 text-black/60 dark:bg-white/10 dark:text-white/60"
+              }`}
+            >
+              {agent.enabled ? "ON" : "OFF"}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-black/60 dark:text-white/60">{agent.description}</p>
+        </div>
+        <button
+          role="switch"
+          aria-checked={agent.enabled}
+          aria-label={`${agent.name} ${agent.enabled ? "on" : "off"}`}
+          disabled={pending}
+          onClick={() => save({ enabled: !agent.enabled })}
+          className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
+            agent.enabled ? "bg-green-600" : "bg-black/25 dark:bg-white/25"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${agent.enabled ? "left-[1.375rem]" : "left-0.5"}`}
+          />
+        </button>
       </div>
+
+      <div className="flex flex-wrap gap-2 px-4 pb-3 text-xs">
+        <Chip icon="🕒" label="Sends">
+          {scheduleText} <span className="font-normal text-black/50 dark:text-white/50">({windowText})</span>
+        </Chip>
+        <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
+          {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
+        </Chip>
+        <Chip icon="📬" label="Replies">
+          {!readReplies ? "Notify only" : autoApply ? "Read and applied to HOPS" : "Read, you review"}
+        </Chip>
+        <Chip icon="👥" label="To">
+          {toText}
+        </Chip>
+      </div>
+
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between border-t border-black/10 px-4 py-2 text-xs font-semibold text-black/70 hover:bg-black/5 dark:border-white/10 dark:text-white/70 dark:hover:bg-white/5"
+      >
+        <span>{open ? "Hide settings" : "Edit settings"}</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+      <div className="space-y-4 border-t border-black/10 bg-black/[0.02] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+      <GroupLabel>Schedule and sending</GroupLabel>
 
       {isSlotAgent && (
         <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
@@ -237,6 +348,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
       </div>
       )}
 
+      <GroupLabel>Replies</GroupLabel>
       <div className="space-y-1 text-xs">
         <label className="flex items-center gap-2">
           <input
@@ -393,9 +505,12 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         </label>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-black/10 px-4 py-2.5 text-xs dark:border-white/10">
         <button
-          className={secondary}
+          className={primary}
           disabled={pending}
           onClick={() =>
             start(async () => {
