@@ -172,7 +172,10 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
   const scheduleText = isSlotAgent
     ? `${(agent.config.send_times ?? []).map(fmtTime).join(", ") || "set times"}`
     : `Every ${agent.interval_hours}h`;
-  const windowText = isSlotAgent
+  const noHours = agent.key === "load_eta" || agent.key === "customer_eta";
+  const windowText = noHours
+    ? ""
+    : isSlotAgent
     ? `${fmtTime(agent.config.window_start ?? "05:00")} - ${fmtTime(agent.config.window_end ?? "21:30")}`
     : `${hourText(agent.active_start_hour)} - ${hourText(agent.active_end_hour)}`;
   const recipientCount = (agent.config.recipients ?? []).length;
@@ -233,7 +236,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         <Chip icon="🕒" label="Sends">
           {scheduleText}
           {agent.key === "customer_eta" && agent.config.on_carrier_reply !== false && " + when a carrier replies"}{" "}
-          <span className="font-normal text-black/50 dark:text-white/50">({windowText})</span>
+          {windowText && <span className="font-normal text-black/50 dark:text-white/50">({windowText})</span>}
         </Chip>
         <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
           {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
@@ -283,6 +286,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
               }}
             />
           </label>
+          {agent.key !== "load_eta" && agent.key !== "customer_eta" && (
           <div className="grid grid-cols-2 gap-2">
             <label className="space-y-0.5">
               <span className="block text-black/60 dark:text-white/60">Never before</span>
@@ -303,6 +307,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
               />
             </label>
           </div>
+          )}
         </div>
       )}
 
@@ -363,7 +368,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
             <b>Also send as soon as a carrier replies with an ETA</b>
             <span className="block text-black/60 dark:text-white/60">
               When a carrier&apos;s ETA answer is added to a load, that load&apos;s customer gets their update right away instead of waiting for the next
-              time above. Only inside &quot;Never before / Never after&quot;; an answer outside those hours goes out at the next time.
+              time above, at any hour.
             </span>
           </span>
         </label>
@@ -553,10 +558,12 @@ function DraftCard({ draft }: { draft: AgentThread }) {
   const [to, setTo] = useState(draft.to_emails.join(", "));
   const [subject, setSubject] = useState(draft.subject);
   const [body, setBody] = useState(draft.body);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   return (
     <div className="space-y-2 rounded-lg border border-black/10 p-3 text-sm dark:border-white/10">
       {draft.status === "failed" && <p className="text-xs text-red-600">Send failed: {draft.error}</p>}
+      {sendError && <p className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-300">Not sent: {sendError}</p>}
       <input className={field} value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" />
       <input className={field} value={subject} onChange={(e) => setSubject(e.target.value)} aria-label="Subject" />
       <textarea className={`${field} font-mono text-xs`} rows={Math.min(14, body.split("\n").length + 1)} value={body} onChange={(e) => setBody(e.target.value)} />
@@ -565,13 +572,15 @@ function DraftCard({ draft }: { draft: AgentThread }) {
           className={primary}
           disabled={pending}
           onClick={() =>
-            start(() =>
-              approveDraft(draft.id, {
+            start(async () => {
+              setSendError(null);
+              const result = await approveDraft(draft.id, {
                 to: splitList(to),
                 subject,
                 body,
-              }),
-            )
+              });
+              if (result.error) setSendError(result.error);
+            })
           }
         >
           {pending ? "Sending..." : draft.status === "failed" ? "Retry send" : "Approve & send"}

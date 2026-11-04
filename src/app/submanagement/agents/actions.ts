@@ -83,7 +83,11 @@ export async function approveDraft(threadId: string, edits: { to: string[]; subj
     .eq("id", threadId);
   if (error) throw new Error(error.message);
   await sendThread(supabase, threadId);
+  // sendThread records a refused or failed send on the thread rather than throwing - report it.
+  const { data: after } = await supabase.from("agent_threads").select("status, error").eq("id", threadId).maybeSingle();
   revalidateAll();
+  if (after?.status === "failed") return { error: (after.error as string | null) ?? "The email could not be sent." };
+  return { sent: true as const };
 }
 
 export async function discardDraft(threadId: string) {

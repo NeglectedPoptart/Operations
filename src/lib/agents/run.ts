@@ -17,7 +17,7 @@ import {
   type InboxMessage,
 } from "./graph";
 import { claudeConfigured, parseBuyersReply, parseOrdersReply, parseReply, verifyPod } from "./parseReply";
-import { currentSlot, inWindow } from "./slots";
+import { currentSlot } from "./slots";
 import type {
   Agent,
   AgentReply,
@@ -74,6 +74,12 @@ async function notifyOwner(db: SupabaseClient, title: string, body: string) {
     body,
     { pagePath: "/submanagement/agents" },
   );
+}
+
+// The Load ETA and Customer ETA agents have no "never before / never after" hours: they send at their
+// set times and, for customers, whenever a carrier replies. This opens the window all day for slot maths.
+function openAllDay(config: Agent["config"]): Agent["config"] {
+  return { ...config, window_start: "00:00", window_end: "23:59" };
 }
 
 function newTag(): string {
@@ -214,18 +220,6 @@ export async function sendThread(db: SupabaseClient, threadId: string): Promise<
     .eq("id", thread.agent_id)
     .single<Pick<Agent, "key" | "config">>();
 
-  // Hard rule for carrier emails: nothing goes out overnight, whether a
-  // person approves it late or a retry fires.
-  if ((agent?.key === "load_eta" || agent?.key === "customer_eta") && !inWindow(new Date(), agent.config)) {
-    const start = agent.config.window_start ?? "05:00";
-    const end = agent.config.window_end ?? "21:30";
-    await db
-      .from("agent_threads")
-      .update({ status: "failed", error: `Carrier emails only go out between ${start} and ${end} Central - retry then.` })
-      .eq("id", thread.id);
-    return;
-  }
-
   try {
     const sent = await sendEmail({
       to: thread.to_emails,
@@ -291,7 +285,7 @@ async function recentThreads(db: SupabaseClient, agentId: string): Promise<Agent
 // Road loads, numbered so a reply can answer by number. force (Run now)
 // ignores the clock and the slot, but never stacks a second draft.
 async function runLoadEta(db: SupabaseClient, agent: Agent, force: boolean): Promise<number> {
-  const slot = force ? null : currentSlot(new Date(), agent.config);
+  const slot = force ? null : currentSlot(new Date(), openAllDay(agent.config));
   if (!force && !slot) return 0;
 
   const { data: loads, error } = await db
@@ -412,9 +406,8 @@ export async function triggerCustomerEta(db: SupabaseClient, loadIds: string[]):
 }
 
 async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, notes: string[], triggerLoadIds?: string[]): Promise<number> {
-  const slot = force || triggerLoadIds ? null : currentSlot(new Date(), agent.config);
+  const slot = force || triggerLoadIds ? null : currentSlot(new Date(), openAllDay(agent.config));
   if (!force && !triggerLoadIds && !slot) return 0;
-  if (triggerLoadIds && !inWindow(new Date(), agent.config)) return 0;
 
   const { data: customerRows, error: customerError } = await db.from("customer_emails").select("name, name_key, to_emails, cc_emails");
   if (customerError) {
@@ -547,12 +540,6 @@ export async function requestLoadUpdate(
   const carrierName = carrier?.name ?? "the carrier";
   const to = splitEmails(carrier?.followup_email);
   if (to.length === 0) return { error: `No follow-up email on file for ${carrierName}. Add one under HOPS Agents > Carrier Emails.` };
-
-  if (!inWindow(new Date(), agent.config)) {
-    const start = agent.config.window_start ?? "05:00";
-    const end = agent.config.window_end ?? "21:30";
-    return { error: `Carrier emails only go out between ${start} and ${end} Central - try again then.` };
-  }
 
   const threads = await recentThreads(db, agent.id);
   const recent = threads.find(
