@@ -111,6 +111,13 @@ export default function RateConfirmationImport({
     formData.append("file", file);
     const result = await extractRateConfirmationText(formData);
     if ("error" in result) throw new Error(result.error);
+    if (!/Freight Confirmation/i.test(result.text)) {
+      throw new Error(
+        /Confirmation of Sale/i.test(result.text)
+          ? "This is a Confirmation of Sale (the customer's copy), not a Freight Confirmation - upload the Freight Confirmation sent to the carrier."
+          : "This doesn't look like a Freight Confirmation.",
+      );
+    }
     const parsed = parseRateConfirmationText(result.text, hubOptions);
 
     let destination = "";

@@ -45,6 +45,15 @@ function stripLeadingDayAbbreviation(value: string): string {
   return value.trim();
 }
 
+// The zip of a one-line address. A street number can also be five digits ("10700 Telge Rd Houston
+// TX 77095"), so the zip right after the state wins; failing that, the last five-digit number.
+export function zipFromAddress(address: string): string | null {
+  const afterState = address.match(/\b[A-Z]{2}\s+(\d{5})(?:-\d{4})?\b/)?.[1];
+  if (afterState) return afterState;
+  const all = [...address.matchAll(/\b(\d{5})(?:-\d{4})?\b/g)];
+  return all.length > 0 ? all[all.length - 1][1] : null;
+}
+
 export function parseRateConfirmationText(text: string, knownHubs: string[] = []): ParsedRateConfirmation {
   const normalized = text.replace(/\r\n/g, "\n");
 
@@ -77,7 +86,7 @@ export function parseRateConfirmationText(text: string, knownHubs: string[] = []
     const lines = shipToBlock.split("\n").map((l) => l.trim()).filter(Boolean);
     if (lines.length > 0) {
       clientName = lines[0];
-      destinationZip = lines.slice(1).join(" ").match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] ?? null;
+      destinationZip = zipFromAddress(lines.slice(1).join(" "));
     }
   }
 
