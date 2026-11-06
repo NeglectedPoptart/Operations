@@ -1,8 +1,9 @@
 import { addDays, currentWeekStart, prevWeekStart, todayISO } from "@/lib/dates";
 import { computeLaneWeekStats } from "@/lib/laneStats";
+import { loadAllQcInspections } from "@/lib/qcInspectionRows";
 import { loadRepacks } from "@/lib/repacksLoad";
 import { createClient } from "@/lib/supabase/server";
-import type { Broker, BrokerRateEntry, Lane, QcInspection } from "@/lib/types";
+import type { Broker, BrokerRateEntry, Lane } from "@/lib/types";
 import WeeklyCompanyCallClient, { type LaneRateRow } from "./WeeklyCompanyCallClient";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +17,14 @@ export default async function WeeklyCompanyCallPage() {
   const repacksLoaded = await loadRepacks(supabase, addDays(todayISO(), -60));
 
   const [inspectionsRes, lanesRes, brokersRes, entriesRes, salesOrdersReportRes] = await Promise.all([
-    supabase.from("qc_inspections").select("*").order("entry_date", { ascending: true }),
+    loadAllQcInspections(supabase),
     supabase.from("lanes").select("*").order("position").order("from_hub").order("destination"),
     supabase.from("brokers").select("*").order("name"),
     supabase.from("broker_rate_entries").select("*").in("week_start_date", [currWeek, prevWeek]),
     supabase.from("weekly_sales_orders_report").select("*").eq("report_key", "current").maybeSingle(),
   ]);
 
-  const error = inspectionsRes.error ?? lanesRes.error ?? brokersRes.error ?? entriesRes.error ?? salesOrdersReportRes.error;
+  const error = (inspectionsRes.error ? { message: inspectionsRes.error } : null) ?? lanesRes.error ?? brokersRes.error ?? entriesRes.error ?? salesOrdersReportRes.error;
   if (error) {
     return <p className="text-red-600">Failed to load data: {error.message}</p>;
   }
@@ -59,7 +60,7 @@ export default async function WeeklyCompanyCallPage() {
 
   return (
     <WeeklyCompanyCallClient
-      qcInspections={(inspectionsRes.data ?? []) as QcInspection[]}
+      qcInspections={inspectionsRes.data}
       laneRates={laneRates}
       repacks={"repacks" in repacksLoaded ? repacksLoaded.repacks : []}
       repacksError={"error" in repacksLoaded ? repacksLoaded.error : null}
