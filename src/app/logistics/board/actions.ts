@@ -478,6 +478,8 @@ export async function recordLoadRateCon(input: {
   if (error) {
     return { error: /kind|check|constraint/i.test(error.message) ? "The Broker Pending List isn't set up yet - run migration 163." : error.message };
   }
+  // On the carrier's Broker Pending List the moment it is attached.
+  await supabase.from("loads").update({ rate_con_sent: true }).eq("id", input.loadId);
   revalidateAll();
   return { ok: true };
 }

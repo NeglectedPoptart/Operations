@@ -61,7 +61,6 @@ interface LoadDraft {
   source: string;
   rate: string;
   notes: string;
-  rateConSent: boolean;
   brokerChoice: BrokerChoice;
   warnings: string[];
   stops: StopDraft[];
@@ -152,7 +151,6 @@ export default function RateConfirmationImport({
       source: parsed.source ?? "",
       rate: parsed.rate !== null ? String(parsed.rate) : "",
       notes: parsed.notes ?? "",
-      rateConSent: true,
       brokerChoice: guessedBrokerId
         ? { mode: "existing", brokerId: guessedBrokerId }
         : { mode: "new", newName: parsed.brokerName ?? "" },
@@ -276,9 +274,9 @@ export default function RateConfirmationImport({
     formData.set("stops_json", JSON.stringify(stopsPayload));
 
     const loadId = await createLoad(formData);
-    if (draft.rateConSent) {
-      await updateLoadRateConSent(loadId, true).catch(() => {});
-    }
+    // Carriers sign from their Broker Pending List, so the rate confirmation counts as sent to the
+    // carrier as soon as it is on the load.
+    await updateLoadRateConSent(loadId, true).catch(() => {});
 
     // Keep a scan of each rate confirmation on the load (the carrier signs it on their Broker Pending
     // List). The load is already saved, so a failure here only warns.
@@ -557,14 +555,6 @@ export default function RateConfirmationImport({
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={draft.rateConSent}
-                  onChange={(e) => updateDraft(draft.id, { rateConSent: e.target.checked })}
-                />
-                Rate confirmation already sent to carrier
-              </label>
             </div>
           ))}
 
