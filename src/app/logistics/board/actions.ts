@@ -233,18 +233,34 @@ export async function recordLoadPod(input: {
   revalidateAll();
 }
 
-export async function getLoadDocuments(loadId: string): Promise<{ id: string; file_name: string; source: string; url: string | null }[]> {
+export interface LoadDocumentLink {
+  id: string;
+  file_name: string;
+  source: string;
+  kind: string;
+  review_status: string | null;
+  url: string | null;
+}
+
+export async function getLoadDocuments(loadId: string): Promise<LoadDocumentLink[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("load_documents")
-    .select("id, file_name, storage_path, source")
+    .select("*")
     .eq("load_id", loadId)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return Promise.all(
     (data ?? []).map(async (d) => {
       const { data: signed } = await supabase.storage.from("load-documents").createSignedUrl(d.storage_path as string, 3600);
-      return { id: d.id as string, file_name: d.file_name as string, source: d.source as string, url: signed?.signedUrl ?? null };
+      return {
+        id: d.id as string,
+        file_name: d.file_name as string,
+        source: d.source as string,
+        kind: (d.kind as string | undefined) ?? "pod",
+        review_status: (d.review_status as string | null | undefined) ?? null,
+        url: signed?.signedUrl ?? null,
+      };
     }),
   );
 }
@@ -433,6 +449,143 @@ export async function addLoadCharge(input: { loadId: string; kind: string; amoun
 export async function deleteLoadCharge(id: string): Promise<{ ok: true } | { error: string }> {
   const supabase = await createClient();
   const { error } = await supabase.from("load_charges").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+// ---- Broker Pending List: what staff do with what a carrier sends (migration 163) -----------------
+
+// A rate confirmation PDF the browser already put in the load-documents bucket - kept on the load so
+// the carrier can read and e-sign it on their Broker Pending List.
+export async function recordLoadRateCon(input: {
+  loadId: string;
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("load_documents").insert({
+    load_id: input.loadId,
+    kind: "ratecon",
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    content_type: input.contentType,
+    size_bytes: input.sizeBytes,
+    source: "manual",
+  });
+  if (error) {
+    return { error: /kind|check|constraint/i.test(error.message) ? "The Broker Pending List isn't set up yet - run migration 163." : error.message };
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+// Removes a rate confirmation / document from a load (the file itself stays in storage).
+export async function removeLoadDocument(id: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("load_documents").delete().eq("id", id).in("kind", ["ratecon", "ratecon_signed"]);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+// Lets the carrier sign again (for example after the rate or details changed). The signed copy and
+// certificate already made stay on the load.
+export async function resetRateConSignature(loadId: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("loads").update({ ratecon_signed_at: null, ratecon_signed_by: null }).eq("id", loadId);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+// The carrier's POD looks right: it is kept, and the load is Delivered (Complete).
+export async function approvePod(loadId: string): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error: docError } = await supabase
+    .from("load_documents")
+    .update({ review_status: "approved" })
+    .eq("load_id", loadId)
+    .eq("kind", "pod")
+    .eq("review_status", "pending");
+  if (docError) return { error: docError.message };
+  const { error } = await supabase
+    .from("loads")
+    .update({ status: "complete", pod_pending: false, pod_submitted_at: null, pod_rejected_note: null })
+    .eq("id", loadId);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+// The POD is unreadable / wrong: the carrier sees why and uploads a new one. The load stays as it is.
+export async function rejectPod(loadId: string, reason: string): Promise<{ ok: true } | { error: string }> {
+  const note = reason.trim();
+  if (!note) return { error: "Say what's wrong with it so the carrier can fix it." };
+  const supabase = await createClient();
+  const { error: docError } = await supabase
+    .from("load_documents")
+    .update({ review_status: "rejected", review_note: note })
+    .eq("load_id", loadId)
+    .eq("kind", "pod")
+    .eq("review_status", "pending");
+  if (docError) return { error: docError.message };
+  const { error } = await supabase.from("loads").update({ pod_submitted_at: null, pod_rejected_note: note }).eq("id", loadId);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
+// Approving adds the charge to the load's extra charges (what the list and invoicing already read);
+// the amount can be lowered/changed first. Rejecting keeps it on the carrier's list with the reason.
+export async function reviewChargeRequest(input: {
+  id: string;
+  decision: "approve" | "reject";
+  note: string;
+  amount?: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+  const reviewer = await personName(supabase, user);
+  const { data: req, error: readError } = await supabase.from("broker_charge_requests").select("*").eq("id", input.id).maybeSingle();
+  if (readError || !req) return { error: readError?.message ?? "That charge wasn't found." };
+  if (req.status !== "pending") return { error: "That charge was already reviewed." };
+  const note = input.note.trim();
+
+  let loadChargeId: string | null = null;
+  if (input.decision === "approve") {
+    const amount = Math.round((input.amount ?? Number(req.amount)) * 100) / 100;
+    if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter the approved amount." };
+    const text = [`Carrier request: ${req.note ?? ""}`.trim(), note ? `Approved: ${note}` : ""].filter(Boolean).join(" | ");
+    const { data: charge, error: chargeError } = await supabase
+      .from("load_charges")
+      .insert({ load_id: req.load_id, kind: req.kind, amount, note: text || null, created_by: reviewer })
+      .select("id")
+      .single();
+    if (chargeError || !charge) return { error: chargeError?.message ?? "Couldn't add the charge." };
+    loadChargeId = charge.id as string;
+    if (amount !== Number(req.amount)) {
+      await supabase.from("broker_charge_requests").update({ amount }).eq("id", req.id);
+    }
+  } else if (!note) {
+    return { error: "Say why it isn't approved so the carrier knows." };
+  }
+
+  const { error } = await supabase
+    .from("broker_charge_requests")
+    .update({
+      status: input.decision === "approve" ? "approved" : "rejected",
+      reviewed_by: reviewer,
+      reviewed_at: new Date().toISOString(),
+      review_note: note || null,
+      load_charge_id: loadChargeId,
+    })
+    .eq("id", req.id);
   if (error) return { error: error.message };
   revalidateAll();
   return { ok: true };

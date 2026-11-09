@@ -137,7 +137,7 @@ function RoleCard({
           )}
           <span className="text-xs text-black/50 dark:text-white/50">
             {people} {people === 1 ? "person" : "people"}
-            {isBroker ? " · one page only" : ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}${singlePages > 0 ? ` + ${singlePages} single page${singlePages === 1 ? "" : "s"}` : ""}`}
+            {isBroker ? " · portal pages only" : ` · ${sectionCount} section${sectionCount === 1 ? "" : "s"}${singlePages > 0 ? ` + ${singlePages} single page${singlePages === 1 ? "" : "s"}` : ""}`}
           </span>
         </button>
         {open && !renaming && (
@@ -158,7 +158,7 @@ function RoleCard({
         <div className="border-t border-black/10 px-3 py-3 dark:border-white/10">
           {isBroker ? (
             <p className="text-sm text-black/60 dark:text-white/60">
-              Broker/Carrier logins only ever see the Broker Rate Entry page - nothing else, not even Home.
+              Broker/Carrier logins only ever see the Broker Pending List and Broker Rate Entry pages - nothing else, not even Home.
             </p>
           ) : (
             <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">

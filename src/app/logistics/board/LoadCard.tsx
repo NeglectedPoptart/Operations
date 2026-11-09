@@ -209,6 +209,26 @@ export default function LoadCard({
                   📄 {load.pod_pending ? "Pending POD" : "Mark pending POD"}
                 </button>
               )}
+              {load.status !== "complete" && load.broker_id && load.rate_con_sent && (
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${load.ratecon_signed_at ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-black/5 text-black/60 dark:bg-white/10 dark:text-white/60"}`}
+                  title={load.ratecon_signed_at ? `Signed by ${load.ratecon_signed_by ?? "the carrier"} on their Broker Pending List` : "The carrier hasn't e-signed the rate confirmation yet"}
+                >
+                  {load.ratecon_signed_at ? "✍ Carrier signed" : "✍ Not signed"}
+                </span>
+              )}
+              {load.status !== "complete" && load.broker_id && load.rate !== null && (
+                <span
+                  className={`rounded px-2 py-0.5 text-xs font-medium ${load.rate_confirmed_at && Number(load.rate_confirmed_amount) === Number(load.rate) ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "bg-black/5 text-black/60 dark:bg-white/10 dark:text-white/60"}`}
+                >
+                  {load.rate_confirmed_at && Number(load.rate_confirmed_amount) === Number(load.rate) ? "✓ Rate confirmed" : "Rate not confirmed"}
+                </span>
+              )}
+              {load.pod_submitted_at && (
+                <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" title="The carrier uploaded a POD - review it at the top of the page">
+                  📎 POD to review
+                </span>
+              )}
               {load.status === "on_the_road" && <RequestUpdateButton load={load} className="rounded px-2 py-0.5 text-xs font-medium border border-black/20 hover:bg-black/5 dark:border-white/20" />}
             </>
           }

@@ -51,6 +51,7 @@ export const NAV: NavCategory[] = [
       { href: "/logistics", label: "Summary" },
       { href: "/logistics/board", label: "List", excludeRoles: LOGISTICS_OVERSIGHT_ONLY_ROLES },
       { href: "/logistics/rates", label: "Freight Rates" },
+      { href: "/logistics/broker-pending", label: "Broker Pending List", excludeRoles: LOGISTICS_OVERSIGHT_ONLY_ROLES },
       {
         href: "/logistics/broker-rate-entry",
         label: "Broker Rate Entry",

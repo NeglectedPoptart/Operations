@@ -133,6 +133,15 @@ export interface Load {
   claim_note?: string | null;
   claim_flagged_at?: string | null;
   claim_flagged_by?: string | null;
+  // Broker Pending List (migration 163): what the carrier did on their portal.
+  ratecon_signed_at?: string | null;
+  ratecon_signed_by?: string | null;
+  rate_confirmed_at?: string | null;
+  rate_confirmed_amount?: number | null;
+  eta_updated_at?: string | null;
+  eta_updated_by?: string | null;
+  pod_submitted_at?: string | null;
+  pod_rejected_note?: string | null;
   created_at: string;
   updated_at: string;
   load_stops: LoadStop[];

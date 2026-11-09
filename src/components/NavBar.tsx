@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   BROKER_CARRIER_PATH,
+  BROKER_PENDING_PATH,
   canAccessTab,
   hasLogisticsOversight,
   isSupremeUser,
@@ -319,13 +320,16 @@ export default function NavBar({
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 py-3">
         {isBrokerCarrier && (
-          <Link
-            href={BROKER_CARRIER_PATH}
-            className={topLevelClass(pathname.startsWith(BROKER_CARRIER_PATH))}
-          >
-            <CategoryIcon label="Logistics" className="h-5 w-5 shrink-0" />
-            Broker Rate Entry
-          </Link>
+          <>
+            <Link href={BROKER_PENDING_PATH} className={topLevelClass(pathname.startsWith(BROKER_PENDING_PATH))}>
+              <CategoryIcon label="Logistics" className="h-5 w-5 shrink-0" />
+              Broker Pending List
+            </Link>
+            <Link href={BROKER_CARRIER_PATH} className={topLevelClass(pathname.startsWith(BROKER_CARRIER_PATH))}>
+              <CategoryIcon label="Logistics" className="h-5 w-5 shrink-0" />
+              Broker Rate Entry
+            </Link>
+          </>
         )}
         {nav.map((category) => {
           if (category.href) {

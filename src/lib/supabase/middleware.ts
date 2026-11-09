@@ -1,7 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import {
-  BROKER_CARRIER_PATH,
+  BROKER_PENDING_PATH,
+  brokerCarrierPathAllowed,
   CRM_ACTIVITY_PATH_PREFIX,
   FULL_ACCESS,
   SUPREME_PATH_PREFIXES,
@@ -63,7 +64,7 @@ export async function updateSession(request: NextRequest) {
   // tab-gated path is hit.
   const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
   const role = (profile?.role ?? null) as Role | null;
-  const homePath = role === "broker_carrier" ? BROKER_CARRIER_PATH : "/";
+  const homePath = role === "broker_carrier" ? BROKER_PENDING_PATH : "/";
   // What this role may open (editable on User Roles). The Supreme account is
   // never limited by it.
   const access = isSupremeUser(user.email ?? null) ? FULL_ACCESS : await loadRoleAccess(supabase, role);
@@ -79,9 +80,9 @@ export async function updateSession(request: NextRequest) {
   // ROLE_TABS says (it has none). Checked before the generic tab logic so
   // it can never fall through to it.
   if (role === "broker_carrier") {
-    if (pathname !== BROKER_CARRIER_PATH) {
+    if (!brokerCarrierPathAllowed(pathname)) {
       const url = request.nextUrl.clone();
-      url.pathname = BROKER_CARRIER_PATH;
+      url.pathname = BROKER_PENDING_PATH;
       return NextResponse.redirect(url);
     }
     return response;

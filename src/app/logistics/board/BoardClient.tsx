@@ -10,6 +10,8 @@ import {
   type Load,
   type LoadStatus,
 } from "@/lib/types";
+import type { Submissions } from "@/lib/brokerPortal/staffReview";
+import BrokerSubmissions from "./BrokerSubmissions";
 import LoadCard from "./LoadCard";
 import LoadModal from "./LoadModal";
 import PendingOrdersCheck from "./PendingOrdersCheck";
@@ -23,6 +25,7 @@ export default function BoardClient({
   initialOverdueLoads,
   chargesByLoadId,
   selectedLotsByLoadId,
+  submissions,
 }: {
   loads: Load[];
   brokers: Broker[];
@@ -31,6 +34,7 @@ export default function BoardClient({
   initialOverdueLoads: Load[] | null;
   chargesByLoadId: Record<string, LoadCharge[]>;
   selectedLotsByLoadId: Record<string, string[]>;
+  submissions: Submissions;
 }) {
   const [editingLoad, setEditingLoad] = useState<Load | null | undefined>(
     undefined,
@@ -95,6 +99,8 @@ export default function BoardClient({
           </button>
         )}
       </div>
+
+      <BrokerSubmissions submissions={submissions} loads={loads} />
 
       <RateConfirmationImport
         brokers={brokers}

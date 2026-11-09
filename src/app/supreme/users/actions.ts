@@ -196,7 +196,7 @@ export async function renameRole(key: string, label: string) {
 
 export async function setRoleTabs(key: string, tabs: Tab[]) {
   const supabase = await ownerClient();
-  if (key === "broker_carrier") throw new Error("Broker/Carrier only ever sees its one page.");
+  if (key === "broker_carrier") throw new Error("Broker/Carrier only ever sees its two portal pages.");
   const clean = ALL_TABS.filter((t) => tabs.includes(t));
   const { error } = await supabase.from("roles").update({ tabs: clean }).eq("key", key);
   if (error) throw new Error(error.message);
@@ -214,7 +214,7 @@ export async function setRoleHiddenPages(key: string, hiddenPages: string[]) {
 // Single pages a role can open even without the whole section (migration 142).
 export async function setRoleAllowedPages(key: string, pages: string[]) {
   const supabase = await ownerClient();
-  if (key === "broker_carrier") throw new Error("Broker/Carrier only ever sees its one page.");
+  if (key === "broker_carrier") throw new Error("Broker/Carrier only ever sees its two portal pages.");
   const clean = pages.filter((p) => KNOWN_PAGES.has(p));
   const { error } = await supabase.from("roles").update({ allowed_pages: clean }).eq("key", key);
   if (error) throw new Error(error.message);

@@ -5,6 +5,7 @@ import { parseRateConfirmationText } from "@/lib/rateConfirmationParse";
 import { splitDestinationLabel, validateCityStateLabel } from "@/lib/destination";
 import LockedCombobox from "@/components/LockedCombobox";
 import type { Broker } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
 import {
   createBroker,
   createDestinationCity,
@@ -12,6 +13,7 @@ import {
   createLoad,
   extractRateConfirmationText,
   lookupZipCityState,
+  recordLoadRateCon,
   updateLoadRateConSent,
 } from "./actions";
 
@@ -42,6 +44,8 @@ function guessBrokerId(brokerName: string | null, brokers: Broker[]): string | n
 interface StopDraft {
   id: string;
   fileName: string;
+  // The uploaded PDF itself, kept on the load so the carrier can read and e-sign it.
+  file?: File;
   orderNumber: string;
   poNumber: string;
   clientName: string;
@@ -157,6 +161,7 @@ export default function RateConfirmationImport({
         {
           id: crypto.randomUUID(),
           fileName: file.name,
+          file,
           orderNumber: parsed.orderNumber ?? "",
           poNumber: parsed.poNumber ?? "",
           clientName: parsed.clientName ?? "",
@@ -274,6 +279,23 @@ export default function RateConfirmationImport({
     if (draft.rateConSent) {
       await updateLoadRateConSent(loadId, true).catch(() => {});
     }
+
+    // Keep a scan of each rate confirmation on the load (the carrier signs it on their Broker Pending
+    // List). The load is already saved, so a failure here only warns.
+    const failed: string[] = [];
+    for (const s of draft.stops) {
+      if (!s.file) continue;
+      try {
+        const storagePath = `ratecons/${loadId}/${crypto.randomUUID()}.pdf`;
+        const { error: uploadError } = await createClient().storage.from("load-documents").upload(storagePath, s.file, { contentType: "application/pdf" });
+        if (uploadError) throw new Error(uploadError.message);
+        const r = await recordLoadRateCon({ loadId, fileName: s.file.name, storagePath, contentType: "application/pdf", sizeBytes: s.file.size });
+        if ("error" in r) throw new Error(r.error);
+      } catch {
+        failed.push(s.file.name);
+      }
+    }
+    if (failed.length > 0) alert(`The load was saved, but the rate confirmation PDF could not be attached (${failed.join(", ")}). Open the load and use "Attach rate confirmation PDF".`);
   }
 
   async function handleConfirmAll() {

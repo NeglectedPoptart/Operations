@@ -56,6 +56,13 @@ export type Tab =
 // constant rather than a Tab since it's a single hardcoded path, not a
 // category of pages.
 export const BROKER_CARRIER_PATH = "/logistics/broker-rate-entry";
+// The Broker Pending List: what a carrier lands on, with their loads to sign / confirm / deliver.
+export const BROKER_PENDING_PATH = "/logistics/broker-pending";
+// The only pages (and anything beneath them) a Broker/Carrier login may open.
+export const BROKER_CARRIER_PATHS = [BROKER_PENDING_PATH, BROKER_CARRIER_PATH];
+export function brokerCarrierPathAllowed(pathname: string): boolean {
+  return BROKER_CARRIER_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 // The "Supreme Tab" (Workflow, Meal Plans, User Roles, Notifications, Reset
 // Tools) is deliberately NOT part of the Tab/role system at all - it's

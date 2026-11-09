@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/dates";
 import type { LoadCharge } from "@/lib/loadCharges";
+import { loadSubmissions } from "@/lib/brokerPortal/staffReview";
 import type { Broker, DestinationCity, Hub, Load } from "@/lib/types";
 import BoardClient from "./BoardClient";
 
@@ -58,6 +59,9 @@ export default async function BoardPage() {
   const chargesByLoadId: Record<string, LoadCharge[]> = {};
   for (const c of (chargeRows ?? []) as LoadCharge[]) (chargesByLoadId[c.load_id] ??= []).push(c);
 
+  // What carriers sent (PODs, charge requests - migration 163); never stops the List from loading.
+  const submissions = await loadSubmissions(supabase);
+
   const hubOptions = ((hubs ?? []) as Hub[]).map((h) => h.name);
   const cityOptions = ((destinationCities ?? []) as DestinationCity[]).map((c) => `${c.city}, ${c.state}`);
   const allLoads = (loads ?? []) as unknown as Load[];
@@ -93,6 +97,7 @@ export default async function BoardPage() {
       initialOverdueLoads={initialOverdueLoads}
       chargesByLoadId={chargesByLoadId}
       selectedLotsByLoadId={selectedLotsByLoadId}
+      submissions={submissions}
     />
   );
 }

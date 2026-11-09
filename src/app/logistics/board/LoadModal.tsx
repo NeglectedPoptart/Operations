@@ -3,11 +3,15 @@
 import { useEffect, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  type LoadDocumentLink,
   createDestinationCity,
   createHub,
   createLoad,
   getLoadDocuments,
   recordLoadPod,
+  recordLoadRateCon,
+  removeLoadDocument,
+  resetRateConSignature,
   setPodPending,
   updateLoad,
 } from "./actions";
@@ -67,15 +71,37 @@ export default function LoadModal({
   const [cityOptions, setCityOptions] = useState(initialCityOptions);
 
   // Proof of delivery ------------------------------------------------------
-  const [podDocs, setPodDocs] = useState<{ id: string; file_name: string; source: string; url: string | null }[]>([]);
+  const [allDocs, setAllDocs] = useState<LoadDocumentLink[]>([]);
+  const podDocs = allDocs.filter((d) => d.kind === "pod");
+  const rateConDocs = allDocs.filter((d) => d.kind === "ratecon" || d.kind === "ratecon_signed");
+  const [rateConBusy, setRateConBusy] = useState(false);
   const [podUploading, setPodUploading] = useState(false);
   const [podError, setPodError] = useState<string | null>(null);
   const loadId = load?.id ?? null;
 
   useEffect(() => {
     if (!loadId) return;
-    getLoadDocuments(loadId).then(setPodDocs).catch(() => {});
+    getLoadDocuments(loadId).then(setAllDocs).catch(() => {});
   }, [loadId]);
+
+  // The rate confirmation PDF kept on the load: the carrier reads and e-signs it on their Broker Pending List.
+  async function handleRateConFile(file: File) {
+    if (!load) return;
+    setPodError(null);
+    setRateConBusy(true);
+    try {
+      const storagePath = `ratecons/${load.id}/${crypto.randomUUID()}.pdf`;
+      const { error: uploadError } = await createClient().storage.from("load-documents").upload(storagePath, file, { contentType: "application/pdf" });
+      if (uploadError) throw new Error(uploadError.message);
+      const r = await recordLoadRateCon({ loadId: load.id, fileName: file.name, storagePath, contentType: "application/pdf", sizeBytes: file.size });
+      if ("error" in r) throw new Error(r.error);
+      setAllDocs(await getLoadDocuments(load.id));
+    } catch (e) {
+      setPodError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setRateConBusy(false);
+    }
+  }
 
   async function handlePodFile(file: File) {
     if (!load) return;
@@ -217,6 +243,53 @@ export default function LoadModal({
             <textarea name="eta_note" defaultValue={load?.eta_note ?? ""} rows={2} className={field} />
           </div>
 
+          {load && (
+            <div className="col-span-2 space-y-2 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
+              <p className="text-xs font-semibold text-black/70 dark:text-white/70">Rate confirmation (what the carrier signs on their Broker Pending List)</p>
+              {rateConDocs.length === 0 && <p className="text-xs text-black/50 dark:text-white/50">No rate confirmation PDF is attached to this load yet.</p>}
+              {rateConDocs.map((d) => (
+                <p key={d.id} className="text-xs">
+                  {d.url ? (
+                    <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-green-700 hover:underline dark:text-green-400">
+                      {d.kind === "ratecon_signed" ? "✍" : "📄"} {d.file_name}
+                    </a>
+                  ) : (
+                    <span>{d.file_name}</span>
+                  )}{" "}
+                  {d.kind === "ratecon" && (
+                    <button type="button" className="text-red-600 hover:underline" onClick={() => removeLoadDocument(d.id).then(() => getLoadDocuments(load.id).then(setAllDocs))}>
+                      remove
+                    </button>
+                  )}
+                </p>
+              ))}
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  {rateConBusy ? "Uploading..." : "Attach rate confirmation PDF"}
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    disabled={rateConBusy}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) void handleRateConFile(f);
+                    }}
+                  />
+                </label>
+                {load.ratecon_signed_at && (
+                  <>
+                    <span className="text-green-700 dark:text-green-400">Signed by {load.ratecon_signed_by}</span>
+                    <button type="button" className="text-red-600 hover:underline" onClick={() => startTransition(() => resetRateConSignature(load.id).then(onClose))}>
+                      Let the carrier sign again
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {load && (load.status === "on_the_road" || podDocs.length > 0) && (
             <div className="col-span-2 space-y-2 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
               <p className="text-xs font-semibold text-black/70 dark:text-white/70">Proof of Delivery (POD)</p>
@@ -229,7 +302,8 @@ export default function LoadModal({
                   ) : (
                     <span>📄 {d.file_name}</span>
                   )}{" "}
-                  <span className="text-black/40 dark:text-white/40">({d.source === "email" ? "from carrier email" : "uploaded"})</span>
+                  <span className="text-black/40 dark:text-white/40">({d.source === "email" ? "from carrier email" : d.source === "carrier" ? "uploaded by the carrier" : "uploaded"}
+                    {d.review_status === "pending" ? " - waiting for your review" : d.review_status === "rejected" ? " - sent back" : ""})</span>
                 </p>
               ))}
               {load.status === "on_the_road" && (
