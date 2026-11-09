@@ -31,7 +31,11 @@ function SignaturePad({ onChange }: { onChange: (png: string) => void }) {
 
   function down(e: React.PointerEvent<HTMLCanvasElement>) {
     e.preventDefault();
-    canvas.current!.setPointerCapture(e.pointerId);
+    try {
+      canvas.current!.setPointerCapture(e.pointerId);
+    } catch {
+      // some browsers refuse capture; drawing still works without it
+    }
     drawing.current = true;
     const ctx = canvas.current!.getContext("2d")!;
     const p = point(e);
