@@ -5,6 +5,8 @@ export interface PortalDoc {
   id: string;
   name: string;
   url: string | null;
+  // A link that saves the file to the device instead of opening it (rate confirmations and signed copies).
+  downloadUrl: string | null;
   createdAt: string;
 }
 

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { APP_TIMEZONE, formatDate } from "@/lib/dates";
 import { rateIsConfirmed } from "@/lib/brokerPortal/rateConfirmed";
-import { PORTAL_CHARGE_KINDS, type PortalCharge, type PortalLoad } from "@/lib/brokerPortal/types";
+import { PORTAL_CHARGE_KINDS, type PortalCharge, type PortalDoc, type PortalLoad } from "@/lib/brokerPortal/types";
 import { createClient } from "@/lib/supabase/client";
 import { confirmRate, prepareUploads, requestCharge, saveEta, submitPod, withdrawCharge } from "./actions";
 import SignModal from "./SignModal";
@@ -68,6 +68,28 @@ function DocLink({ name, url }: { name: string; url: string | null }) {
     </a>
   ) : (
     <span>{name}</span>
+  );
+}
+
+// View + "Download PDF" for each copy of a document, so a carrier can keep copies for their accounting.
+function Copies({ docs, noun }: { docs: PortalDoc[]; noun: string }) {
+  if (docs.length === 0) return null;
+  return (
+    <p className="text-sm">
+      {docs.map((d, i) => (
+        <span key={d.id} className="mr-4 inline-block whitespace-nowrap">
+          <DocLink name={`View ${noun}${docs.length > 1 ? ` ${i + 1}` : ""}`} url={d.url} />
+          {d.downloadUrl && (
+            <>
+              {" · "}
+              <a href={d.downloadUrl} className="font-medium text-green-700 hover:underline dark:text-green-400" title={`Save ${d.name} to this device`}>
+                ⬇ Download PDF
+              </a>
+            </>
+          )}
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -251,15 +273,13 @@ function LoadTile({ load: l, readOnly, onSign, onMessage }: { load: PortalLoad; 
         <Check done={Boolean(l.signedAt)}>
           <p className="font-semibold">Rate confirmation</p>
           {l.signedAt ? (
-            <p className="text-black/70 dark:text-white/70">
-              Signed by {l.signedBy} · {when(l.signedAt)}
-              {l.signedCopies.length > 0 && (
-                <>
-                  {" · "}
-                  <DocLink name="View signed copy" url={l.signedCopies[0].url} />
-                </>
-              )}
-            </p>
+            <div className="space-y-1">
+              <p className="text-black/70 dark:text-white/70">
+                Signed by {l.signedBy} · {when(l.signedAt)}
+              </p>
+              <Copies docs={l.signedCopies} noun="signed copy" />
+              <Copies docs={l.rateCons} noun="original" />
+            </div>
           ) : !l.rateConSent || l.rateCons.length === 0 ? (
             <p className="text-black/60 dark:text-white/60">Waiting for Harvest Best to send the rate confirmation.</p>
           ) : (
@@ -267,7 +287,7 @@ function LoadTile({ load: l, readOnly, onSign, onMessage }: { load: PortalLoad; 
               <button className={btn} disabled={readOnly} onClick={onSign}>
                 Review &amp; sign
               </button>
-              <DocLink name="View rate confirmation" url={l.rateCons[0].url} />
+              <Copies docs={l.rateCons} noun="rate confirmation" />
             </div>
           )}
         </Check>

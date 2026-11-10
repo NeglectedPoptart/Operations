@@ -48,7 +48,24 @@ export async function loadPortalLoads(admin: SupabaseClient, brokerId: string): 
     );
     for (const s of signed ?? []) if (s.path && s.signedUrl) urlByPath.set(s.path, s.signedUrl);
   }
-  const asDoc = (d: DocRow): PortalDoc => ({ id: d.id, name: d.file_name, url: urlByPath.get(d.storage_path) ?? null, createdAt: d.created_at });
+  // Rate confirmations and their signed copies also get a "save to your device" link, named after the
+  // file, so a carrier can keep copies for their accounting.
+  const downloadByPath = new Map<string, string>();
+  await Promise.all(
+    visible
+      .filter((d) => d.kind === "ratecon" || d.kind === "ratecon_signed")
+      .map(async (d) => {
+        const { data } = await admin.storage.from("load-documents").createSignedUrl(d.storage_path, 3600, { download: d.file_name });
+        if (data?.signedUrl) downloadByPath.set(d.storage_path, data.signedUrl);
+      }),
+  );
+  const asDoc = (d: DocRow): PortalDoc => ({
+    id: d.id,
+    name: d.file_name,
+    url: urlByPath.get(d.storage_path) ?? null,
+    downloadUrl: downloadByPath.get(d.storage_path) ?? null,
+    createdAt: d.created_at,
+  });
 
   return rows.map((l) => {
     const id = l.id as string;

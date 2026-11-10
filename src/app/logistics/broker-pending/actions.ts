@@ -124,7 +124,7 @@ export async function signRateCon(input: { loadId: string; name: string; title: 
   if (loadError) return { error: loadError.message };
 
   refresh();
-  return { ok: true, message: "Signed. A copy with your signature is saved on the load." };
+  return { ok: true, message: "Signed. Use Download PDF on the load to keep a copy for your records." };
 }
 
 // ---- Confirm the rate ----------------------------------------------------------------------------
