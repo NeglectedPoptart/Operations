@@ -6,6 +6,7 @@ import type { Submissions } from "@/lib/brokerPortal/staffReview";
 import type { Load } from "@/lib/types";
 import { approvePod, rejectPod, reviewChargeRequest } from "./actions";
 import { inputClass, money, smallBtn, useRun } from "./LoadExtras";
+import ChargePayerPicker, { emptyPayer, type PayerValue } from "./ChargePayerPicker";
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString("en-US", { timeZone: APP_TIMEZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -52,7 +53,7 @@ export default function BrokerSubmissions({ submissions, loads }: { submissions:
         <PodRow key={p.loadId} pod={p} label={loadLabel(byId.get(p.loadId))} />
       ))}
       {submissions.charges.map((c) => (
-        <ChargeRow key={c.id} charge={c} label={loadLabel(byId.get(c.loadId))} />
+        <ChargeRow key={c.id} charge={c} label={loadLabel(byId.get(c.loadId))} load={byId.get(c.loadId)} />
       ))}
     </section>
   );
@@ -88,10 +89,12 @@ function PodRow({ pod, label }: { pod: Submissions["pods"][number]; label: strin
   );
 }
 
-function ChargeRow({ charge, label }: { charge: Submissions["charges"][number]; label: string }) {
+function ChargeRow({ charge, label, load }: { charge: Submissions["charges"][number]; label: string; load: Load | undefined }) {
   const { busy, run } = useRun();
   const [amount, setAmount] = useState(String(charge.amount));
   const [note, setNote] = useState("");
+  // An approved carrier charge is ours to pay by default; change it if the warehouse or the carrier is at fault.
+  const [payer, setPayer] = useState<PayerValue>({ ...emptyPayer(load?.source ?? ""), payer: "harvest_best" });
   return (
     <div className="space-y-2 rounded-lg border border-black/10 bg-white p-3 text-black dark:border-white/10">
       <p className="text-sm">
@@ -99,6 +102,7 @@ function ChargeRow({ charge, label }: { charge: Submissions["charges"][number]; 
       </p>
       {charge.note && <p className="text-xs text-black/70">{charge.note}</p>}
       {charge.files.length > 0 && <Files files={charge.files} />}
+      <ChargePayerPicker value={payer} onChange={setPayer} carrierName={load?.brokers?.name} warehouseHint={load?.source} />
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1 text-xs">
           Approve at $
@@ -108,7 +112,11 @@ function ChargeRow({ charge, label }: { charge: Submissions["charges"][number]; 
         <button
           className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
           disabled={busy}
-          onClick={() => void run(() => reviewChargeRequest({ id: charge.id, decision: "approve", note, amount: Number(amount) }))}
+          onClick={() =>
+            void run(() =>
+              reviewChargeRequest({ id: charge.id, decision: "approve", note, amount: Number(amount), payer: payer.payer || "harvest_best", payerName: payer.payerName, cause: payer.cause }),
+            )
+          }
         >
           Approve
         </button>

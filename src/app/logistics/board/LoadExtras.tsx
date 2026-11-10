@@ -3,9 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate } from "@/lib/dates";
-import { CHARGE_KINDS, type LoadCharge } from "@/lib/loadCharges";
+import { CHARGE_KINDS, payerSummary, payerTone, type LoadCharge } from "@/lib/loadCharges";
 import type { Load } from "@/lib/types";
 import { addLoadCharge, deleteLoadCharge, requestCarrierUpdate, setLoadClaim } from "./actions";
+import ChargePayerPicker, { emptyPayer } from "./ChargePayerPicker";
 
 // The Claim flag and the extra freight charges on a load - shared by the List's load
 // cards and the Order Check window, so they work the same in both.
@@ -94,6 +95,7 @@ export function LoadClaimCharges({ load, charges, flags }: { load: Load; charges
   const [panel, setPanel] = useState<null | "charge" | "claim">(null);
   const { busy, run } = useRun(() => setPanel(null));
   const [charge, setCharge] = useState({ kind: CHARGE_KINDS[0] as string, amount: "", note: "" });
+  const [payer, setPayer] = useState(emptyPayer());
   const [claimNote, setClaimNote] = useState("");
   const chargeTotal = charges.reduce((s, c) => s + Number(c.amount), 0);
 
@@ -130,7 +132,8 @@ export function LoadClaimCharges({ load, charges, flags }: { load: Load; charges
             {charges.map((c) => (
               <li key={c.id} className="flex items-center justify-between gap-2">
                 <span>
-                  <b>{c.kind}</b> {money(Number(c.amount))}
+                  <b>{c.kind}</b> {money(Number(c.amount))}{" "}
+                  <span className={`rounded-full border px-1.5 py-px text-[10px] font-semibold ${payerTone(c.payer)}`}>{payerSummary(c, load.brokers?.name)}</span>
                   {c.note ? ` - ${c.note}` : ""}
                   <span className="text-black/40 dark:text-white/40">{c.created_by ? ` · ${c.created_by}` : ""}</span>
                 </span>
@@ -151,7 +154,8 @@ export function LoadClaimCharges({ load, charges, flags }: { load: Load; charges
       </div>
 
       {panel === "charge" && (
-        <div className="flex flex-wrap items-end gap-2 rounded border border-black/15 bg-white/70 p-2 dark:border-white/15 dark:bg-white/5">
+        <div className="space-y-2 rounded border border-black/15 bg-white/70 p-2 dark:border-white/15 dark:bg-white/5">
+        <div className="flex flex-wrap items-end gap-2">
           <label className="text-xs font-medium">
             Charge
             <select value={charge.kind} onChange={(e) => setCharge({ ...charge, kind: e.target.value })} className={`${inputClass} mt-0.5 block`}>
@@ -168,18 +172,33 @@ export function LoadClaimCharges({ load, charges, flags }: { load: Load; charges
             Note
             <input value={charge.note} onChange={(e) => setCharge({ ...charge, note: e.target.value })} placeholder="What happened" className={`${inputClass} mt-0.5 block w-full`} />
           </label>
+        </div>
+          <ChargePayerPicker value={payer} onChange={setPayer} carrierName={load.brokers?.name} warehouseHint={load.source} />
           <button
-            disabled={busy}
+            disabled={busy || !payer.payer}
             onClick={() =>
               void run(async () => {
-                const result = await addLoadCharge({ loadId: load.id, kind: charge.kind, amount: Number(charge.amount), note: charge.note });
-                if (!("error" in result)) setCharge({ kind: CHARGE_KINDS[0], amount: "", note: "" });
+                if (!payer.payer) return { error: "Pick who should pay this charge." };
+                const result = await addLoadCharge({
+                  loadId: load.id,
+                  kind: charge.kind,
+                  amount: Number(charge.amount),
+                  note: charge.note,
+                  payer: payer.payer,
+                  payerName: payer.payerName,
+                  cause: payer.cause,
+                });
+                if (!("error" in result)) {
+                  setCharge({ kind: CHARGE_KINDS[0], amount: "", note: "" });
+                  setPayer(emptyPayer());
+                }
                 return result;
               })
             }
+            title={payer.payer ? "" : "Pick who should pay this charge first"}
             className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
           >
-            Add
+            Add charge
           </button>
         </div>
       )}

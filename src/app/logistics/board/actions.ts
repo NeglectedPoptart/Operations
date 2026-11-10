@@ -108,6 +108,7 @@ function revalidateAll() {
   revalidatePath("/logistics/board");
   revalidatePath("/logistics");
   revalidatePath("/logistics/rates");
+  revalidatePath("/logistics/charges");
   revalidatePath("/");
 }
 
@@ -428,8 +429,22 @@ export async function setLoadClaim(id: string, flag: boolean, note: string): Pro
   return { ok: true };
 }
 
-export async function addLoadCharge(input: { loadId: string; kind: string; amount: number; note: string }): Promise<{ ok: true } | { error: string }> {
+const CHARGE_PAYER_VALUES = ["harvest_best", "warehouse", "carrier", "customer", "other"];
+const CHARGE_RECOVERY_VALUES = ["open", "billed", "recovered", "written_off"];
+
+const PAYER_MIGRATION_MESSAGE = "Charge responsibility isn't set up yet - run migration 164.";
+
+export async function addLoadCharge(input: {
+  loadId: string;
+  kind: string;
+  amount: number;
+  note: string;
+  payer: string;
+  payerName?: string;
+  cause?: string;
+}): Promise<{ ok: true } | { error: string }> {
   if (!Number.isFinite(input.amount) || input.amount === 0) return { error: "Enter the charge amount (use a minus sign for a credit)." };
+  if (!CHARGE_PAYER_VALUES.includes(input.payer)) return { error: "Pick who should pay this charge." };
   const supabase = await createClient();
   const {
     data: { user },
@@ -439,9 +454,66 @@ export async function addLoadCharge(input: { loadId: string; kind: string; amoun
     kind: input.kind.trim() || "Other",
     amount: Math.round(input.amount * 100) / 100,
     note: input.note.trim() || null,
+    payer: input.payer,
+    payer_name: input.payer === "warehouse" || input.payer === "customer" ? input.payerName?.trim() || null : null,
+    cause: input.payer === "harvest_best" && (input.cause === "expected" || input.cause === "our_error") ? input.cause : null,
+    // Nothing to get back when we absorb it.
+    recovery_status: "open",
     created_by: user ? await personName(supabase, user) : null,
   });
-  if (error) return { error: /load_charges/.test(error.message) ? "Charges aren't set up yet - ask the admin to run migration 155." : error.message };
+  if (error) {
+    if (/payer|cause|recovery_status/.test(error.message)) return { error: PAYER_MIGRATION_MESSAGE };
+    return { error: /load_charges/.test(error.message) ? "Charges aren't set up yet - ask the admin to run migration 155." : error.message };
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+// Everything on a charge that can be corrected or added to later, from the Load Charges page.
+export async function updateLoadCharge(
+  id: string,
+  patch: {
+    kind: string;
+    amount: number;
+    note: string;
+    payer: string;
+    payerName: string;
+    cause: string;
+    recoveryStatus: string;
+    recoveredAmount: number | null;
+    recoveredAt: string;
+    reference: string;
+    details: string;
+  },
+): Promise<{ ok: true } | { error: string }> {
+  if (!Number.isFinite(patch.amount) || patch.amount === 0) return { error: "Enter the charge amount." };
+  if (!CHARGE_PAYER_VALUES.includes(patch.payer)) return { error: "Pick who should pay this charge." };
+  if (!CHARGE_RECOVERY_VALUES.includes(patch.recoveryStatus)) return { error: "Pick a status." };
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const absorbed = patch.payer === "harvest_best";
+  const recovered = patch.recoveredAmount !== null && Number.isFinite(patch.recoveredAmount) ? Math.round(patch.recoveredAmount * 100) / 100 : null;
+  const { error } = await supabase
+    .from("load_charges")
+    .update({
+      kind: patch.kind.trim() || "Other",
+      amount: Math.round(patch.amount * 100) / 100,
+      note: patch.note.trim() || null,
+      payer: patch.payer,
+      payer_name: patch.payer === "warehouse" || patch.payer === "customer" || patch.payer === "other" ? patch.payerName.trim() || null : null,
+      cause: absorbed && (patch.cause === "expected" || patch.cause === "our_error") ? patch.cause : null,
+      recovery_status: absorbed ? "open" : patch.recoveryStatus,
+      recovered_amount: absorbed ? null : recovered,
+      recovered_at: absorbed ? null : patch.recoveredAt || null,
+      reference: patch.reference.trim() || null,
+      details: patch.details.trim() || null,
+      updated_at: new Date().toISOString(),
+      updated_by: user ? await personName(supabase, user) : null,
+    })
+    .eq("id", id);
+  if (error) return { error: /payer|cause|recover|reference|details/.test(error.message) ? PAYER_MIGRATION_MESSAGE : error.message };
   revalidateAll();
   return { ok: true };
 }
@@ -547,6 +619,10 @@ export async function reviewChargeRequest(input: {
   decision: "approve" | "reject";
   note: string;
   amount?: number;
+  // Who ends up bearing an approved charge (default: Harvest Best).
+  payer?: string;
+  payerName?: string;
+  cause?: string;
 }): Promise<{ ok: true } | { error: string }> {
   const supabase = await createClient();
   const {
@@ -564,11 +640,19 @@ export async function reviewChargeRequest(input: {
     const amount = Math.round((input.amount ?? Number(req.amount)) * 100) / 100;
     if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter the approved amount." };
     const text = [`Carrier request: ${req.note ?? ""}`.trim(), note ? `Approved: ${note}` : ""].filter(Boolean).join(" | ");
-    const { data: charge, error: chargeError } = await supabase
-      .from("load_charges")
-      .insert({ load_id: req.load_id, kind: req.kind, amount, note: text || null, created_by: reviewer })
-      .select("id")
-      .single();
+    const payer = input.payer && CHARGE_PAYER_VALUES.includes(input.payer) ? input.payer : "harvest_best";
+    const base = { load_id: req.load_id, kind: req.kind, amount, note: text || null, created_by: reviewer };
+    const withPayer = {
+      ...base,
+      payer,
+      payer_name: payer === "warehouse" || payer === "customer" ? input.payerName?.trim() || null : null,
+      cause: payer === "harvest_best" && (input.cause === "expected" || input.cause === "our_error") ? input.cause : null,
+    };
+    let { data: charge, error: chargeError } = await supabase.from("load_charges").insert(withPayer).select("id").single();
+    // Migration 164 not run yet: still add the charge, just without who pays it.
+    if (chargeError && /payer|cause/.test(chargeError.message)) {
+      ({ data: charge, error: chargeError } = await supabase.from("load_charges").insert(base).select("id").single());
+    }
     if (chargeError || !charge) return { error: chargeError?.message ?? "Couldn't add the charge." };
     loadChargeId = charge.id as string;
     if (amount !== Number(req.amount)) {
