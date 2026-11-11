@@ -197,31 +197,38 @@ export default function DocumentsClient({
     }
   }
 
-  async function handleUpload(categoryId: string, file: File) {
+  // One or several files at once, uploaded one after another so each lands in the order chosen.
+  async function handleUpload(categoryId: string, files: File[]) {
     setUploadingCategory(categoryId);
     setUploadError(null);
+    const failed: string[] = [];
+    const categoryDocs = documents.filter((d) => d.category_id === categoryId);
+    let nextPosition = categoryDocs.length > 0 ? Math.max(...categoryDocs.map((d) => d.position)) + 1 : 1;
     try {
       const supabase = createClient();
-      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
-      const storagePath = `${crypto.randomUUID()}${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("company-documents")
-        .upload(storagePath, file, { contentType: file.type || undefined });
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      const categoryDocs = documents.filter((d) => d.category_id === categoryId);
-      const nextPosition = categoryDocs.length > 0 ? Math.max(...categoryDocs.map((d) => d.position)) + 1 : 1;
-      const saved = await recordCompanyDocument({
-        categoryId,
-        fileName: file.name,
-        storagePath,
-        contentType: file.type || null,
-        sizeBytes: file.size,
-        nextPosition,
-      });
-      setDocuments((prev) => [...prev, saved]);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed.");
+      for (const file of files) {
+        try {
+          const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+          const storagePath = `${crypto.randomUUID()}${ext}`;
+          const { error: uploadErr } = await supabase.storage
+            .from("company-documents")
+            .upload(storagePath, file, { contentType: file.type || undefined });
+          if (uploadErr) throw new Error(uploadErr.message);
+          const saved = await recordCompanyDocument({
+            categoryId,
+            fileName: file.name,
+            storagePath,
+            contentType: file.type || null,
+            sizeBytes: file.size,
+            nextPosition,
+          });
+          nextPosition += 1;
+          setDocuments((prev) => [...prev, saved]);
+        } catch (err) {
+          failed.push(`${file.name}${err instanceof Error ? ` (${err.message})` : ""}`);
+        }
+      }
+      if (failed.length > 0) setUploadError(`Couldn't upload: ${failed.join(", ")}`);
     } finally {
       setUploadingCategory(null);
     }
@@ -271,12 +278,13 @@ export default function DocumentsClient({
                     {uploadingCategory === key ? "Uploading..." : "+ Upload"}
                     <input
                       type="file"
+                      multiple
                       className="hidden"
                       disabled={uploadingCategory === key}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                        const file = e.target.files?.[0];
+                        const files = Array.from(e.target.files ?? []);
                         e.target.value = "";
-                        if (file) handleUpload(category.id, file);
+                        if (files.length > 0) void handleUpload(category.id, files);
                       }}
                     />
                   </label>
