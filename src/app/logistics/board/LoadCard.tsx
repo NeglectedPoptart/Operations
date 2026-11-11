@@ -151,15 +151,15 @@ export default function LoadCard({
 
       {load.status === "on_the_road" && (
         <p
-          className={`mt-2 rounded px-2 py-1.5 text-sm ${
+          className={`mt-2 rounded px-2.5 py-2 ${
             load.eta_note?.trim()
-              ? "bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:text-blue-200"
-              : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+              ? "border-l-4 border-blue-600 bg-blue-100 text-base font-semibold text-blue-950 dark:bg-blue-900/40 dark:text-blue-100"
+              : "bg-red-50 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300"
           }`}
         >
           {load.eta_note?.trim() ? (
             <>
-              <b>Carrier ETA:</b> {load.eta_note}
+              <span className="text-xs font-bold uppercase text-blue-700 dark:text-blue-300">🚚 Carrier ETA</span> {load.eta_note}
             </>
           ) : (
             <b>⚠ No carrier ETA yet</b>

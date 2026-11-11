@@ -216,7 +216,7 @@ function CheckCard({ load, kind, charges, onFullEdit }: { load: Load; kind: "pen
             onBlur={(e) => {
               if (e.target.value.trim() !== (load.eta_note ?? "").trim()) void run(() => updateLoadQuick(load.id, { eta_note: e.target.value }));
             }}
-            className={`${inputClass} min-w-0 flex-1 ${missingEta ? "border-red-500 ring-1 ring-red-400" : ""}`}
+            className={`${inputClass} min-w-0 flex-1 ${missingEta ? "border-red-500 ring-1 ring-red-400" : load.eta_note?.trim() ? "!border-blue-500 !bg-blue-50 font-semibold !text-blue-950 ring-1 ring-blue-300" : ""}`}
           />
         </label>
       )}

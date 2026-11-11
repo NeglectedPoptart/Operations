@@ -141,7 +141,43 @@ export default function LoadSummary({ load, dateFirst = false, compact = false }
         )}
       </div>
 
-      {load.notes && <p className={`${compact ? "mt-0" : "mt-1"} text-xs italic text-black/50 dark:text-white/50`}>{load.notes}</p>}
+      <LoadNotes notes={load.notes} compact={compact} />
     </>
+  );
+}
+
+// The load's notes. Lines the email agent added ("[Agent 11/11] ...": a carrier's ETA or location, a
+// delivered notice, a POD received) stand out as blue call-outs with their date, newest last; anything
+// typed by hand stays as the small grey italic text.
+const AGENT_LINE = /^\[Agent (\d{1,2}\/\d{1,2})\]\s*(.*)$/;
+const AGENT_LINES_SHOWN = 3;
+
+function LoadNotes({ notes, compact }: { notes: string | null; compact: boolean }) {
+  const [showAll, setShowAll] = useState(false);
+  if (!notes?.trim()) return null;
+  const typed: string[] = [];
+  const agent: { date: string; text: string }[] = [];
+  for (const line of notes.split("\n")) {
+    if (!line.trim()) continue;
+    const m = AGENT_LINE.exec(line.trim());
+    if (m) agent.push({ date: m[1], text: m[2] });
+    else typed.push(line);
+  }
+  const hidden = showAll ? 0 : Math.max(0, agent.length - AGENT_LINES_SHOWN);
+  const shown = hidden > 0 ? agent.slice(agent.length - AGENT_LINES_SHOWN) : agent;
+  return (
+    <div className={`${compact ? "mt-0.5" : "mt-1.5"} space-y-1`}>
+      {typed.length > 0 && <p className="text-xs italic text-black/50 dark:text-white/50">{typed.join("\n")}</p>}
+      {hidden > 0 && (
+        <button onClick={() => setShowAll(true)} className="text-xs font-medium text-blue-700 hover:underline dark:text-blue-300">
+          ▼ {hidden} earlier email update{hidden === 1 ? "" : "s"}
+        </button>
+      )}
+      {shown.map((a, i) => (
+        <p key={i} className="rounded border-l-4 border-blue-500 bg-blue-50 px-2 py-1 text-sm font-semibold text-blue-900 dark:bg-blue-900/30 dark:text-blue-100">
+          <span title="Added from the carrier's email reply">📧</span> <span className="text-xs font-bold text-blue-700 dark:text-blue-300">{a.date}</span> {a.text}
+        </p>
+      ))}
+    </div>
   );
 }
