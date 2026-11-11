@@ -1129,6 +1129,12 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
         : appliesRepliesAutomatically(agent) && proposed.every((u) => u.confident && !u.new_status));
     if (autoOk) {
       await applyReply(db, reply.id, proposed, "auto_applied");
+      // A file came with the reply but none of it counted as a signed POD - say so instead of leaving
+      // the load quietly on Pending POD.
+      if (carrierEta && attachments.length > 0 && !attachments.some((a) => a.is_pod)) {
+        const why = attachments.map((a) => a.note).filter(Boolean).join(" / ");
+        await notifyOwner(db, "HOPS Agents", `${msg.fromEmail} sent a file that wasn't accepted as a POD${why ? ` (${why})` : ""} - check "${msg.subject}" in the HOP@ mailbox`);
+      }
       if (carrierEta && proposed.some((u) => !u.confident)) {
         await notifyOwner(db, "HOPS Agents", `Carrier reply applied, but worth a look: ${summary ?? msg.subject}`);
       }

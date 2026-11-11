@@ -190,10 +190,13 @@ export interface MailAttachment {
 }
 
 // Files only (no forwarded emails or links). Capped - a signed POD is a
-// scan or a photo, and anything bigger than this isn't one. Inline images
-// (signature logos) are skipped for the same reason.
+// scan or a photo, and anything bigger than this isn't one. Photos pasted
+// into the body of an email (phones do this) arrive as "inline" attachments,
+// so those are kept too - but only when big enough to be a photo, not a
+// signature logo.
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 5;
+const MIN_INLINE_BYTES = 40_000;
 
 export async function listAttachments(messageId: string): Promise<MailAttachment[]> {
   const mailbox = encodeURIComponent(agentMailbox());
@@ -207,8 +210,8 @@ export async function listAttachments(messageId: string): Promise<MailAttachment
   const out: MailAttachment[] = [];
   for (const a of json.value) {
     if (out.length >= MAX_ATTACHMENTS) break;
-    if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || a.isInline) continue;
-    if ((a.size ?? 0) > MAX_ATTACHMENT_BYTES || (a.size ?? 0) < 2_000) continue;
+    if (a["@odata.type"] !== "#microsoft.graph.fileAttachment") continue;
+    if ((a.size ?? 0) > MAX_ATTACHMENT_BYTES || (a.size ?? 0) < (a.isInline ? MIN_INLINE_BYTES : 2_000)) continue;
     const contentType = a.contentType ?? "application/octet-stream";
     if (!/^(application\/pdf|image\/(jpeg|png|webp|gif))$/i.test(contentType)) continue;
 
