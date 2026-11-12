@@ -42,7 +42,7 @@ const SYSTEM = `You read email replies to automated follow-ups sent by Harvest B
 
 For each load the reply gives information about, return one entry in "updates":
 - load_number: the number of the load in the original email (use 1 when the email covered a single load).
-- eta_note: a short ETA/location note in the style dispatchers write, e.g. "Amarillo TX 9/26 2pm - ETA 9/27 0600". Only when the reply gives location or timing for a load that is moving. Otherwise null. Every time in the note must carry its date as M/D: if the carrier gives a time with no date ("10pm", "tonight", "by 6am"), it is that time on the day the reply was sent (given in <reply_sent>), e.g. a reply sent Tue 11/3 saying "Chattanooga TN eta 10pm" becomes "Chattanooga TN - ETA 11/3 10pm". "Tomorrow" and weekday names are turned into the real date counted from the day the reply was sent.
+- eta_note: a short ETA/location note in the style dispatchers write, e.g. "Amarillo TX 9/26 2pm - ETA 9/27 0600". Only when the reply gives location or timing for a load that is moving. Otherwise null. Every time in the note must carry its date as M/D: if the carrier gives a time with no date ("10pm", "tonight", "by 6am"), it is that time on the day the reply was sent (given in <reply_sent>), e.g. a reply sent Tue 11/3 saying "Chattanooga TN eta 10pm" becomes "Chattanooga TN - ETA 11/3 10pm". "Tomorrow" and weekday names are turned into the real date using the <calendar> given with the reply - look the day up in it, never count days yourself. A weekday name means that day itself: "early Saturday morning 3am" is 3am on the Saturday (the date listed for Saturday), not Friday night and not the Sunday after.
 - append_note: any other useful status for the load (loading time, delay reason, problem), written briefly. Otherwise null.
 - ready_to_load: true only if the reply clearly says the load is ready or loaded; false only if it clearly says it is not ready; otherwise null.
 - new_status: "on_the_road" if the reply says the truck has loaded and left; otherwise null. Never return "complete" - a delivered load is reported with "delivered" instead.
@@ -50,6 +50,20 @@ For each load the reply gives information about, return one entry in "updates":
 - confident: false if the reply is ambiguous, you had to guess which load it means, or it raises a problem a person should see (rejection, damage, temperature issue, claim, cancellation).
 
 Attached files are checked separately - do not mention them unless the reply text does. Leave out loads the reply says nothing about. If the reply is only an acknowledgment, out-of-office, or unrelated, return an empty "updates" list. Never invent times or places that aren't in the reply.`;
+
+// The next two weeks, day by day, counted from the day the reply was sent. The model is handed this instead of
+// being asked to work out "Saturday" or "tomorrow" itself, which it can get a day wrong.
+export function calendarFrom(receivedAt: string | undefined): string {
+  const ymd = new Intl.DateTimeFormat("en-CA", { timeZone: APP_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(receivedAt ?? Date.now()));
+  const [y, m, d] = ymd.split("-").map(Number);
+  const lines: string[] = [];
+  for (let i = 0; i < 14; i++) {
+    const day = new Date(Date.UTC(y, m - 1, d + i, 12));
+    const label = i === 0 ? " - today (the day the reply was sent)" : i === 1 ? " - tomorrow" : "";
+    lines.push(`${day.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })} ${day.getUTCMonth() + 1}/${day.getUTCDate()}${label}`);
+  }
+  return lines.join("\n");
+}
 
 export async function parseReply(input: {
   agentKey: string;
@@ -83,7 +97,7 @@ export async function parseReply(input: {
     messages: [
       {
         role: "user",
-        content: `Agent: ${input.agentKey}\n\n<reply_sent>${sent} Central time</reply_sent>\n\n<original_email>\n${input.originalBody}\n</original_email>\n\n<reply>\n${input.replyText}\n</reply>`,
+        content: `Agent: ${input.agentKey}\n\n<reply_sent>${sent} Central time</reply_sent>\n\n<calendar>\n${calendarFrom(input.receivedAt)}\n</calendar>\n\n<original_email>\n${input.originalBody}\n</original_email>\n\n<reply>\n${input.replyText}\n</reply>`,
       },
     ],
   });
