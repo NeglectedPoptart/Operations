@@ -4,21 +4,13 @@ import { Fragment, useMemo, useState } from "react";
 import DeliveredEmailButton from "@/components/DeliveredEmailButton";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
-import { copyOrDownloadPng, groupFobItems, roundUpToNickel } from "@/lib/fobPricing";
-import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
+import { copyOrDownloadPng, groupFobItems } from "@/lib/fobPricing";
+import { renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
+import { computeEastCoast as computeDelivered, eastCoastSheet } from "@/lib/deliveredSheetSpec";
 import { updateEastCoastMessage } from "./actions";
 
 function formatMoney(n: number | null) {
   return n === null ? "-" : `$${n.toFixed(2)}`;
-}
-
-// No LTL column here - these are flat long-haul lane rates (fob_freight_rates.ltl
-// is null for NC/MD/PA/NJ), so only the FTL-per-pallet math applies.
-function computeDelivered(item: FobItem, freight: FobFreightRate | undefined): number | null {
-  if (!freight || freight.ftl === null || item.fob === null || item.unit_per === null || item.unit_per === 0) {
-    return null;
-  }
-  return roundUpToNickel(item.fob + freight.ftl / 24 / item.unit_per);
 }
 
 function EastCoastSection({
@@ -114,25 +106,7 @@ export default function EastCoastPricingClient({
   async function buildBlob(): Promise<Blob> {
     const messageEl = document.getElementById("east-coast-message") as HTMLTextAreaElement | null;
     const message = messageEl?.value ?? initialMessage;
-    const westernGroups = groupFobItems(items, "western_veg");
-    const hotHouseGroups = groupFobItems(items, "hot_house");
-    const priceValues = (item: FobItem) =>
-      lanes.map((lane) => {
-        const price = computeDelivered(item, freightByLane[lane]);
-        return price === null ? "CALL" : formatMoney(price);
-      });
-    const blocks = [
-      ...buildCategoryBlocks(westernGroups, priceValues),
-      ...buildCategoryBlocks(hotHouseGroups, priceValues),
-    ];
-    return renderBrandedPriceSheetPng({
-      subheaderText: "East Coast Delivered",
-      priceColumns: lanes,
-      subtitle: message,
-      blocks,
-      columns: 2,
-      showSoldOutSection: true,
-    });
+    return renderBrandedPriceSheetPng(eastCoastSheet(items, freightByLane, message, lanes));
   }
 
   async function handleCopyImage() {

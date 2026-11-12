@@ -3,6 +3,7 @@ import { APP_TIMEZONE, addDays, todayISO } from "@/lib/dates";
 import { importColdInventoryEmail } from "@/lib/coldInventoryImport";
 import { customerKey } from "./customerKey";
 import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
+import { runDeliveredSheets } from "./deliveredSheets";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
@@ -825,7 +826,7 @@ export async function runAgents(
   const skipped: string[] = [];
   const notes: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
-    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && !opts.ignoreHours && !withinActiveHours(agent)) {
+    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && agent.key !== "delivered_sheets" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
       continue;
     }
@@ -835,6 +836,14 @@ export async function runAgents(
       else if (agent.key === "load_pending") created += await runLoadPending(db, agent);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
+      else if (agent.key === "delivered_sheets") {
+        created += await runDeliveredSheets(db, agent, {
+          force: opts.ignoreHours === true,
+          log: (kind, message) => logEvent(db, agent.id, kind, message),
+          notify: (title, body) => notifyOwner(db, title, body),
+          notes,
+        });
+      }
       await db.from("agents").update({ last_run_at: new Date().toISOString() }).eq("id", agent.id);
     } catch (err) {
       const failure = `Run failed: ${err instanceof Error ? err.message : String(err)}`;

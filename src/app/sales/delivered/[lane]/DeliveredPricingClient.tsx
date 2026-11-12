@@ -4,8 +4,9 @@ import { Fragment, useMemo, useState } from "react";
 import DeliveredEmailButton from "@/components/DeliveredEmailButton";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import type { FobFreightRate, FobItem, FobSection } from "@/lib/types";
-import { copyOrDownloadPng, groupFobItems, roundUpToNickel } from "@/lib/fobPricing";
-import { buildCategoryBlocks, renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
+import { copyOrDownloadPng, groupFobItems } from "@/lib/fobPricing";
+import { renderBrandedPriceSheetPng } from "@/lib/fobPriceSheetImage";
+import { computeLtlFtl as computeDelivered, houstonDallasSheet } from "@/lib/deliveredSheetSpec";
 import { updateDeliveredMessage } from "./actions";
 
 function formatMoney(n: number | null) {
@@ -14,20 +15,6 @@ function formatMoney(n: number | null) {
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// Delivered price = FOB (per case) + freight cost per case, rounded up to
-// the nearest nickel. LTL's rate is already $/pallet (fob_freight_rates.ltl);
-// FTL's rate is a flat full-truck price, so it's divided by 24 pallets
-// first. Either freight figure is then divided by unit_per (cases/pallet)
-// to land in the same $/case unit as FOB before adding.
-function computeDelivered(item: FobItem, freight: FobFreightRate) {
-  if (item.fob === null || item.unit_per === null || item.unit_per === 0) {
-    return { ltl: null as number | null, ftl: null as number | null };
-  }
-  const ltl = freight.ltl !== null ? roundUpToNickel(item.fob + freight.ltl / item.unit_per) : null;
-  const ftl = freight.ftl !== null ? roundUpToNickel(item.fob + freight.ftl / 24 / item.unit_per) : null;
-  return { ltl, ftl };
 }
 
 function DeliveredSection({
@@ -115,23 +102,7 @@ export default function DeliveredPricingClient({
   async function buildBlob(): Promise<Blob> {
     const messageEl = document.getElementById("delivered-message") as HTMLTextAreaElement | null;
     const message = messageEl?.value ?? initialMessage;
-    const westernGroups = groupFobItems(items, "western_veg");
-    const hotHouseGroups = groupFobItems(items, "hot_house");
-    const priceValues = (item: FobItem) => {
-      const { ltl, ftl } = computeDelivered(item, freightRate);
-      return [formatMoney(ltl) || "CALL", formatMoney(ftl) || "CALL"];
-    };
-    const blocks = [
-      ...buildCategoryBlocks(westernGroups, priceValues),
-      ...buildCategoryBlocks(hotHouseGroups, priceValues),
-    ];
-    return renderBrandedPriceSheetPng({
-      subheaderText: `${laneLabel} Delivered`,
-      priceColumns: ["LTL", "FTL"],
-      subtitle: message,
-      blocks,
-      showSoldOutSection: true,
-    });
+    return renderBrandedPriceSheetPng(houstonDallasSheet(lane, items, freightRate, message));
   }
 
   async function handleCopyImage() {

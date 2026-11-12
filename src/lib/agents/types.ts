@@ -1,4 +1,4 @@
-export type AgentKey = "load_eta" | "load_pending" | "buyers_list" | "orders_pending" | "customer_eta";
+export type AgentKey = "load_eta" | "load_pending" | "buyers_list" | "orders_pending" | "customer_eta" | "delivered_sheets";
 export type AgentMode = "approve" | "auto";
 
 export interface Agent {
@@ -36,6 +36,10 @@ export interface Agent {
     // not only at the fixed times. Unset means yes.
     on_carrier_reply?: boolean;
     send_times?: string[];
+    // delivered_sheets: which Delivered sheets to send (houston, dallas, east-coast; unset = all three), and a
+    // test address: when set, the sheets go ONLY there (subject starts with [TEST]) and never to customers.
+    lanes?: string[];
+    test_to?: string[];
     window_start?: string;
     window_end?: string;
   };

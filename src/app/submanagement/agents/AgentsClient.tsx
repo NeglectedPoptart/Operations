@@ -122,6 +122,7 @@ const AGENT_ICON: Record<string, string> = {
   load_pending: "📦",
   buyers_list: "🛒",
   orders_pending: "📋",
+  delivered_sheets: "🏷️",
 };
 
 // "17:00" -> "5:00 PM"
@@ -169,10 +170,15 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
 
   const [open, setOpen] = useState(false);
   const autoApply = agent.key === "load_eta" || (agent.config.auto_apply_replies ?? agent.mode === "auto");
-  const scheduleText = isSlotAgent
+  const isSheets = agent.key === "delivered_sheets";
+  const sheetLanes = agent.config.lanes?.length ? agent.config.lanes : ["houston", "dallas", "east-coast"];
+  const [testTo, setTestTo] = useState((agent.config.test_to ?? []).join(", "));
+  const scheduleText = isSheets
+    ? "As soon as today's FOB prices are applied"
+    : isSlotAgent
     ? `${(agent.config.send_times ?? []).map(fmtTime).join(", ") || "set times"}`
     : `Every ${agent.interval_hours}h`;
-  const noHours = agent.key === "load_eta" || agent.key === "customer_eta";
+  const noHours = agent.key === "load_eta" || agent.key === "customer_eta" || isSheets;
   const windowText = noHours
     ? ""
     : isSlotAgent
@@ -185,7 +191,9 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
       ? "Each carrier"
       : agent.key === "customer_eta"
         ? "Each customer"
-        : recipientCount + roleCount === 0
+        : isSheets
+          ? ((agent.config.test_to ?? []).length > 0 ? "TEST ADDRESS ONLY" : "Each sheet's customer list")
+          : recipientCount + roleCount === 0
           ? "Every Operations login"
           : [roleCount > 0 && `${roleCount} role${roleCount === 1 ? "" : "s"}`, recipientCount > 0 && `${recipientCount} address${recipientCount === 1 ? "" : "es"}`].filter(Boolean).join(" + ");
 
@@ -241,9 +249,11 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
           {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
         </Chip>
-        <Chip icon="📬" label="Replies">
-          {!readReplies ? "Notify only" : autoApply ? "Read and applied to HOPS" : "Read, you review"}
-        </Chip>
+        {!isSheets && (
+          <Chip icon="📬" label="Replies">
+            {!readReplies ? "Notify only" : autoApply ? "Read and applied to HOPS" : "Read, you review"}
+          </Chip>
+        )}
         <Chip icon="👥" label="To">
           {toText}
         </Chip>
@@ -311,7 +321,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         </div>
       )}
 
-      {!isSlotAgent && (
+      {!isSlotAgent && !isSheets && (
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <label className="space-y-0.5">
           <span className="block text-black/60 dark:text-white/60">Mode</span>
@@ -373,7 +383,49 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           </span>
         </label>
       )}
-      <GroupLabel>Replies</GroupLabel>
+      {isSheets && (
+        <div className="space-y-3 text-xs">
+          <p className="text-black/60 dark:text-white/60">
+            Once the morning Availability email (or Apply now on FOB Pharr) has filled in today&apos;s FOB prices, each ticked sheet is emailed to its own customer
+            list - the same picture and email as Email to customers on its Delivered page. Each sheet goes out once a day, and one already emailed by hand
+            today is left alone. Set the lists with Recipients on each Delivered page.
+          </p>
+          <div>
+            <p className="font-medium">Sheets to send</p>
+            <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+              {[
+                ["houston", "Houston"],
+                ["dallas", "Dallas"],
+                ["east-coast", "East Coast"],
+              ].map(([key, label]) => (
+                <label key={key} className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={sheetLanes.includes(key)}
+                    disabled={pending}
+                    onChange={(e) => save({ lanes: e.target.checked ? [...sheetLanes, key] : sheetLanes.filter((k) => k !== key) })}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="block space-y-0.5">
+            <span className="block text-black/60 dark:text-white/60">Test address (leave blank to send to customers)</span>
+            <input
+              className={field}
+              value={testTo}
+              placeholder="you@harvestbestinc.com"
+              onChange={(e) => setTestTo(e.target.value)}
+              onBlur={() => save({ test_to: splitList(testTo) })}
+            />
+          </label>
+          {testTo.trim() !== "" && <p className="text-amber-600">Test mode: the sheets go ONLY to this address (subject starts with [TEST]), once a day, and never to customers. Clear it to go live.</p>}
+        </div>
+      )}
+
+      {!isSheets && <GroupLabel>Replies</GroupLabel>}
+      {!isSheets && (
       <div className="space-y-1 text-xs">
         <label className="flex items-center gap-2">
           <input
@@ -413,6 +465,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           <p className="text-amber-600">Replies going to someone else won&apos;t reach the agent, so HOPS won&apos;t be updated from them.</p>
         )}
       </div>
+      )}
 
       {agent.key === "orders_pending" && (
         <div className="space-y-1 text-xs">
@@ -539,8 +592,29 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           disabled={pending}
           onClick={() =>
             start(async () => {
+              if (isSheets) {
+                const test = (agent.config.test_to ?? []).length > 0;
+                const ok = window.confirm(
+                  test
+                    ? "Email today's Delivered price sheets now? Test mode is on, so they go only to the test address."
+                    : "Email today's Delivered price sheets to the customer lists now? This sends them even if the FOB prices haven't been applied by email yet.",
+                );
+                if (!ok) return;
+              }
               const r = await runAgentNow(agent.id);
-              setMessage(r.created > 0 ? `${r.created} email${r.created === 1 ? "" : "s"} created - check Emails to approve.` : r.skipped.length > 0 ? r.skipped.join(" ") : "Nothing needed a follow-up right now.");
+              setMessage(
+                isSheets
+                  ? r.created > 0
+                    ? `${r.created} price sheet${r.created === 1 ? "" : "s"} emailed.`
+                    : r.skipped.length > 0
+                      ? r.skipped.join(" ")
+                      : "Nothing to send - each sheet goes out once a day, and today's may already have been sent (see Activity)."
+                  : r.created > 0
+                    ? `${r.created} email${r.created === 1 ? "" : "s"} created - check Emails to approve.`
+                    : r.skipped.length > 0
+                      ? r.skipped.join(" ")
+                      : "Nothing needed a follow-up right now.",
+              );
             })
           }
         >

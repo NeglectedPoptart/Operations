@@ -389,7 +389,24 @@ function drawSoldOutSection(
   });
 }
 
-export async function renderBrandedPriceSheetPng(opts: {
+// Where the sheet is drawn. The browser draws it with a real canvas; the server (the Delivered price sheet
+// agent) hands in a Node canvas and loads the logo from disk.
+export interface PriceSheetDrawEnv {
+  createCanvas: (width: number, height: number) => { width: number; height: number; getContext: (type: "2d") => CanvasRenderingContext2D | null };
+  loadLogo: () => Promise<{ width: number; height: number }>;
+}
+
+const browserEnv: PriceSheetDrawEnv = {
+  createCanvas: (width, height) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    return canvas;
+  },
+  loadLogo: () => loadImage("/logo-hbi-2025-white.png"),
+};
+
+export interface PriceSheetOptions {
   subheaderText: string;
   priceColumns: string[];
   blocks: PriceSheetCategoryBlock[];
@@ -403,7 +420,20 @@ export async function renderBrandedPriceSheetPng(opts: {
   // sold-out varieties) in one consolidated section at the bottom of the
   // sheet, below everything that's actually quoted. Off by default.
   showSoldOutSection?: boolean;
-}): Promise<Blob> {
+}
+
+export async function renderBrandedPriceSheetPng(opts: PriceSheetOptions): Promise<Blob> {
+  const canvas = (await drawBrandedPriceSheet(opts, browserEnv)) as HTMLCanvasElement;
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Failed to export price sheet image"));
+    }, "image/png");
+  });
+}
+
+// Draws the whole sheet and returns the canvas it drew on.
+export async function drawBrandedPriceSheet(opts: PriceSheetOptions, env: PriceSheetDrawEnv) {
   const {
     subheaderText,
     priceColumns,
@@ -430,9 +460,9 @@ export async function renderBrandedPriceSheetPng(opts: {
   const columnHeights = columnBlocks.map((col) => col.reduce((sum, b) => sum + measureBlockHeight(b) + BLOCK_GAP, 0));
   const bodyHeight = Math.max(...columnHeights, 0);
 
-  const measureCanvas = document.createElement("canvas");
+  const measureCanvas = env.createCanvas(1, 1);
   const mctx = measureCanvas.getContext("2d");
-  if (!mctx) throw new Error("Canvas is not supported in this browser");
+  if (!mctx) throw new Error("Canvas is not supported here");
   mctx.font = FONT_FOOTER;
   const footerLines = footerNote ? wrapFooter(mctx, footerNote, contentWidth) : [];
   const footerHeight = footerLines.length > 0 ? footerLines.length * 12 + 12 : 0;
@@ -446,11 +476,9 @@ export async function renderBrandedPriceSheetPng(opts: {
 
   const canvasHeight = HEADER_H + subtitleH + MARGIN + bodyHeight + soldOutH + footerHeight + MARGIN;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.ceil(canvasWidth * scale);
-  canvas.height = Math.ceil(canvasHeight * scale);
+  const canvas = env.createCanvas(Math.ceil(canvasWidth * scale), Math.ceil(canvasHeight * scale));
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas is not supported in this browser");
+  if (!ctx) throw new Error("Canvas is not supported here");
   ctx.scale(scale, scale);
 
   ctx.fillStyle = "#F3F1E7";
@@ -466,10 +494,10 @@ export async function renderBrandedPriceSheetPng(opts: {
   ctx.fillRect(0, 0, canvasWidth, HEADER_H);
 
   try {
-    const logo = await loadImage("/logo-hbi-2025-white.png");
+    const logo = await env.loadLogo();
     const logoH = 56;
     const logoW = logoH * (logo.width / logo.height);
-    ctx.drawImage(logo, MARGIN, 20, logoW, logoH);
+    ctx.drawImage(logo as unknown as CanvasImageSource, MARGIN, 20, logoW, logoH);
   } catch {
     ctx.font = FONT_LOGO_FALLBACK;
     ctx.fillStyle = "#ffffff";
@@ -541,12 +569,7 @@ export async function renderBrandedPriceSheetPng(opts: {
     });
   }
 
-  return await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error("Failed to export price sheet image"));
-    }, "image/png");
-  });
+  return canvas;
 }
 
 function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {

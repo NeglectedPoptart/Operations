@@ -13,6 +13,7 @@
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/push-notifications": "^8.1.2",
+    "@napi-rs/canvas": "^1.1.1",
     "@supabase/ssr": "^0.12.1",
     "@supabase/supabase-js": "^2.110.3",
     "exceljs": "^4.4.0",
