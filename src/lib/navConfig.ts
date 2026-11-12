@@ -38,6 +38,8 @@ const LOGISTICS_OVERSIGHT_ONLY_ROLES: Role[] = ["sales", "buyer_sales", "executi
 
 export const NAV: NavCategory[] = [
   { label: "Home", href: "/" },
+  // Open to every staff login (not part of the role/tab system, like Home).
+  { label: "Messages", href: "/messages" },
   {
     // Admin only while it is being tested (Admin role + the Supreme account).
     label: "Dashboard",

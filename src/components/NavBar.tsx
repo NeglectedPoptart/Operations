@@ -16,6 +16,7 @@ import {
   type RoleAccess,
 } from "@/lib/roles";
 import { NAV } from "@/lib/navConfig";
+import ChatUnreadBadge from "@/components/ChatUnreadBadge";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 
 // One small stroke icon per category - hand-drawn rather than pulled from
@@ -38,6 +39,13 @@ function CategoryIcon({ label, className }: { label: string; className?: string 
           <rect x="13" y="4" width="7" height="5" rx="1.2" />
           <rect x="13" y="11" width="7" height="9" rx="1.2" />
           <rect x="4" y="15" width="7" height="5" rx="1.2" />
+        </svg>
+      );
+    case "Messages":
+      return (
+        <svg {...common}>
+          <path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+          <path d="M8 9.5h8M8 12.5h5" />
         </svg>
       );
     case "Home":
@@ -338,6 +346,7 @@ export default function NavBar({
               <Link key={category.label} href={category.href} className={topLevelClass(active)}>
                 <CategoryIcon label={category.label} className="h-5 w-5 shrink-0" />
                 {category.label}
+                {category.label === "Messages" && <ChatUnreadBadge />}
               </Link>
             );
           }
