@@ -3,25 +3,17 @@
 import { useEffect, useState } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatTimestamp } from "@/lib/dates";
+import { createClient } from "@/lib/supabase/client";
 import { getDeliveredEmailList, saveDeliveredEmailList, sendDeliveredSheet, type DeliveredEmailList } from "@/app/sales/delivered/emailActions";
 
 const DESTINATION: Record<string, string> = { houston: "Houston", dallas: "Dallas", "east-coast": "East Coast" };
 
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
-// Hosting caps what one request can carry (about 4.5 MB), and a tall price sheet as a PNG can be
-// bigger than that - so a big one is re-saved as a high-quality JPEG, scaled down only if it must be.
+// A tall price sheet as a PNG can be very large, so a big one is re-saved as a high-quality JPEG (scaled down
+// only if it must be) to keep the email a sensible size.
 const MAX_IMAGE_BYTES = 2_800_000;
 
-async function emailImage(blob: Blob): Promise<{ data: string; contentType: "image/png" | "image/jpeg" }> {
-  if (blob.size <= MAX_IMAGE_BYTES) return { data: await blobToBase64(blob), contentType: "image/png" };
+async function emailImage(blob: Blob): Promise<{ data: Blob; contentType: "image/png" | "image/jpeg" }> {
+  if (blob.size <= MAX_IMAGE_BYTES) return { data: blob, contentType: "image/png" };
   const bitmap = await createImageBitmap(blob);
   let jpeg: Blob | null = null;
   for (const scale of [1, 0.85, 0.7, 0.55]) {
@@ -37,7 +29,7 @@ async function emailImage(blob: Blob): Promise<{ data: string; contentType: "ima
     if (jpeg && jpeg.size <= MAX_IMAGE_BYTES) break;
   }
   if (!jpeg) throw new Error("Could not prepare the image.");
-  return { data: await blobToBase64(jpeg), contentType: "image/jpeg" };
+  return { data: jpeg, contentType: "image/jpeg" };
 }
 
 // "Email to customers" for a Delivered page: sends the price sheet image to the lane's
@@ -69,7 +61,16 @@ export default function DeliveredEmailButton({ lane, buildBlob }: { lane: string
     setStatus("Sending...");
     try {
       const image = await emailImage(await buildBlob());
-      const result = await sendDeliveredSheet(lane, image.data, image.contentType);
+      // The picture goes to storage straight from the browser (a server action cannot carry something this
+      // big), and the server is only handed where it is.
+      const path = `price-sheet-emails/${crypto.randomUUID()}.${image.contentType === "image/jpeg" ? "jpg" : "png"}`;
+      const { error: uploadError } = await createClient().storage.from("company-documents").upload(path, image.data, { contentType: image.contentType });
+      if (uploadError) {
+        setStatus(null);
+        alert(`Couldn't prepare the price sheet picture (${(image.data.size / 1_000_000).toFixed(1)} MB): ${uploadError.message}`);
+        return;
+      }
+      const result = await sendDeliveredSheet(lane, path, image.contentType);
       if ("error" in result) {
         setStatus(null);
         alert(result.error);

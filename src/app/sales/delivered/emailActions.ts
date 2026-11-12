@@ -9,6 +9,10 @@ import { graphConfigured, sendEmail } from "@/lib/agents/graph";
 // The Delivered price sheets go out from the HOPS mailbox; replies land with Sales.
 const REPLY_TO = "sales@harvestbestinc.com";
 
+// Where the browser parks the price sheet picture for the moment it takes to send.
+const SHEET_BUCKET = "company-documents";
+const SHEET_FOLDER = "price-sheet-emails/";
+
 const DESTINATIONS: Record<string, string> = {
   houston: "HOUSTON",
   dallas: "DALLAS",
@@ -77,11 +81,11 @@ export async function saveDeliveredEmailList(
 // browser as a generic "error occurred in the Server Components render" with the real reason hidden.
 export async function sendDeliveredSheet(
   lane: string,
-  imageBase64: string,
+  imagePath: string,
   contentType: "image/png" | "image/jpeg" = "image/png",
 ): Promise<{ ok: true; to: number; cc: number; bcc: number; subject: string } | { error: string }> {
   try {
-    return await sendDeliveredSheetNow(lane, imageBase64, contentType);
+    return await sendDeliveredSheetNow(lane, imagePath, contentType);
   } catch (e) {
     console.error("sendDeliveredSheet failed", e);
     return { error: `The price sheet could not be sent: ${e instanceof Error ? e.message : String(e)}` };
@@ -90,7 +94,7 @@ export async function sendDeliveredSheet(
 
 async function sendDeliveredSheetNow(
   lane: string,
-  imageBase64: string,
+  imagePath: string,
   contentType: "image/png" | "image/jpeg" = "image/png",
 ): Promise<{ ok: true; to: number; cc: number; bcc: number; subject: string } | { error: string }> {
   const ctx = await allowed(lane);
@@ -103,7 +107,12 @@ async function sendDeliveredSheetNow(
 
   const [y, m, d] = todayISO().split("-").map(Number);
   const subject = `${m}/${d}/${y} ${DESTINATIONS[lane]} DELIVERED PRICE SHEET`;
-  const data = Buffer.from(imageBase64, "base64");
+  // The browser put the image in storage itself (a server action's request body is capped far below a tall
+  // price sheet's size); only its path comes here.
+  if (!imagePath.startsWith(SHEET_FOLDER) || imagePath.includes("..")) return { error: "That price sheet image isn't valid - try again." };
+  const { data: blob, error: downloadError } = await ctx.supabase.storage.from(SHEET_BUCKET).download(imagePath);
+  if (downloadError || !blob) return { error: `Couldn't read the price sheet image: ${downloadError?.message ?? "not found"}` };
+  const data = Buffer.from(await blob.arrayBuffer());
   if (data.length < 1000) return { error: "The price sheet image came out empty - try again." };
 
   try {
@@ -119,6 +128,9 @@ async function sendDeliveredSheetNow(
     });
   } catch (e) {
     return { error: e instanceof Error ? e.message : "The email could not be sent." };
+  } finally {
+    // The picture only needs to live until the email is out.
+    await ctx.supabase.storage.from(SHEET_BUCKET).remove([imagePath]).catch(() => {});
   }
 
   // The email is already out - never let the "last sent" note turn that into an error.
