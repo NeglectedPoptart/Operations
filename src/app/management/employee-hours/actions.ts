@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { addDays } from "@/lib/dates";
 import { trimSeconds, type DayTimes } from "@/lib/timeEntry";
+import type { ExportDay } from "@/lib/hoursExport";
 
 export interface HoursRow extends DayTimes {
   work_date: string;
@@ -28,6 +29,38 @@ export async function getEmployeeHours(employeeId: string, weekStart: string): P
     clock_out: trimSeconds(r.clock_out as string | null),
     notes: (r.notes as string | null) ?? null,
   }));
+}
+
+// Everyone's days between two dates (inclusive) - for the payroll export. Paged because Supabase returns at most
+// 1,000 rows per request.
+export async function getAllEmployeeHours(from: string, to: string): Promise<ExportDay[]> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error("Pick a valid date range.");
+  const supabase = await createClient();
+  const rows: ExportDay[] = [];
+  for (let start = 0; ; start += 1000) {
+    const { data, error } = await supabase
+      .from("employee_hours")
+      .select("employee_id, work_date, clock_in, lunch_out, lunch_in, clock_out, notes")
+      .gte("work_date", from)
+      .lte("work_date", to)
+      .order("work_date", { ascending: true })
+      .order("employee_id", { ascending: true })
+      .range(start, start + 999);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) {
+      rows.push({
+        employee_id: r.employee_id as string,
+        work_date: r.work_date as string,
+        clock_in: trimSeconds(r.clock_in as string | null),
+        lunch_out: trimSeconds(r.lunch_out as string | null),
+        lunch_in: trimSeconds(r.lunch_in as string | null),
+        clock_out: trimSeconds(r.clock_out as string | null),
+        notes: (r.notes as string | null) ?? null,
+      });
+    }
+    if ((data ?? []).length < 1000) break;
+  }
+  return rows;
 }
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;

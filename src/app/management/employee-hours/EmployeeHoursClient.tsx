@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, currentWeekStart, formatWeekLabel, nextWeekStart, prevWeekStart, todayISO, weekNumberOf } from "@/lib/dates";
 import { decimalHours, formatTime, hoursMinutes, parseTimeInput, workedDay, type DayTimes, type TimeField } from "@/lib/timeEntry";
 import { getEmployeeHours, saveEmployeeHours, type HoursRow } from "./actions";
+import HoursExport from "./HoursExport";
 
 export interface EmployeeOption {
   id: string;
@@ -182,6 +183,8 @@ export default function EmployeeHoursClient({ employees, initialWeekStart }: { e
           AM or PM for a normal shift (add a or p to be exact). Everything saves as you move on.
         </p>
       </div>
+
+      <HoursExport employees={employees} />
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm font-medium">
