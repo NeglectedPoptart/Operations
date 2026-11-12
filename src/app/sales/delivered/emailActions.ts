@@ -73,7 +73,22 @@ export async function saveDeliveredEmailList(
 }
 
 // Subject is always "M/D/YYYY DESTINATION DELIVERED PRICE SHEET"; the body is just the sheet's image.
+// Anything that goes wrong comes back as a readable message: an uncaught error in a server action reaches the
+// browser as a generic "error occurred in the Server Components render" with the real reason hidden.
 export async function sendDeliveredSheet(
+  lane: string,
+  imageBase64: string,
+  contentType: "image/png" | "image/jpeg" = "image/png",
+): Promise<{ ok: true; to: number; cc: number; bcc: number; subject: string } | { error: string }> {
+  try {
+    return await sendDeliveredSheetNow(lane, imageBase64, contentType);
+  } catch (e) {
+    console.error("sendDeliveredSheet failed", e);
+    return { error: `The price sheet could not be sent: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+async function sendDeliveredSheetNow(
   lane: string,
   imageBase64: string,
   contentType: "image/png" | "image/jpeg" = "image/png",
