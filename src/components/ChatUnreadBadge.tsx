@@ -23,13 +23,23 @@ export default function ChatUnreadBadge() {
     };
 
     void load();
-    const channel = supabase.channel("hops-unread").on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, soon).subscribe();
+    // Each copy of the badge (the desktop menu and the phone drawer) needs its own channel name - attaching to
+    // one that is already running throws and takes the whole page down.
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    try {
+      channel = supabase
+        .channel(`hops-unread-${Math.random().toString(36).slice(2)}`)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, soon)
+        .subscribe();
+    } catch {
+      // live updates are a bonus - the count still refreshes on every page load
+    }
     window.addEventListener("hops-chat-read", soon);
     return () => {
       alive = false;
       clearTimeout(timer);
       window.removeEventListener("hops-chat-read", soon);
-      void supabase.removeChannel(channel);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, []);
 

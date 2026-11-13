@@ -271,7 +271,7 @@ export default function MessagesClient({
 
   useEffect(() => {
     const channel = supabase
-      .channel("hops-messages")
+      .channel(`hops-messages-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_messages" }, (payload) => {
         const m = payload.new as ChatMessage;
         const known = conversationsRef.current.some((c) => c.id === m.conversation_id);
