@@ -11,6 +11,7 @@ import type {
   ProposedOrderUpdate,
   ReplyAttachment,
 } from "@/lib/agents/types";
+import AgentOffice from "./AgentOffice";
 import {
   applyBuyerReplyUpdates,
   applyOrderReplyUpdates,
@@ -119,7 +120,6 @@ function SetupChecklist({ status }: { status: { outlook: boolean; claude: boolea
 const AGENT_ICON: Record<string, string> = {
   load_eta: "🚚",
   customer_eta: "📬",
-  load_pending: "📦",
   buyers_list: "🛒",
   orders_pending: "📋",
   delivered_sheets: "🏷️",
@@ -568,7 +568,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         </div>
       )}
 
-      {(agent.key === "load_pending" || agent.key === "buyers_list") && (
+      {agent.key === "buyers_list" && (
         <label className="block space-y-0.5 text-xs">
           <span className="block text-black/60 dark:text-white/60">
             Send to (leave blank for every Operations login)
@@ -1025,6 +1025,10 @@ export default function AgentsClient({
   const [pending, start] = useTransition();
   const [inboxMsg, setInboxMsg] = useState<string | null>(null);
   const agentName = Object.fromEntries(agents.map((a) => [a.id, a.name]));
+  const [showList, setShowList] = useState(false);
+  // Emails to approve and replies to review, counted per agent for the office.
+  const waiting: Record<string, number> = {};
+  for (const a of agents) waiting[a.id] = drafts.filter((d) => d.agent_id === a.id).length + reviewItems.filter((r) => r.agentKey === a.key).length;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -1076,12 +1080,26 @@ export default function AgentsClient({
         )}
       </Section>
 
-      <Section title="Agents">
-        <div className="space-y-3">
-          {agents.map((a) => (
-            <AgentCard key={a.id} agent={a} roleOptions={roleOptions} people={people} orderLabels={orderLabels} />
-          ))}
-        </div>
+      <Section title="The office">
+        <p className="text-xs text-black/50 dark:text-white/50">
+          Your agents at work. Click one to talk to them - ask how they are, what they have been doing, run them, switch them on or off, or open their settings.
+        </p>
+        <AgentOffice
+          agents={agents}
+          events={events}
+          waiting={waiting}
+          renderSettings={(a) => <AgentCard agent={a} roleOptions={roleOptions} people={people} orderLabels={orderLabels} />}
+        />
+        <button className={secondary} onClick={() => setShowList((v) => !v)}>
+          {showList ? "Hide the settings list" : "Show all agents as a settings list"}
+        </button>
+        {showList && (
+          <div className="space-y-3">
+            {agents.map((a) => (
+              <AgentCard key={a.id} agent={a} roleOptions={roleOptions} people={people} orderLabels={orderLabels} />
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section title="Carrier emails">

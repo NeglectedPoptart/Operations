@@ -98,10 +98,6 @@ function withinActiveHours(agent: Agent): boolean {
   return hour >= agent.active_start_hour && hour < agent.active_end_hour;
 }
 
-function hoursSince(iso: string): number {
-  return (Date.now() - new Date(iso).getTime()) / 3_600_000;
-}
-
 function shortDate(iso: string | null): string {
   if (!iso) return "no date";
   const [, m, d] = iso.split("-");
@@ -183,29 +179,6 @@ function carrierUpdateEmail(
   const subject =
     loads.length === 1 ? `ETA update - ${loadHeadline(loads[0])} [${tag}]` : `ETA update - ${loads.length} loads [${tag}]`;
   return { subject, body: lines.join("\n") };
-}
-
-function pendingDigestEmail(loads: Load[], tag: string, readReplies: boolean): { subject: string; body: string } {
-  const lines = [
-    "Status check on loads still Pending to Load in HOPS:",
-    "",
-    ...loads.flatMap((load, i) => [
-      `${i + 1}) Loading ${shortDate(load.loading_date)}${load.source ? ` from ${load.source}` : ""}` +
-        ` - carrier: ${load.brokers?.name ?? "none assigned"} - ${load.ready_to_load ? "marked READY" : "not marked ready"}`,
-      ...stopLines(load).map((l) => `     ${l}`),
-      load.notes ? `     Notes: ${load.notes.replace(/\s+/g, " ").slice(0, 160)}` : "",
-    ]).filter((l) => l !== ""),
-    "",
-    readReplies
-      ? 'Reply with an update on any of these by number, e.g. "2 - loading at 3pm" or "1 left the dock". HOPS will be updated from your reply.'
-      : "Please update these loads in HOPS, or reply with an update by number.",
-    "",
-    "- HOPS Agent",
-  ];
-  return {
-    subject: `Pending to Load check - ${loads.length} load${loads.length === 1 ? "" : "s"} [${tag}]`,
-    body: lines.join("\n"),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -781,38 +754,6 @@ async function operationsRecipients(db: SupabaseClient, agent: Agent): Promise<s
   return (data ?? []).map((p) => (p.email as string | null) ?? "").filter((e) => e.includes("@"));
 }
 
-async function runLoadPending(db: SupabaseClient, agent: Agent): Promise<number> {
-  const threads = await recentThreads(db, agent.id);
-  const last = threads[0];
-  if (last?.status === "draft") return 0;
-  if (last && hoursSince(last.created_at) < agent.interval_hours) return 0;
-
-  const through = addDays(todayISO(), agent.config.days_ahead ?? 1);
-  const { data: loads, error } = await db
-    .from("loads")
-    .select("*, brokers(*), load_stops(*)")
-    .eq("status", "pending_to_load")
-    .or(`loading_date.is.null,loading_date.lte.${through}`)
-    .order("loading_date", { ascending: true });
-  if (error) throw new Error(error.message);
-  if (!loads || loads.length === 0) return 0;
-
-  const to = await operationsRecipients(db, agent);
-  if (to.length === 0) {
-    await logEvent(db, agent.id, "skipped", "No Operations recipients - no Operations-role logins have an email, and none are set on the agent.");
-    return 0;
-  }
-
-  if (last?.status === "sent") await db.from("agent_threads").update({ status: "no_reply" }).eq("id", last.id);
-
-  const tag = newTag();
-  const email = pendingDigestEmail(loads as Load[], tag, readsReplies(agent));
-  const thread = await createThread(db, agent, { tag, recordIds: (loads as Load[]).map((l) => l.id), to, ...email });
-  if (agent.mode === "auto") await sendThread(db, thread.id);
-  else await draftCreated(db, agent, thread);
-  return 1;
-}
-
 export async function runAgents(
   db: SupabaseClient,
   opts: { agentId?: string; ignoreHours?: boolean } = {},
@@ -833,7 +774,6 @@ export async function runAgents(
     try {
       if (agent.key === "load_eta") created += await runLoadEta(db, agent, opts.ignoreHours === true);
       else if (agent.key === "customer_eta") created += await runCustomerEta(db, agent, opts.ignoreHours === true, notes);
-      else if (agent.key === "load_pending") created += await runLoadPending(db, agent);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
       else if (agent.key === "delivered_sheets") {

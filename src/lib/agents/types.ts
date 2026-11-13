@@ -1,4 +1,4 @@
-export type AgentKey = "load_eta" | "load_pending" | "buyers_list" | "orders_pending" | "customer_eta" | "delivered_sheets";
+export type AgentKey = "load_eta" | "buyers_list" | "orders_pending" | "customer_eta" | "delivered_sheets";
 export type AgentMode = "approve" | "auto";
 
 export interface Agent {
