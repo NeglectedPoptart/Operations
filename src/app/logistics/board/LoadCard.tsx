@@ -58,6 +58,9 @@ export default function LoadCard({
     startTransition(() => updateLoadRateConSent(load.id, !load.rate_con_sent));
   }
 
+  // Delivered, but the carrier still hasn't signed the rate confirmation.
+  const unsignedWhenDelivered = load.status === "complete" && Boolean(load.broker_id) && load.rate_con_sent && !load.ratecon_signed_at;
+
   const borderClass =
     load.status === "pending_to_load"
       ? load.ready_to_load
@@ -113,6 +116,11 @@ export default function LoadCard({
               </div>
             )}
             <LoadSummary load={load} dateFirst={dateFirst} compact />
+            {unsignedWhenDelivered && (
+              <p className="mt-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800" title="Delivered, but the carrier hasn't signed the rate confirmation yet - it stays on their Broker Pending List until they do">
+                ⚠ Delivered - rate con not signed yet
+              </p>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-3">
             <button

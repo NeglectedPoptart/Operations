@@ -6,6 +6,7 @@ import { APP_TIMEZONE, formatDate } from "@/lib/dates";
 import { rateIsConfirmed } from "@/lib/brokerPortal/rateConfirmed";
 import { PORTAL_CHARGE_KINDS, type PortalCharge, type PortalDoc, type PortalLoad } from "@/lib/brokerPortal/types";
 import { createClient } from "@/lib/supabase/client";
+import { approvePod, recordLoadPod } from "../board/actions";
 import { confirmRate, prepareUploads, requestCharge, saveEta, submitPod, withdrawCharge } from "./actions";
 import SignModal from "./SignModal";
 
@@ -31,9 +32,10 @@ const STATUS_LABEL: Record<PortalLoad["status"], string> = {
 // What this carrier still has to do on a load.
 function openTasks(l: PortalLoad): string[] {
   const tasks: string[] = [];
-  if (l.status === "complete") return tasks;
+  // A load Harvest Best has already marked delivered still needs the signature and the rate confirmed.
   if (l.rateConSent && !l.signedAt && l.rateCons.length > 0) tasks.push("Sign the rate confirmation");
   if (l.rate !== null && !rateIsConfirmed(l)) tasks.push(l.rateConfirmedAt ? "Confirm the new rate" : "Confirm the rate");
+  if (l.status === "complete") return tasks;
   if (l.status === "on_the_road" && !(l.etaNote ?? "").trim()) tasks.push("Add an ETA");
   if (l.podRejectedNote) tasks.push("Upload the POD again");
   return tasks;
@@ -50,6 +52,85 @@ async function uploadFiles(loadId: string, purpose: "pod" | "charge", files: Fil
     done.push({ path: prep.uploads[i].path, name: files[i].name, type: files[i].type, size: files[i].size });
   }
   return done;
+}
+
+// Harvest Best staff, looking at a carrier's list: mark a load delivered themselves and attach the POD, without
+// waiting for the carrier. A load whose rate confirmation is still unsigned stays on the carrier's list with an
+// amber "still needs signature" tag until they sign.
+function StaffActions({ load: l, onMessage }: { load: PortalLoad; onMessage: (m: string) => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const unsigned = openTasks(l).some((t) => /sign/i.test(t));
+
+  async function finish(fn: () => Promise<void>, message: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      onMessage(message);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong - try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const warn = unsigned ? " The carrier hasn't signed the rate confirmation yet, so it will stay on their list as \"Delivered - still needs signature\" until they do." : "";
+
+  async function markDelivered() {
+    if (!window.confirm(`Mark this load Delivered?${warn}`)) return;
+    await finish(async () => {
+      const r = await approvePod(l.id);
+      if ("error" in r) throw new Error(r.error);
+    }, "Marked delivered.");
+  }
+
+  async function addPod(files: File[]) {
+    if (files.length === 0) return;
+    if (l.status !== "complete" && !window.confirm(`Attach ${files.length === 1 ? "this POD" : `these ${files.length} PODs`} and mark the load Delivered?${warn}`)) return;
+    await finish(async () => {
+      const storage = createClient().storage.from("load-documents");
+      for (const file of files) {
+        const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const storagePath = `manual/${l.id}/${crypto.randomUUID()}${ext}`;
+        const { error: uploadError } = await storage.upload(storagePath, file, { contentType: file.type || undefined });
+        if (uploadError) throw new Error(`${file.name} didn't upload: ${uploadError.message}`);
+        await recordLoadPod({ loadId: l.id, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+      }
+    }, l.status === "complete" ? "POD added." : "POD added and the load marked delivered.");
+  }
+
+  return (
+    <div className="space-y-1.5 rounded-lg border border-dashed border-blue-400 bg-blue-50/60 p-3 text-sm dark:bg-blue-900/20">
+      <p className="text-xs font-bold uppercase text-blue-800 dark:text-blue-200">Harvest Best staff</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className={`${btn} cursor-pointer ${busy ? "pointer-events-none opacity-50" : ""}`}>
+          {busy ? "Working..." : l.status === "complete" ? "Add a POD" : "Add POD & mark delivered"}
+          <input
+            type="file"
+            multiple
+            accept="application/pdf,image/*"
+            className="hidden"
+            disabled={busy}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              void addPod(files);
+            }}
+          />
+        </label>
+        {l.status !== "complete" && (
+          <button className={btnLight} disabled={busy} onClick={() => void markDelivered()}>
+            Mark delivered (no POD yet)
+          </button>
+        )}
+      </div>
+      {unsigned && <p className="text-xs text-amber-800 dark:text-amber-300">The rate confirmation is still unsigned. A delivered load stays on the carrier&apos;s list and shows here as &ldquo;still needs signature&rdquo; until they sign.</p>}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+    </div>
+  );
 }
 
 function Check({ done, children }: { done: boolean; children: React.ReactNode }) {
@@ -228,6 +309,11 @@ function LoadTile({ load: l, readOnly, onSign, onMessage }: { load: PortalLoad; 
           {l.status === "pending_to_load" && (
             <span className={`rounded-full px-2.5 py-1 ${l.ready ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"}`}>{l.ready ? "READY TO LOAD" : "Not ready yet"}</span>
           )}
+          {l.status === "complete" && (
+            <span className={`rounded-full px-2.5 py-1 ${tasks.length === 0 ? "bg-green-600 text-white" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>
+              {tasks.length === 0 ? "✓ Fully done" : `Delivered - still needs ${tasks.some((t) => /sign/i.test(t)) ? "signature" : "rate confirmed"}`}
+            </span>
+          )}
           {l.status !== "complete" && (
             <span className={`rounded-full px-2.5 py-1 ${booked ? "bg-green-600 text-white" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"}`}>{booked ? "✓ Fully booked" : "Booking incomplete"}</span>
           )}
@@ -266,6 +352,12 @@ function LoadTile({ load: l, readOnly, onSign, onMessage }: { load: PortalLoad; 
           ))}
         </div>
       </div>
+
+      {l.status === "complete" && tasks.length > 0 && (
+        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+          Harvest Best has marked this load delivered, but it is still waiting on you: {tasks.join(" and ").toLowerCase()}.
+        </p>
+      )}
 
       {/* What they need to do */}
       <div className="space-y-2.5 rounded-lg bg-black/[0.03] p-3 dark:bg-white/[0.05]">
@@ -364,6 +456,8 @@ function LoadTile({ load: l, readOnly, onSign, onMessage }: { load: PortalLoad; 
           )}
         </Check>
       </div>
+
+      {readOnly && <StaffActions load={l} onMessage={onMessage} />}
 
       {panel === "eta" && <EtaForm loadId={l.id} onClose={() => setPanel(null)} run={run} busy={busy} />}
       {panel === "pod" && <PodForm loadId={l.id} onClose={() => setPanel(null)} run={run} busy={busy} />}

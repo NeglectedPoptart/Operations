@@ -109,6 +109,7 @@ function revalidateAll() {
   revalidatePath("/logistics");
   revalidatePath("/logistics/rates");
   revalidatePath("/logistics/charges");
+  revalidatePath("/logistics/broker-pending");
   revalidatePath("/");
 }
 
@@ -228,7 +229,7 @@ export async function recordLoadPod(input: {
   if (error) throw new Error(error.message);
   const { error: loadError } = await supabase
     .from("loads")
-    .update({ status: "complete", pod_pending: false })
+    .update({ status: "complete", pod_pending: false, pod_submitted_at: null, pod_rejected_note: null })
     .eq("id", input.loadId);
   if (loadError) throw new Error(loadError.message);
   revalidateAll();

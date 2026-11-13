@@ -290,7 +290,7 @@ export default function LoadModal({
             </div>
           )}
 
-          {load && (load.status === "on_the_road" || podDocs.length > 0) && (
+          {load && (
             <div className="col-span-2 space-y-2 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
               <p className="text-xs font-semibold text-black/70 dark:text-white/70">Proof of Delivery (POD)</p>
               {podDocs.map((d) => (
@@ -306,17 +306,19 @@ export default function LoadModal({
                     {d.review_status === "pending" ? " - waiting for your review" : d.review_status === "rejected" ? " - sent back" : ""})</span>
                 </p>
               ))}
-              {load.status === "on_the_road" && (
+              {load.status !== "complete" && (
                 <div className="flex flex-wrap items-center gap-3 text-xs">
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={load.pod_pending}
-                      disabled={pending}
-                      onChange={(e) => startTransition(() => setPodPending(load.id, e.target.checked).then(onClose))}
-                    />
-                    Delivered - Pending POD
-                  </label>
+                  {load.status === "on_the_road" && (
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={load.pod_pending}
+                        disabled={pending}
+                        onChange={(e) => startTransition(() => setPodPending(load.id, e.target.checked).then(onClose))}
+                      />
+                      Delivered - Pending POD
+                    </label>
+                  )}
                   <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
                     {podUploading ? "Uploading..." : "Attach POD and mark Complete"}
                     <input
