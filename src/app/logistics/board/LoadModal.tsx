@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   type LoadDocumentLink,
@@ -8,6 +8,7 @@ import {
   createHub,
   createLoad,
   getLoadDocuments,
+  recordLoadDeliveryBol,
   recordLoadPod,
   recordLoadRateCon,
   removeLoadDocument,
@@ -75,6 +76,12 @@ export default function LoadModal({
   const podDocs = allDocs.filter((d) => d.kind === "pod");
   const rateConDocs = allDocs.filter((d) => d.kind === "ratecon" || d.kind === "ratecon_signed");
   const [rateConBusy, setRateConBusy] = useState(false);
+  // Delivery BOL (optional): on an existing load it uploads straight away; on a new load the chosen file is
+  // uploaded right after the load is saved.
+  const bolDocs = allDocs.filter((d) => d.kind === "delivery_bol");
+  const [bolBusy, setBolBusy] = useState(false);
+  const [bolFile, setBolFile] = useState<File | null>(null);
+  const createdLoadId = useRef<string | null>(null);
   const [podUploading, setPodUploading] = useState(false);
   const [podError, setPodError] = useState<string | null>(null);
   const loadId = load?.id ?? null;
@@ -100,6 +107,29 @@ export default function LoadModal({
       setPodError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
       setRateConBusy(false);
+    }
+  }
+
+  async function uploadDeliveryBol(forLoadId: string, file: File) {
+    const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+    const storagePath = `bols/${forLoadId}/${crypto.randomUUID()}${ext}`;
+    const { error: uploadError } = await createClient().storage.from("load-documents").upload(storagePath, file, { contentType: file.type || undefined });
+    if (uploadError) throw new Error(uploadError.message);
+    const r = await recordLoadDeliveryBol({ loadId: forLoadId, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+    if ("error" in r) throw new Error(r.error);
+  }
+
+  async function handleBolFile(file: File) {
+    if (!load) return;
+    setPodError(null);
+    setBolBusy(true);
+    try {
+      await uploadDeliveryBol(load.id, file);
+      setAllDocs(await getLoadDocuments(load.id));
+    } catch (e) {
+      setPodError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setBolBusy(false);
     }
   }
 
@@ -154,7 +184,16 @@ export default function LoadModal({
         if (load) {
           await updateLoad(load.id, formData);
         } else {
-          await createLoad(formData);
+          // If the BOL upload failed last time, the load already exists - only retry the file.
+          const id = createdLoadId.current ?? (await createLoad(formData));
+          createdLoadId.current = id;
+          if (bolFile) {
+            try {
+              await uploadDeliveryBol(id, bolFile);
+            } catch (e) {
+              throw new Error(`The load was added, but the Delivery BOL didn't upload (${e instanceof Error ? e.message : "upload failed"}). Press Save to try the file again, or clear it and attach it later by editing the load.`);
+            }
+          }
         }
         onClose();
       } catch (e) {
@@ -241,6 +280,69 @@ export default function LoadModal({
           <div className="col-span-2 sm:col-span-4">
             <label className={label}>ETA / Location Update</label>
             <textarea name="eta_note" defaultValue={load?.eta_note ?? ""} rows={2} className={field} />
+          </div>
+
+          <div className="col-span-2 space-y-2 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
+            <p className="text-xs font-semibold text-black/70 dark:text-white/70">Delivery BOL (optional - the carrier can download it from their Broker Pending List)</p>
+            {load ? (
+              <>
+                {bolDocs.length === 0 && <p className="text-xs text-black/50 dark:text-white/50">No Delivery BOL is attached to this load.</p>}
+                {bolDocs.map((d) => (
+                  <p key={d.id} className="text-xs">
+                    {d.url ? (
+                      <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-green-700 hover:underline dark:text-green-400">
+                        📎 {d.file_name}
+                      </a>
+                    ) : (
+                      <span>{d.file_name}</span>
+                    )}{" "}
+                    <button type="button" className="text-red-600 hover:underline" onClick={() => removeLoadDocument(d.id).then(() => getLoadDocuments(load.id).then(setAllDocs))}>
+                      remove
+                    </button>
+                  </p>
+                ))}
+                <label className="inline-block cursor-pointer rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  {bolBusy ? "Uploading..." : bolDocs.length > 0 ? "Attach another Delivery BOL" : "Attach Delivery BOL"}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="hidden"
+                    disabled={bolBusy}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) void handleBolFile(f);
+                    }}
+                  />
+                </label>
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  {bolFile ? "Choose a different file" : "Attach Delivery BOL"}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) setBolFile(f);
+                    }}
+                  />
+                </label>
+                {bolFile ? (
+                  <>
+                    <span>📎 {bolFile.name}</span>
+                    <button type="button" className="text-red-600 hover:underline" onClick={() => setBolFile(null)}>
+                      clear
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-black/50 dark:text-white/50">Only when there is one - leave blank otherwise.</span>
+                )}
+              </div>
+            )}
           </div>
 
           {load && (

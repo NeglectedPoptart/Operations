@@ -64,6 +64,8 @@ export interface PortalLoad {
   podRejectedNote: string | null;
   rateCons: PortalDoc[];
   signedCopies: PortalDoc[];
+  // The Delivery BOL staff attached to the load (optional) - the carrier downloads it for the driver.
+  deliveryBols: PortalDoc[];
   pods: PortalPod[];
   charges: PortalCharge[];
 }

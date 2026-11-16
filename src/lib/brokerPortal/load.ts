@@ -39,7 +39,7 @@ export async function loadPortalLoads(admin: SupabaseClient, brokerId: string): 
   const charges = (chargesRes.error ? [] : chargesRes.data ?? []) as Record<string, unknown>[];
 
   // Rate confirmations, their signed copies, PODs and charge receipts, each with a short-lived link.
-  const visible = docs.filter((d) => ["ratecon", "ratecon_signed", "pod", "charge_support"].includes(d.kind));
+  const visible = docs.filter((d) => ["ratecon", "ratecon_signed", "delivery_bol", "pod", "charge_support"].includes(d.kind));
   const urlByPath = new Map<string, string>();
   if (visible.length > 0) {
     const { data: signed } = await admin.storage.from("load-documents").createSignedUrls(
@@ -53,7 +53,7 @@ export async function loadPortalLoads(admin: SupabaseClient, brokerId: string): 
   const downloadByPath = new Map<string, string>();
   await Promise.all(
     visible
-      .filter((d) => d.kind === "ratecon" || d.kind === "ratecon_signed")
+      .filter((d) => d.kind === "ratecon" || d.kind === "ratecon_signed" || d.kind === "delivery_bol")
       .map(async (d) => {
         const { data } = await admin.storage.from("load-documents").createSignedUrl(d.storage_path, 3600, { download: d.file_name });
         if (data?.signedUrl) downloadByPath.set(d.storage_path, data.signedUrl);
@@ -115,6 +115,7 @@ export async function loadPortalLoads(admin: SupabaseClient, brokerId: string): 
       // The original rate con, except ones that already have a signed copy shown below it.
       rateCons: mine.filter((d) => d.kind === "ratecon").map(asDoc),
       signedCopies: mine.filter((d) => d.kind === "ratecon_signed").map(asDoc),
+      deliveryBols: mine.filter((d) => d.kind === "delivery_bol").map(asDoc),
       pods: mine
         .filter((d) => d.kind === "pod")
         .map((d): PortalPod => ({ ...asDoc(d), status: d.review_status, note: d.review_note })),

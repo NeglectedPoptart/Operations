@@ -153,7 +153,7 @@ function DocLink({ name, url }: { name: string; url: string | null }) {
 }
 
 // View + "Download PDF" for each copy of a document, so a carrier can keep copies for their accounting.
-function Copies({ docs, noun }: { docs: PortalDoc[]; noun: string }) {
+function Copies({ docs, noun, downloadLabel = "⬇ Download PDF" }: { docs: PortalDoc[]; noun: string; downloadLabel?: string }) {
   if (docs.length === 0) return null;
   return (
     <p className="text-sm">
@@ -164,7 +164,7 @@ function Copies({ docs, noun }: { docs: PortalDoc[]; noun: string }) {
             <>
               {" · "}
               <a href={d.downloadUrl} className="font-medium text-green-700 hover:underline dark:text-green-400" title={`Save ${d.name} to this device`}>
-                ⬇ Download PDF
+                {downloadLabel}
               </a>
             </>
           )}
@@ -383,6 +383,18 @@ function LoadTile({ load: l, readOnly, onSign, onMessage }: { load: PortalLoad; 
             </div>
           )}
         </Check>
+
+        {/* Delivery BOL - only when Harvest Best attached one to this load */}
+        {l.deliveryBols.length > 0 && (
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-600 text-xs text-white">📎</span>
+            <div className="min-w-0 flex-1 space-y-1 text-sm">
+              <p className="font-semibold">Delivery BOL</p>
+              <p className="text-black/60 dark:text-white/60">Download this and give it to your driver for the delivery.</p>
+              <Copies docs={l.deliveryBols} noun="Delivery BOL" downloadLabel="⬇ Download" />
+            </div>
+          </div>
+        )}
 
         {/* Rate */}
         <Check done={confirmed}>

@@ -557,10 +557,36 @@ export async function recordLoadRateCon(input: {
   return { ok: true };
 }
 
-// Removes a rate confirmation / document from a load (the file itself stays in storage).
+// A Delivery BOL the browser already put in the load-documents bucket - optional paperwork for the delivery.
+// The carrier downloads it from their Broker Pending List tile to give to the driver.
+export async function recordLoadDeliveryBol(input: {
+  loadId: string;
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("load_documents").insert({
+    load_id: input.loadId,
+    kind: "delivery_bol",
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    content_type: input.contentType,
+    size_bytes: input.sizeBytes,
+    source: "manual",
+  });
+  if (error) {
+    return { error: /kind|check|constraint/i.test(error.message) ? "Delivery BOL isn't set up yet - run migration 171." : error.message };
+  }
+  revalidateAll();
+  return { ok: true };
+}
+
+// Removes a rate confirmation / Delivery BOL from a load (the file itself stays in storage).
 export async function removeLoadDocument(id: string): Promise<{ ok: true } | { error: string }> {
   const supabase = await createClient();
-  const { error } = await supabase.from("load_documents").delete().eq("id", id).in("kind", ["ratecon", "ratecon_signed"]);
+  const { error } = await supabase.from("load_documents").delete().eq("id", id).in("kind", ["ratecon", "ratecon_signed", "delivery_bol"]);
   if (error) return { error: error.message };
   revalidateAll();
   return { ok: true };
