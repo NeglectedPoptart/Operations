@@ -218,7 +218,7 @@ function jearRowFromCells(cells: string[], dueDateOffsetDays = -30): ParsedInvoi
 // commas, escaped "" quotes), the one thing a plain split(",") can't. Kept
 // separate from parseJearPastedTable's tab/flattened-paste splitting since
 // this is a genuinely different input channel (a file, not a paste).
-function splitCsvLine(line: string): string[] {
+export function splitCsvLine(line: string): string[] {
   const cells: string[] = [];
   let cur = "";
   let inQuotes = false;
@@ -448,3 +448,39 @@ export function parseAlimatPdfText(text: string): ParseResult {
   }
   return { rows };
 }
+
+// ---------------------------------------------------------------------------
+// Which parser goes with which carrier. Shared by the Invoicing page (Upload / Paste Statement) and the
+// Freight Statements agent, so an emailed statement is read exactly the way an uploaded one is. Keyed on the
+// broker's exact name (see Broker rows in the brokers table).
+export type StatementParser = (text: string) => ParseResult;
+
+export const CARRIER_PARSERS = new Map<string, StatementParser>([
+  ["ALIMAT", parseAlimatPdfText],
+  ["AMP", parseAmpPdfText],
+  ["DSV Logistics LLC", parseDsvPdfText],
+  ["GRIFFITH", parseGriffithPdfText],
+  ["JEAR", parseJearPastedTable],
+  ["JERUE", parseJeruePdfText],
+  ["PGTRANS", parsePgtransPastedTable],
+  ["PROFREIGHT", parseProfreightPdfText],
+]);
+
+// Only these carriers send an actual PDF - Jear's is an emailed Excel table and PGTrans's is a spreadsheet export.
+export const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT"]);
+
+// Jear also sends a separate weekly CSV export ("Weekly SOA") with its own due-date-to-invoice-date terms.
+export const CSV_CARRIERS = new Map<string, StatementParser>([["JEAR", parseJearStatementCsv]]);
+
+// How each carrier's name shows up in an email's subject, a file name, the sender or the statement's own text.
+export const CARRIER_NAME_HINTS: [string, RegExp][] = [
+  ["ALIMAT", /ali[\s_-]?mat/i],
+  // Letters on either side rule a match out, but an underscore or digit doesn't ("AMP_statement.pdf" is AMP).
+  ["AMP", /A\.M\.P\.\s*Carriers|(?<![A-Za-z])AMP(?![A-Za-z])/],
+  ["DSV Logistics LLC", /(?<![a-z])DSV(?![a-z])/i],
+  ["GRIFFITH", /griffith/i],
+  ["JEAR", /(?<![a-z])jear(?![a-z])/i],
+  ["JERUE", /jerue/i],
+  ["PGTRANS", /pg[\s_-]?trans/i],
+  ["PROFREIGHT", /pro[\s_-]?freight/i],
+];

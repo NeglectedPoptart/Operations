@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import { createClient } from "@/lib/supabase/server";
+import { mergeInvoices } from "@/lib/invoiceImport";
 import type { ParsedInvoiceRow } from "@/lib/invoicingParse";
 import type { InvoiceStatement, InvoiceStatus } from "@/lib/types";
 
@@ -26,40 +27,16 @@ function revalidateAll(brokerId: string) {
   revalidatePath("/accounting/logistics-invoicing");
 }
 
-function matchKey(invoiceNo: string): string {
-  return invoiceNo.trim().toLowerCase();
-}
-
 // Merge-only insert, matched on invoice_no within this broker - a row
 // already present is left untouched. Same reasoning as PAS Files/Pending
 // to Invoice: a broker's statement is a running list, re-pasting the full
-// thing should only add what's new.
+// thing should only add what's new. (The merge itself is shared with the
+// Freight Statements agent - see lib/invoiceImport.ts.)
 export async function importInvoices(brokerId: string, rows: ParsedInvoiceRow[]) {
   const supabase = await createClient();
-  if (rows.length === 0) return [];
-
-  const { data: existing, error: existingError } = await supabase
-    .from("invoice_statements")
-    .select("invoice_no")
-    .eq("broker_id", brokerId);
-  if (existingError) throw new Error(existingError.message);
-
-  const existingKeys = new Set((existing ?? []).map((r) => matchKey(r.invoice_no)));
-  const seenInBatch = new Set<string>();
-  const toInsert = [];
-  for (const row of rows) {
-    const key = matchKey(row.invoice_no);
-    if (existingKeys.has(key) || seenInBatch.has(key)) continue;
-    seenInBatch.add(key);
-    toInsert.push({ ...row, broker_id: brokerId });
-  }
-
-  if (toInsert.length === 0) return [];
-
-  const { data, error } = await supabase.from("invoice_statements").insert(toInsert).select();
-  if (error) throw new Error(error.message);
-  revalidateAll(brokerId);
-  return data;
+  const { inserted } = await mergeInvoices(supabase, brokerId, rows);
+  if (inserted.length > 0) revalidateAll(brokerId);
+  return inserted as unknown as InvoiceStatement[];
 }
 
 // "Last update" on the broker's Invoicing tile only tracks the two events

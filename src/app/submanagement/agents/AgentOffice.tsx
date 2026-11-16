@@ -89,6 +89,18 @@ const LOOKS: Record<string, Look> = {
     intro: "Monday mornings are mine. I email every carrier asking them to log in and update their rates, and I keep nudging them every hour until the rates are in.",
     errand: "chasing rates",
   },
+  freight_statements: {
+    name: "Stella",
+    role: "Statement clerk",
+    skin: "#b9814f",
+    hair: "#1c1917",
+    hairStyle: "bun",
+    shirt: "#b45309",
+    pants: "#292524",
+    gear: ["glasses", "clipboard", "pricetag"],
+    intro: "Send me a carrier's freight statement - the PDF, the Excel, or Jear's table - and I read it and add the new invoices to that carrier's list on Logistics Invoicing. I email you back what I did.",
+    errand: "filing statements",
+  },
   delivered_sheets: {
     name: "Penny",
     role: "Price sheets",
@@ -258,6 +270,7 @@ const DESKS: Spot[] = [
   { x: 33, y: 86 },
   { x: 67, y: 86 },
   { x: 9, y: 84 },
+  { x: 91, y: 90 },
 ];
 
 // Places to wander off to.
@@ -267,7 +280,7 @@ const SPOTS: (Spot & { icon: string; label: string })[] = [
   { x: 50, y: 42, icon: "📝", label: "at the whiteboard" },
   { x: 5, y: 80, icon: "🌿", label: "watering the plant" },
   { x: 30, y: 42, icon: "🌤️", label: "looking out the window" },
-  { x: 91, y: 80, icon: "🖨️", label: "at the printer" },
+  { x: 83, y: 43, icon: "🖨️", label: "at the printer" },
   { x: 70, y: 42, icon: "🗂️", label: "filing" },
 ];
 
@@ -668,6 +681,7 @@ function AgentChat({ agent, events, waiting, renderSettings, onClose }: { agent:
   const mine = events.filter((e) => e.agent_id === agent.id);
 
   const schedule = (a: Agent) => {
+    if (a.key === "freight_statements") return "I read statement emails within 15 minutes of them arriving in the HOP@ mailbox.";
     if (a.key === "delivered_sheets") return "I go out as soon as today's FOB prices have been filled in.";
     if (a.config.send_times?.length) return `I go out at ${a.config.send_times.join(", ")} (Central).`;
     return `I run about every ${a.interval_hours} hours.`;
@@ -800,6 +814,9 @@ function AgentChat({ agent, events, waiting, renderSettings, onClose }: { agent:
           if (!ok) return "No problem - I'll hold off.";
         }
         const r = await runAgentNow(a.id);
+        if (a.key === "freight_statements") {
+          return r.created > 0 ? `Done - I read ${r.created} statement email${r.created === 1 ? "" : "s"}. Check your inbox for what I added.` : r.skipped.length > 0 ? r.skipped.join(" ") : "No new statement emails found.";
+        }
         if (a.key === "carrier_rates") {
           return r.created > 0 ? `Done - ${r.created} rate request${r.created === 1 ? "" : "s"} sent.` : r.skipped.length > 0 ? r.skipped.join(" ") : "Nothing to send - every carrier has either updated or was emailed within the hour.";
         }

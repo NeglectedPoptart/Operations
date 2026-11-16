@@ -124,6 +124,7 @@ const AGENT_ICON: Record<string, string> = {
   orders_pending: "📋",
   delivered_sheets: "🏷️",
   carrier_rates: "📈",
+  freight_statements: "🧾",
 };
 
 // "17:00" -> "5:00 PM"
@@ -173,10 +174,13 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
   const autoApply = agent.key === "load_eta" || (agent.config.auto_apply_replies ?? agent.mode === "auto");
   const isSheets = agent.key === "delivered_sheets";
   const isRates = agent.key === "carrier_rates";
-  const isCustom = isSheets || isRates;
+  const isStatements = agent.key === "freight_statements";
+  const isCustom = isSheets || isRates || isStatements;
   const sheetLanes = agent.config.lanes?.length ? agent.config.lanes : ["houston", "dallas", "east-coast"];
   const [testTo, setTestTo] = useState((agent.config.test_to ?? []).join(", "));
-  const scheduleText = isRates
+  const scheduleText = isStatements
+    ? "Reads statement emails within 15 minutes of arriving"
+    : isRates
     ? `Mondays from ${fmtTime(agent.config.window_start ?? "07:00")}, then every ${agent.config.repeat_minutes ?? 60} min until updated`
     : isSheets
     ? "As soon as today's FOB prices are applied"
@@ -198,6 +202,8 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         ? "Each customer"
         : isRates
           ? ((agent.config.test_to ?? []).length > 0 ? "TEST ADDRESS ONLY" : "Each OTR carrier")
+          : isStatements
+          ? `Every HOPS user${recipientCount > 0 ? ` + ${recipientCount} other address${recipientCount === 1 ? "" : "es"}` : ""}`
           : isSheets
           ? ((agent.config.test_to ?? []).length > 0 ? "TEST ADDRESS ONLY" : "Each sheet's customer list")
           : recipientCount + roleCount === 0
@@ -253,15 +259,17 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           {agent.key === "customer_eta" && agent.config.on_carrier_reply !== false && " + when a carrier replies"}{" "}
           {windowText && <span className="font-normal text-black/50 dark:text-white/50">({windowText})</span>}
         </Chip>
-        <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
-          {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
-        </Chip>
+        {!isStatements && (
+          <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
+            {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
+          </Chip>
+        )}
         {!isCustom && (
           <Chip icon="📬" label="Replies">
             {!readReplies ? "Notify only" : autoApply ? "Read and applied to HOPS" : "Read, you review"}
           </Chip>
         )}
-        <Chip icon="👥" label="To">
+        <Chip icon="👥" label={isStatements ? "Reads mail from" : "To"}>
           {toText}
         </Chip>
       </div>
@@ -428,6 +436,22 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
             />
           </label>
           {testTo.trim() !== "" && <p className="text-amber-600">Test mode: the sheets go ONLY to this address (subject starts with [TEST]), once a day, and never to customers. Clear it to go live.</p>}
+        </div>
+      )}
+
+      {isStatements && (
+        <div className="space-y-3 text-xs">
+          <p className="text-black/60 dark:text-white/60">
+            Email a carrier&apos;s statement to the HOP@ mailbox - the PDF, the Excel or CSV file, or (for Jear) the table pasted into the email. This reads it the
+            same way Upload Statement does on Accounting &gt; Logistics Invoicing and adds the new invoices to that carrier&apos;s list. It never changes or removes an
+            invoice that is already there. It emails you back what it did. Put the carrier&apos;s name in the subject or file name if it can&apos;t tell which one.
+            Reads ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans and Profreight.
+          </p>
+          <label className="block space-y-0.5">
+            <span className="block text-black/60 dark:text-white/60">Also accept statements from these other addresses (any HOPS user is already accepted)</span>
+            <input className={field} value={recipients} placeholder="accounting@carrier.com" onChange={(e) => setRecipients(e.target.value)} onBlur={() => save({ recipients: splitList(recipients) })} />
+          </label>
+          <p className="text-black/50 dark:text-white/50">Only those senders are read - a statement from anyone else is ignored. &ldquo;Run now&rdquo; re-checks the last 3 days of the mailbox.</p>
         </div>
       )}
 

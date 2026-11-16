@@ -260,3 +260,27 @@ export async function markRead(messageId: string): Promise<void> {
     body: JSON.stringify({ isRead: true }),
   });
 }
+
+// Statement files a person emails to the HOP@ mailbox: PDF, Excel or CSV (inline logos and pictures are skipped).
+// Old .xls files are listed too, so the agent can say it can't read them instead of silently ignoring them.
+export async function listStatementAttachments(messageId: string): Promise<MailAttachment[]> {
+  const mailbox = encodeURIComponent(agentMailbox());
+  const res = await graph(`/users/${mailbox}/messages/${messageId}/attachments?$select=id,name,contentType,size,isInline`);
+  const json = (await res.json()) as {
+    value: { "@odata.type"?: string; id: string; name?: string; contentType?: string; size?: number; isInline?: boolean }[];
+  };
+
+  const out: MailAttachment[] = [];
+  for (const a of json.value) {
+    if (out.length >= 6) break;
+    const name = a.name ?? "";
+    if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || a.isInline) continue;
+    if ((a.size ?? 0) > MAX_ATTACHMENT_BYTES || (a.size ?? 0) < 200) continue;
+    if (!/\.(pdf|xlsx|xls|csv|txt)$/i.test(name) && !/pdf/i.test(a.contentType ?? "")) continue;
+    const fileRes = await graph(`/users/${mailbox}/messages/${messageId}/attachments/${a.id}/$value`, {
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    out.push({ fileName: name || "attachment", contentType: (a.contentType ?? "application/octet-stream").toLowerCase(), data: Buffer.from(await fileRes.arrayBuffer()) });
+  }
+  return out;
+}

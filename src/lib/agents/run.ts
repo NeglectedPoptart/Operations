@@ -5,6 +5,7 @@ import { customerKey } from "./customerKey";
 import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
 import { runDeliveredSheets } from "./deliveredSheets";
 import { runCarrierRates } from "./carrierRates";
+import { handleStatementEmail, runFreightStatements } from "./freightStatements";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
@@ -768,7 +769,7 @@ export async function runAgents(
   const skipped: string[] = [];
   const notes: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
-    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && agent.key !== "delivered_sheets" && agent.key !== "carrier_rates" && !opts.ignoreHours && !withinActiveHours(agent)) {
+    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && agent.key !== "delivered_sheets" && agent.key !== "carrier_rates" && agent.key !== "freight_statements" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
       continue;
     }
@@ -777,7 +778,13 @@ export async function runAgents(
       else if (agent.key === "customer_eta") created += await runCustomerEta(db, agent, opts.ignoreHours === true, notes);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
-      else if (agent.key === "carrier_rates") {
+      else if (agent.key === "freight_statements") {
+        created += await runFreightStatements(db, agent, {
+          force: opts.ignoreHours === true,
+          deps: { log: (agentId, kind, message) => logEvent(db, agentId, kind, message), notify: (title, body) => notifyOwner(db, title, body) },
+          notes,
+        });
+      } else if (agent.key === "carrier_rates") {
         created += await runCarrierRates(db, agent, {
           force: opts.ignoreHours === true,
           log: (kind, message) => logEvent(db, agent.id, kind, message),
@@ -946,6 +953,20 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
       if (tag) ({ data: thread } = await db.from("agent_threads").select("*").eq("tag", tag).maybeSingle<AgentThread>());
     }
     if (!thread) {
+      // A carrier's freight statement (PDF, Excel, CSV or a table in the email) sent in by a HOPS user: added to that
+      // carrier's invoice list on Accounting > Logistics Invoicing.
+      if (
+        await handleStatementEmail(db, msg, {
+          log: (agentId, kind, message) => logEvent(db, agentId, kind, message),
+          notify: (title, body) => notifyOwner(db, title, body),
+        }).catch(async (err) => {
+          await logEvent(db, null, "error", `Statement email could not be read: ${err instanceof Error ? err.message : String(err)}`);
+          return false;
+        })
+      ) {
+        processed++;
+        continue;
+      }
       // The warehouse's morning Inventory Report (.xlsx): loaded into Warehouse > Cold Inventory.
       if (msg.hasAttachments) {
         try {

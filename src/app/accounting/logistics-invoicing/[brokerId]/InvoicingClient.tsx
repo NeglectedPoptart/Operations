@@ -2,51 +2,12 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
-import {
-  parseAlimatPdfText,
-  parseAmpPdfText,
-  parseDsvPdfText,
-  parseGriffithPdfText,
-  parseJearPastedTable,
-  parseJearStatementCsv,
-  parseJeruePdfText,
-  parsePgtransPastedTable,
-  parseProfreightPdfText,
-} from "@/lib/carrierStatementParse";
+import { CARRIER_PARSERS, CSV_CARRIERS, PDF_CARRIERS } from "@/lib/carrierStatementParse";
 import { daysSince, formatDateSlash } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { OVERDUE_DAYS, parsePastedInvoices, type ParsedInvoiceRow, type ParseResult } from "@/lib/invoicingParse";
 import type { Broker, InvoiceStatement, InvoiceStatus } from "@/lib/types";
 import { deleteInvoiceStatement, extractPdfText, importInvoices, updateInvoiceStatement } from "./actions";
-
-// These three carriers' own raw statements (two PDFs, one emailed Excel
-// table) have a fixed, unchanging layout, so they're parsed directly
-// instead of requiring the "consolidate and clean up into a generic
-// tab-separated paste" step every other carrier still needs. Keyed on the
-// broker's exact name (see Broker rows in the brokers table).
-const CARRIER_PARSERS = new Map<string, (text: string) => ParseResult>([
-  ["ALIMAT", parseAlimatPdfText],
-  ["AMP", parseAmpPdfText],
-  ["DSV Logistics LLC", parseDsvPdfText],
-  ["GRIFFITH", parseGriffithPdfText],
-  ["JEAR", parseJearPastedTable],
-  ["JERUE", parseJeruePdfText],
-  ["PGTRANS", parsePgtransPastedTable],
-  ["PROFREIGHT", parseProfreightPdfText],
-]);
-
-// Only AliMat, AMP, DSV, Griffith, Jerue, and Profreight send an actual PDF - Jear's
-// own format is an emailed Excel table and PGTrans's is a spreadsheet
-// export, so there's nothing to upload for either (paste works the same
-// for a spreadsheet copy as it does for an emailed table).
-const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT"]);
-
-// Jear also sends a separate weekly CSV export ("Weekly SOA") - kept as its
-// own Upload Statement button rather than folded into Paste Statement, so
-// pasting the emailed table keeps working exactly as it always has (see
-// parseJearPastedTable's own due-date offset, unchanged) while this upload
-// path uses the terms the user gave specifically for this file.
-const CSV_CARRIERS = new Map<string, (text: string) => ParseResult>([["JEAR", parseJearStatementCsv]]);
 
 const field = "w-full rounded border border-gray-300 bg-white px-2 py-1 text-sm text-black";
 
