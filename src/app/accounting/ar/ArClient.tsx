@@ -25,6 +25,7 @@ import { parseArReportMeta, parsePdfArReport, type ArReportMeta, type ParsedArIn
 import { formatDate, formatElapsed, formatTimestamp } from "@/lib/dates";
 import { copyOrDownloadPng, renderPriceSheetPng, type CanvasBlock } from "@/lib/fobPricing";
 import { AR_HIGHLIGHTS, type ArCustomer, type ArHighlight, type ArInvoice, type ArSummarySnapshot } from "@/lib/types";
+import { AR_UPLOADER_NAME } from "@/lib/arUpload";
 import { deleteArInvoiceRow, extractPdfText, importArReport, logArOpened, saveArBaseline, updateArInvoiceRow } from "./actions";
 import ArUploadConfirmModal from "./ArUploadConfirmModal";
 import ArUploadPreview from "./ArUploadPreview";
@@ -197,11 +198,14 @@ export default function ArClient({
   initialInvoices,
   initialBaseline,
   initialLastReport,
+  canUpload,
 }: {
   initialCustomers: ArCustomer[];
   initialInvoices: ArInvoice[];
   initialBaseline: ArSummarySnapshot | null;
   initialLastReport: LastReport | null;
+  // Only the one person allowed to load a new AR report sees the upload controls.
+  canUpload: boolean;
 }) {
   const confirm = useConfirm();
   useEffect(() => {
@@ -209,7 +213,7 @@ export default function ArClient({
   }, []);
   const [customers, setCustomers] = useState(initialCustomers);
   const [invoices, setInvoices] = useState(initialInvoices);
-  const [showUpload, setShowUpload] = useState(initialInvoices.length === 0);
+  const [showUpload, setShowUpload] = useState(canUpload && initialInvoices.length === 0);
   const [previewInvoices, setPreviewInvoices] = useState<ParsedArInvoice[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
@@ -603,12 +607,18 @@ export default function ArClient({
             >
               {savingBaseline ? "Saving..." : baseline ? "Reset Baseline" : "Set Baseline"}
             </button>
+            {canUpload ? (
             <button
               onClick={() => setShowUpload((s) => !s)}
               className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
             >
               {showUpload ? "Hide upload" : "Upload PDF"}
             </button>
+            ) : (
+              <span title="Uploading a new AR report is limited to one person" className="rounded-md bg-black/5 px-3 py-1.5 text-xs font-medium text-black/60 dark:bg-white/10 dark:text-white/60">
+                🔒 Only {AR_UPLOADER_NAME} uploads the AR report
+              </span>
+            )}
           </div>
         </div>
 
@@ -674,7 +684,7 @@ export default function ArClient({
           </div>
         )}
 
-        {showUpload && (
+        {canUpload && showUpload && (
           <div className="space-y-3 rounded-lg border border-black/10 p-4 dark:border-white/10">
             <p className="text-sm text-black/60 dark:text-white/60">
               Upload the whole &quot;AR Aging Detail by Customer&quot; PDF export - this syncs the list: balances/dates

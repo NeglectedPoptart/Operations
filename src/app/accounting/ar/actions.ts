@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import { computeArSummaryTotals } from "@/lib/arShared";
 import { logActivity } from "@/lib/auditLog";
+import { AR_UPLOAD_DENIED, canUploadAr } from "@/lib/arUpload";
 import { personName } from "@/lib/displayName";
 import { createClient } from "@/lib/supabase/server";
 import type { ParsedArInvoice } from "@/lib/arReportParse";
@@ -18,7 +19,22 @@ function revalidateAll() {
   revalidatePath("/");
 }
 
+// Only the person allowed to upload the AR report may use the upload actions - checked here on the server, not just by
+// hiding the button.
+async function requireArUploader(): Promise<void> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!canUploadAr(user?.email)) throw new Error(AR_UPLOAD_DENIED);
+}
+
 export async function extractPdfText(formData: FormData): Promise<{ text: string } | { error: string }> {
+  try {
+    await requireArUploader();
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : AR_UPLOAD_DENIED };
+  }
   const file = formData.get("file");
   if (!(file instanceof Blob)) return { error: "No file received." };
 
@@ -42,6 +58,7 @@ export async function importArReport(
   // What the PDF says about itself - saved so the next upload can be compared with this one.
   meta: { reportAt: string | null; asOf: string | null; runBy: string | null; fileName: string | null } | null = null,
 ): Promise<{ customers: ArCustomer[]; invoices: ArInvoice[] }> {
+  await requireArUploader();
   const supabase = await createClient();
 
   const customerByCode = new Map<

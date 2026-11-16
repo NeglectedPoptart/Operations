@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { canUploadAr } from "@/lib/arUpload";
 import type { ArCustomer, ArInvoice, ArSummarySnapshot } from "@/lib/types";
 import ArClient from "./ArClient";
 import type { LastReport } from "./uploadCheck";
@@ -7,6 +8,9 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountsReceivablePage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const [
     { data: customers, error: customersError },
@@ -43,6 +47,7 @@ export default async function AccountsReceivablePage() {
       initialInvoices={(invoices ?? []) as ArInvoice[]}
       initialBaseline={(baseline ?? null) as ArSummarySnapshot | null}
       initialLastReport={(lastReport ?? null) as LastReport | null}
+      canUpload={canUploadAr(user?.email)}
     />
   );
 }
