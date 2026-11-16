@@ -52,7 +52,11 @@ export async function updateSession(request: NextRequest) {
   if (!user) {
     if (!pathname.startsWith("/login")) {
       const url = request.nextUrl.clone();
+      // Remember where they were headed (a link in an email, say) so signing in lands them there.
+      const wanted = pathname + request.nextUrl.search;
       url.pathname = "/login";
+      url.search = "";
+      if (pathname !== "/") url.searchParams.set("next", wanted);
       return NextResponse.redirect(url);
     }
     return response;

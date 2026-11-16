@@ -19,5 +19,7 @@ export async function signIn(_prevState: string | null, formData: FormData) {
     await logActivity("login", "Logged in to HOPS", undefined, { email: data.user.email, userId: data.user.id });
   }
 
-  redirect("/");
+  // Back to the page they were trying to open (a link in an email), if it is a page on this site.
+  const next = String(formData.get("next") ?? "");
+  redirect(next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login") ? next : "/");
 }

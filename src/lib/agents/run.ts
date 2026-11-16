@@ -4,6 +4,7 @@ import { importColdInventoryEmail } from "@/lib/coldInventoryImport";
 import { customerKey } from "./customerKey";
 import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
 import { runDeliveredSheets } from "./deliveredSheets";
+import { runCarrierRates } from "./carrierRates";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
@@ -767,7 +768,7 @@ export async function runAgents(
   const skipped: string[] = [];
   const notes: string[] = [];
   for (const agent of (agents ?? []) as Agent[]) {
-    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && agent.key !== "delivered_sheets" && !opts.ignoreHours && !withinActiveHours(agent)) {
+    if (agent.key !== "load_eta" && agent.key !== "customer_eta" && agent.key !== "buyers_list" && agent.key !== "orders_pending" && agent.key !== "delivered_sheets" && agent.key !== "carrier_rates" && !opts.ignoreHours && !withinActiveHours(agent)) {
       skipped.push(`${agent.name}: outside ${agent.active_start_hour}:00-${agent.active_end_hour}:00`);
       continue;
     }
@@ -776,7 +777,14 @@ export async function runAgents(
       else if (agent.key === "customer_eta") created += await runCustomerEta(db, agent, opts.ignoreHours === true, notes);
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
-      else if (agent.key === "delivered_sheets") {
+      else if (agent.key === "carrier_rates") {
+        created += await runCarrierRates(db, agent, {
+          force: opts.ignoreHours === true,
+          log: (kind, message) => logEvent(db, agent.id, kind, message),
+          notify: (title, body) => notifyOwner(db, title, body),
+          notes,
+        });
+      } else if (agent.key === "delivered_sheets") {
         created += await runDeliveredSheets(db, agent, {
           force: opts.ignoreHours === true,
           log: (kind, message) => logEvent(db, agent.id, kind, message),

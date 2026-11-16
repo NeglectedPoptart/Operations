@@ -1,4 +1,4 @@
-export type AgentKey = "load_eta" | "buyers_list" | "orders_pending" | "customer_eta" | "delivered_sheets";
+export type AgentKey = "load_eta" | "buyers_list" | "orders_pending" | "customer_eta" | "delivered_sheets" | "carrier_rates";
 export type AgentMode = "approve" | "auto";
 
 export interface Agent {
@@ -40,6 +40,8 @@ export interface Agent {
     // test address: when set, the sheets go ONLY there (subject starts with [TEST]) and never to customers.
     lanes?: string[];
     test_to?: string[];
+    // carrier_rates: how often (minutes) a carrier who hasn't updated their rates is emailed again.
+    repeat_minutes?: number;
     window_start?: string;
     window_end?: string;
   };

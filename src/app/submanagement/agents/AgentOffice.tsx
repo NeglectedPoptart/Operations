@@ -77,6 +77,18 @@ const LOOKS: Record<string, Look> = {
     intro: "I chase the pending orders. I send the Orders follow-up and read the replies so nothing slips through.",
     errand: "checking the orders",
   },
+  carrier_rates: {
+    name: "Rita",
+    role: "Rate coordinator",
+    skin: "#d9a066",
+    hair: "#7f1d1d",
+    hairStyle: "long",
+    shirt: "#0d9488",
+    pants: "#134e4a",
+    gear: ["headset", "clipboard", "pricetag"],
+    intro: "Monday mornings are mine. I email every carrier asking them to log in and update their rates, and I keep nudging them every hour until the rates are in.",
+    errand: "chasing rates",
+  },
   delivered_sheets: {
     name: "Penny",
     role: "Price sheets",
@@ -245,6 +257,7 @@ const DESKS: Spot[] = [
   { x: 82, y: 60 },
   { x: 33, y: 86 },
   { x: 67, y: 86 },
+  { x: 9, y: 84 },
 ];
 
 // Places to wander off to.
@@ -781,7 +794,15 @@ function AgentChat({ agent, events, waiting, renderSettings, onClose }: { agent:
           );
           if (!ok) return "No problem - I'll hold off.";
         }
+        if (a.key === "carrier_rates") {
+          const test = (a.config.test_to ?? []).length > 0;
+          const ok = window.confirm(test ? "Send the sample rate request to the test address now?" : "Email the weekly rate request to every OTR carrier who hasn't updated their rates yet, right now? This sends it even though it isn't Monday morning.");
+          if (!ok) return "No problem - I'll hold off.";
+        }
         const r = await runAgentNow(a.id);
+        if (a.key === "carrier_rates") {
+          return r.created > 0 ? `Done - ${r.created} rate request${r.created === 1 ? "" : "s"} sent.` : r.skipped.length > 0 ? r.skipped.join(" ") : "Nothing to send - every carrier has either updated or was emailed within the hour.";
+        }
         if (a.key === "delivered_sheets") {
           return r.created > 0 ? `Done - ${r.created} price sheet${r.created === 1 ? "" : "s"} emailed.` : r.skipped.length > 0 ? r.skipped.join(" ") : "Nothing to send - each sheet goes out once a day, and today's may already have gone.";
         }

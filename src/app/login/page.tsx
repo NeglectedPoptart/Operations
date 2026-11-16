@@ -1,10 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { Suspense, useActionState } from "react";
+import { useSearchParams } from "next/navigation";
 import { signIn } from "./actions";
 
-export default function LoginPage() {
+function LoginForm() {
   const [error, formAction, pending] = useActionState(signIn, null);
+  const next = useSearchParams().get("next") ?? "";
 
   return (
     <div className="flex flex-1 items-center justify-center p-4">
@@ -13,6 +15,7 @@ export default function LoginPage() {
         className="w-full max-w-sm space-y-4 rounded-lg border border-black/10 p-6 shadow-sm dark:border-white/10"
       >
         <h1 className="text-xl font-semibold">Sign in</h1>
+        <input type="hidden" name="next" value={next} />
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium">
             Email
@@ -49,5 +52,13 @@ export default function LoginPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

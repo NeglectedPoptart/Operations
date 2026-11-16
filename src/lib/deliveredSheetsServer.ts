@@ -9,7 +9,7 @@ import { drawBrandedPriceSheet, type PriceSheetDrawEnv, type PriceSheetOptions }
 // browser version and its text measures the same.
 
 let fontsReady = false;
-function ensureFonts() {
+export function ensureFonts() {
   if (fontsReady) return;
   const dir = path.join(process.cwd(), "src", "lib", "fonts");
   GlobalFonts.registerFromPath(path.join(dir, "Arimo.ttf"), "Arial");

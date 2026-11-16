@@ -123,6 +123,7 @@ const AGENT_ICON: Record<string, string> = {
   buyers_list: "🛒",
   orders_pending: "📋",
   delivered_sheets: "🏷️",
+  carrier_rates: "📈",
 };
 
 // "17:00" -> "5:00 PM"
@@ -171,14 +172,18 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
   const [open, setOpen] = useState(false);
   const autoApply = agent.key === "load_eta" || (agent.config.auto_apply_replies ?? agent.mode === "auto");
   const isSheets = agent.key === "delivered_sheets";
+  const isRates = agent.key === "carrier_rates";
+  const isCustom = isSheets || isRates;
   const sheetLanes = agent.config.lanes?.length ? agent.config.lanes : ["houston", "dallas", "east-coast"];
   const [testTo, setTestTo] = useState((agent.config.test_to ?? []).join(", "));
-  const scheduleText = isSheets
+  const scheduleText = isRates
+    ? `Mondays from ${fmtTime(agent.config.window_start ?? "07:00")}, then every ${agent.config.repeat_minutes ?? 60} min until updated`
+    : isSheets
     ? "As soon as today's FOB prices are applied"
     : isSlotAgent
     ? `${(agent.config.send_times ?? []).map(fmtTime).join(", ") || "set times"}`
     : `Every ${agent.interval_hours}h`;
-  const noHours = agent.key === "load_eta" || agent.key === "customer_eta" || isSheets;
+  const noHours = agent.key === "load_eta" || agent.key === "customer_eta" || isCustom;
   const windowText = noHours
     ? ""
     : isSlotAgent
@@ -191,7 +196,9 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
       ? "Each carrier"
       : agent.key === "customer_eta"
         ? "Each customer"
-        : isSheets
+        : isRates
+          ? ((agent.config.test_to ?? []).length > 0 ? "TEST ADDRESS ONLY" : "Each OTR carrier")
+          : isSheets
           ? ((agent.config.test_to ?? []).length > 0 ? "TEST ADDRESS ONLY" : "Each sheet's customer list")
           : recipientCount + roleCount === 0
           ? "Every Operations login"
@@ -249,7 +256,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         <Chip icon={agent.mode === "approve" ? "✋" : "⚡"} label="Mode">
           {agent.mode === "approve" ? "You approve each email" : "Sends on its own"}
         </Chip>
-        {!isSheets && (
+        {!isCustom && (
           <Chip icon="📬" label="Replies">
             {!readReplies ? "Notify only" : autoApply ? "Read and applied to HOPS" : "Read, you review"}
           </Chip>
@@ -321,7 +328,7 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         </div>
       )}
 
-      {!isSlotAgent && !isSheets && (
+      {!isSlotAgent && !isCustom && (
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <label className="space-y-0.5">
           <span className="block text-black/60 dark:text-white/60">Mode</span>
@@ -424,8 +431,37 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
         </div>
       )}
 
-      {!isSheets && <GroupLabel>Replies</GroupLabel>}
-      {!isSheets && (
+      {isRates && (
+        <div className="space-y-3 text-xs">
+          <p className="text-black/60 dark:text-white/60">
+            Every Monday this emails each active OTR carrier (one with a follow-up email under Carrier emails) a nicely designed request to log in and
+            update their rates, with a button to the rate portal and a big &ldquo;I&apos;ve submitted my rates&rdquo; button. A carrier who hasn&apos;t entered rates
+            gets it again every hour until they have, or tap the done button, which also notifies you. Nothing goes out on other days.
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <label className="space-y-0.5">
+              <span className="block text-black/60 dark:text-white/60">First email at (Central)</span>
+              <input type="time" className={field} defaultValue={agent.config.window_start ?? "07:00"} onBlur={(e) => e.target.value && save({ window_start: e.target.value })} />
+            </label>
+            <label className="space-y-0.5">
+              <span className="block text-black/60 dark:text-white/60">Stop reminding at</span>
+              <input type="time" className={field} defaultValue={agent.config.window_end ?? "17:00"} onBlur={(e) => e.target.value && save({ window_end: e.target.value })} />
+            </label>
+            <label className="space-y-0.5">
+              <span className="block text-black/60 dark:text-white/60">Remind every (minutes)</span>
+              <input type="number" min={15} className={field} defaultValue={agent.config.repeat_minutes ?? 60} onBlur={(e) => Number(e.target.value) >= 15 && save({ repeat_minutes: Number(e.target.value) })} />
+            </label>
+          </div>
+          <label className="block space-y-0.5">
+            <span className="block text-black/60 dark:text-white/60">Test address (leave blank to email the carriers)</span>
+            <input className={field} value={testTo} placeholder="you@harvestbestinc.com" onChange={(e) => setTestTo(e.target.value)} onBlur={() => save({ test_to: splitList(testTo) })} />
+          </label>
+          {testTo.trim() !== "" && <p className="text-amber-600">Test mode: one sample email goes ONLY to this address (subject starts with [TEST], its buttons record nothing). No carrier is emailed. Clear it to go live.</p>}
+        </div>
+      )}
+
+      {!isCustom && <GroupLabel>Replies</GroupLabel>}
+      {!isCustom && (
       <div className="space-y-1 text-xs">
         <label className="flex items-center gap-2">
           <input
@@ -592,6 +628,15 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           disabled={pending}
           onClick={() =>
             start(async () => {
+              if (isRates) {
+                const test = (agent.config.test_to ?? []).length > 0;
+                const ok = window.confirm(
+                  test
+                    ? "Send the sample rate request to the test address now?"
+                    : "Email the weekly rate request to every OTR carrier who hasn't updated their rates yet, right now? This sends it even though it isn't Monday morning.",
+                );
+                if (!ok) return;
+              }
               if (isSheets) {
                 const test = (agent.config.test_to ?? []).length > 0;
                 const ok = window.confirm(
@@ -603,7 +648,13 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
               }
               const r = await runAgentNow(agent.id);
               setMessage(
-                isSheets
+                isRates
+                  ? r.created > 0
+                    ? `${r.created} rate request${r.created === 1 ? "" : "s"} sent.`
+                    : r.skipped.length > 0
+                      ? r.skipped.join(" ")
+                      : "Nothing to send - every carrier has either updated or was emailed within the hour."
+                  : isSheets
                   ? r.created > 0
                     ? `${r.created} price sheet${r.created === 1 ? "" : "s"} emailed.`
                     : r.skipped.length > 0
