@@ -216,6 +216,7 @@ export const NAV: NavCategory[] = [
       { href: "/supreme/devices", label: "Devices" },
       { href: "/supreme/produce", label: "Produce" },
       { href: "/supreme/reset", label: "Reset Tools" },
+      { href: "/supreme/scare", label: "Scare" },
     ],
   },
 ];

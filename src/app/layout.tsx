@@ -8,6 +8,7 @@ import NflTeamPrompt from "@/components/NflTeamPrompt";
 import NotesLauncher from "@/components/notes/NotesLauncher";
 import NotificationPopup from "@/components/NotificationPopup";
 import PushRegistration from "@/components/PushRegistration";
+import ScareOverlay from "@/components/ScareOverlay";
 import TimezoneSync from "@/components/TimezoneSync";
 import { NFL_NO_TEAM } from "@/lib/nfl";
 import { todayISO } from "@/lib/dates";
@@ -120,6 +121,7 @@ export default async function RootLayout({
                   {!isBrokerCarrier && <NotificationPopup />}
                   {!isBrokerCarrier && <NotesLauncher />}
                   {!isBrokerCarrier && <NflTeamPrompt team={nflTeam} />}
+                  {!isBrokerCarrier && <ScareOverlay />}
                 </div>
                 {!isBrokerCarrier && <PushRegistration />}
                 <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
