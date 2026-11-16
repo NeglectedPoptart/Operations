@@ -150,6 +150,8 @@ export async function verifyPod(input: {
   data: Buffer;
   contentType: string;
   loads: { number: number; description: string }[];
+  // The carrier's own message that came with the file - a hint about what they meant it to be.
+  replyText?: string;
 }): Promise<{ is_pod: boolean; load_number: number | null; confident: boolean; note: string }> {
   const client = new Anthropic();
   const base64 = input.data.toString("base64");
@@ -173,7 +175,7 @@ export async function verifyPod(input: {
           file,
           {
             type: "text",
-            text: `Loads in the email this file came with:\n${input.loads.map((l) => `${l.number}) ${l.description}`).join("\n")}`,
+            text: `Loads in the email this file came with:\n${input.loads.map((l) => `${l.number}) ${l.description}`).join("\n")}${input.replyText?.trim() ? `\n\nThe carrier's message with this file (a hint about what they meant it to be - the file itself must still show proof of receipt):\n${input.replyText.trim().slice(0, 1500)}` : ""}`,
           },
         ],
       },

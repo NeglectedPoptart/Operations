@@ -822,7 +822,7 @@ function safeFileName(name: string): string {
   return name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "file";
 }
 
-async function storeAttachments(db: SupabaseClient, messageId: string, thread: AgentThread): Promise<ReplyAttachment[]> {
+async function storeAttachments(db: SupabaseClient, messageId: string, thread: AgentThread, replyText: string): Promise<ReplyAttachment[]> {
   const files = await listAttachments(messageId);
   if (files.length === 0) return [];
 
@@ -857,7 +857,7 @@ async function storeAttachments(db: SupabaseClient, messageId: string, thread: A
       continue;
     }
     try {
-      const verdict = await verifyPod({ data: file.data, contentType: file.contentType, loads: numbered });
+      const verdict = await verifyPod({ data: file.data, contentType: file.contentType, loads: numbered, replyText });
       const loadId = verdict.load_number ? (thread.record_ids[verdict.load_number - 1] ?? null) : null;
       out.push({
         ...base,
@@ -1062,11 +1062,19 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
     let attachments: ReplyAttachment[] = [];
     if (msg.hasAttachments && agent?.key === "load_eta") {
       try {
-        attachments = await storeAttachments(db, msg.id, thread);
+        attachments = await storeAttachments(db, msg.id, thread, msg.text);
         proposed = withPodUpdates(proposed, attachments);
       } catch (err) {
         parseError = parseError ?? `Could not read the attachments: ${err instanceof Error ? err.message : String(err)}`;
       }
+    }
+
+    // A file came with the carrier's reply but none of it was accepted as a signed POD, and the text itself has no
+    // load update: don't file it away as "no update" - put it in Review with the file open, so a person can tick
+    // "This is the signed POD" if it is one.
+    if (agent?.key === "load_eta" && !parseError && proposed.length === 0 && attachments.length > 0 && !attachments.some((a) => a.is_pod)) {
+      const why = attachments.map((a) => a.note).filter(Boolean).join(" / ");
+      summary = `${summary ? summary + " - " : ""}Sent a file that wasn't accepted as a POD${why ? ` (${why})` : ""} - open it below and tick "This is the signed POD" if it is.`;
     }
 
     const { data: reply, error: insertError } = await db
@@ -1081,7 +1089,7 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
         proposed,
         attachments,
         error: parseError,
-        status: !parseError && proposed.length === 0 ? "no_update" : "pending_review",
+        status: !parseError && proposed.length === 0 && !(agent?.key === "load_eta" && attachments.length > 0 && !attachments.some((a) => a.is_pod)) ? "no_update" : "pending_review",
       })
       .select()
       .single<AgentReply>();
