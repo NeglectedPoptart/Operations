@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Which deployment this page's code came from; open tabs compare it with /api/version to know a new one shipped.
+  env: { NEXT_PUBLIC_BUILD_ID: process.env.VERCEL_GIT_COMMIT_SHA ?? "" },
   // The Delivered price sheet agent draws the sheet on the server with a native canvas library, the bundled
   // fonts and the logo - keep the library out of the bundle and make sure those files ship with the functions
   // that run agents (the 15-minute tick, and Run now on the Agents page).

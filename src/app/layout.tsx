@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Rajdhani } from "next/font/google";
 import AppHeader from "@/components/AppHeader";
+import AutoRefresh from "@/components/AutoRefresh";
 import ConfirmProvider from "@/components/ConfirmProvider";
 import DailyReminderModal from "@/components/DailyReminderModal";
 import NavBar from "@/components/NavBar";
@@ -125,6 +126,7 @@ export default async function RootLayout({
                 </div>
                 {!isBrokerCarrier && <PushRegistration />}
                 <TimezoneSync saved={savedTimezone} manual={timezoneIsManual} />
+                <AutoRefresh />
                 <main className="popout-main flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 print:overflow-visible print:px-0 print:py-0">
                   <div className="mx-auto w-full max-w-7xl">{children}</div>
                 </main>
