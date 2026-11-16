@@ -351,9 +351,20 @@ export default function ArClient({
     const parsedNos = new Set(previewInvoices.map((r) => r.invoiceNo));
     const added = previewInvoices.filter((r) => !existingInvoiceNos.has(r.invoiceNo)).length;
     const updated = previewInvoices.length - added;
-    const removed = invoices.filter((i) => !parsedNos.has(i.invoice_no)).length;
-    return { added, updated, removed };
-  }, [previewInvoices, existingInvoiceNos, invoices]);
+    const gone = invoices.filter((i) => !parsedNos.has(i.invoice_no));
+    const nameOf = new Map(customers.map((c) => [c.id, c.customer_name || c.customer_code]));
+    const removedInvoices = gone
+      .map((i) => ({
+        invoiceNo: i.invoice_no,
+        customer: nameOf.get(i.customer_id) ?? "Unknown customer",
+        po: i.po,
+        dueDate: i.due_date,
+        balance: i.balance,
+        hasNotes: Boolean((i.notes ?? "").trim() || i.last_contact || (i.highlight && i.highlight !== "none")),
+      }))
+      .sort((a, b) => a.customer.localeCompare(b.customer) || a.invoiceNo.localeCompare(b.invoiceNo));
+    return { added, updated, removed: gone.length, removedInvoices };
+  }, [previewInvoices, existingInvoiceNos, invoices, customers]);
 
   async function handleConfirmImport() {
     if (!previewInvoices) return;
