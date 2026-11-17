@@ -408,35 +408,36 @@ export default function LoadModal({
                     {d.review_status === "pending" ? " - waiting for your review" : d.review_status === "rejected" ? " - sent back" : ""})</span>
                 </p>
               ))}
-              {load.status !== "complete" && (
-                <div className="flex flex-wrap items-center gap-3 text-xs">
-                  {load.status === "on_the_road" && (
-                    <label className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={load.pod_pending}
-                        disabled={pending}
-                        onChange={(e) => startTransition(() => setPodPending(load.id, e.target.checked).then(onClose))}
-                      />
-                      Delivered - Pending POD
-                    </label>
-                  )}
-                  <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
-                    {podUploading ? "Uploading..." : "Attach POD and mark Complete"}
-                    <input
-                      type="file"
-                      accept="application/pdf,image/*"
-                      className="hidden"
-                      disabled={podUploading}
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        e.target.value = "";
-                        if (f) void handlePodFile(f);
-                      }}
-                    />
-                  </label>
-                </div>
+              {podDocs.length === 0 && load.status === "complete" && (
+                <p className="text-xs text-black/50 dark:text-white/50">No POD is attached to this load - attach one below.</p>
               )}
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                {load.status === "on_the_road" && (
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="checkbox"
+                      checked={load.pod_pending}
+                      disabled={pending}
+                      onChange={(e) => startTransition(() => setPodPending(load.id, e.target.checked).then(onClose))}
+                    />
+                    Delivered - Pending POD
+                  </label>
+                )}
+                <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+                  {podUploading ? "Uploading..." : load.status === "complete" ? "Attach POD" : "Attach POD and mark Complete"}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/*"
+                    className="hidden"
+                    disabled={podUploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) void handlePodFile(f);
+                    }}
+                  />
+                </label>
+              </div>
               {podError && <p className="text-xs text-red-600">{podError}</p>}
             </div>
           )}

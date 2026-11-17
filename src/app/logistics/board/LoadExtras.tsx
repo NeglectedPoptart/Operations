@@ -3,9 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate } from "@/lib/dates";
+import { createClient } from "@/lib/supabase/client";
 import { CHARGE_KINDS, payerSummary, payerTone, type LoadCharge } from "@/lib/loadCharges";
 import type { Load } from "@/lib/types";
-import { addLoadCharge, deleteLoadCharge, requestCarrierUpdate, setLoadClaim } from "./actions";
+import { addLoadCharge, deleteLoadCharge, recordLoadPod, requestCarrierUpdate, setLoadClaim } from "./actions";
 import ChargePayerPicker, { emptyPayer } from "./ChargePayerPicker";
 
 // The Claim flag and the extra freight charges on a load - shared by the List's load
@@ -68,6 +69,52 @@ export function RequestUpdateButton({ load, className = smallBtn }: { load: Load
     >
       {state === "sending" ? "Sending..." : state === "sent" ? "✓ Update requested" : "✉ Request update"}
     </button>
+  );
+}
+
+// Attach a signed POD straight from a load tile (List or Order Check) - no need to open Full edit. Uploads
+// straight to storage the same way the Edit Load window does, then marks the load Complete. Works on a load
+// that's already Complete too, so a POD missed earlier (or never attached) can always be backfilled.
+export function AddPodButton({ load, className = smallBtn }: { load: Load; className?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setError(null);
+    setBusy(true);
+    try {
+      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+      const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
+      const { error: uploadError } = await createClient()
+        .storage.from("load-documents")
+        .upload(storagePath, file, { contentType: file.type || undefined });
+      if (uploadError) throw new Error(uploadError.message);
+      await recordLoadPod({ loadId: load.id, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <label className={`${className} cursor-pointer`} title="Attach the signed POD - marks this load Complete">
+        {busy ? "Uploading..." : "📎 Add POD"}
+        <input
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          disabled={busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void handleFile(f);
+          }}
+        />
+      </label>
+      {error && <span className="text-xs text-red-600">{error}</span>}
+    </span>
   );
 }
 

@@ -9,7 +9,7 @@ import {
   updateLoadReady,
   updateLoadStatus,
 } from "./actions";
-import { ClaimBanner, LoadClaimCharges, RequestUpdateButton } from "./LoadExtras";
+import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton } from "./LoadExtras";
 import type { LoadCharge } from "@/lib/loadCharges";
 import { LOAD_STATUSES, type Load, type LoadStatus } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
@@ -216,6 +216,9 @@ export default function LoadCard({
                 >
                   📄 {load.pod_pending ? "Pending POD" : "Mark pending POD"}
                 </button>
+              )}
+              {load.status !== "pending_to_load" && (
+                <AddPodButton load={load} className="rounded px-2 py-0.5 text-xs font-medium border border-black/20 hover:bg-black/5 dark:border-white/20" />
               )}
               {load.status !== "complete" && load.broker_id && load.rate_con_sent && (
                 <span
