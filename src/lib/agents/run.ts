@@ -67,16 +67,21 @@ async function logEvent(db: SupabaseClient, agentId: string | null, kind: string
   await db.from("agent_events").insert({ agent_id: agentId, thread_id: threadId ?? null, kind, message });
 }
 
-async function notifyOwner(db: SupabaseClient, title: string, body: string) {
+async function notifyOwner(db: SupabaseClient, title: string, body: string, pagePath = "/submanagement/agents") {
   const { data: owner } = await db.from("profiles").select("id").eq("email", SUPREME_EMAIL).maybeSingle();
   if (!owner) return;
   const { data: tokens } = await db.from("push_tokens").select("token").eq("user_id", owner.id);
-  await sendPushToTokens(
-    (tokens ?? []).map((t) => t.token as string),
-    title,
-    body,
-    { pagePath: "/submanagement/agents" },
-  );
+  await sendPushToTokens((tokens ?? []).map((t) => t.token as string), title, body, { pagePath });
+
+  // Also the in-app "Attention ..." popup (polled by NotificationPopup on every open tab) - a push alone
+  // only reaches a device that has push set up and allowed; this always shows up next time the owner's
+  // screen is open.
+  const { data: notification } = await db
+    .from("notifications")
+    .insert({ tab_label: title, subtab_label: "Agents", page_path: pagePath, message: body, target_type: "user" })
+    .select("id")
+    .single();
+  if (notification) await db.from("notification_recipients").insert({ notification_id: notification.id, user_id: owner.id });
 }
 
 // The Load ETA and Customer ETA agents have no "never before / never after" hours: they send at their
