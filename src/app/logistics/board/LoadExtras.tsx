@@ -5,8 +5,8 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import { formatDate } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/client";
 import { CHARGE_KINDS, payerSummary, payerTone, type LoadCharge } from "@/lib/loadCharges";
-import type { Load } from "@/lib/types";
-import { addLoadCharge, deleteLoadCharge, recordLoadPod, requestCarrierUpdate, setLoadClaim } from "./actions";
+import type { Load, LoadStop } from "@/lib/types";
+import { addLoadCharge, deleteLoadCharge, markStopDelivered, recordLoadPod, recordStopPod, requestCarrierUpdate, setLoadClaim } from "./actions";
 import ChargePayerPicker, { emptyPayer } from "./ChargePayerPicker";
 
 // The Claim flag and the extra freight charges on a load - shared by the List's load
@@ -114,6 +114,74 @@ export function AddPodButton({ load, className = smallBtn }: { load: Load; class
         />
       </label>
       {error && <span className="text-xs text-red-600">{error}</span>}
+    </span>
+  );
+}
+
+// Per-drop "Mark delivered" / "Add POD", shown next to each drop on a multi-drop load's tile (List and
+// Order Check). Once every drop on the load is marked delivered (with or without a POD attached), the load
+// itself goes Complete automatically - see syncLoadCompletion in actions.ts.
+export function StopPodControls({ stop, loadId }: { stop: LoadStop; loadId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const delivered = Boolean(stop.delivered_at);
+
+  async function toggle() {
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await markStopDelivered(stop.id, !delivered);
+      if ("error" in r) setError(r.error);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleFile(file: File) {
+    setError(null);
+    setBusy(true);
+    try {
+      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+      const storagePath = `manual/${loadId}/${crypto.randomUUID()}${ext}`;
+      const { error: uploadError } = await createClient()
+        .storage.from("load-documents")
+        .upload(storagePath, file, { contentType: file.type || undefined });
+      if (uploadError) throw new Error(uploadError.message);
+      const r = await recordStopPod({ stopId: stop.id, loadId, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+      if ("error" in r) throw new Error(r.error);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="ml-1.5 inline-flex flex-wrap items-center gap-1.5 align-middle">
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        disabled={busy}
+        title={delivered ? `Delivered${stop.delivered_by ? ` - ${stop.delivered_by}` : ""}` : "Mark this drop delivered"}
+        className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${delivered ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300" : "border border-black/20 hover:bg-black/5 dark:border-white/20"}`}
+      >
+        {delivered ? "✓ Delivered" : "Mark delivered"}
+      </button>
+      <label className="cursor-pointer rounded border border-black/20 px-1.5 py-0.5 text-[11px] font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
+        {busy ? "..." : "📎 Add POD"}
+        <input
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          disabled={busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) void handleFile(f);
+          }}
+        />
+      </label>
+      {error && <span className="text-[11px] text-red-600">{error}</span>}
     </span>
   );
 }

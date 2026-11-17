@@ -19,6 +19,7 @@ import {
 import { splitDestinationLabel, validateCityStateLabel } from "@/lib/destination";
 import { LOAD_STATUSES, type Broker, type Load, type LoadStatus } from "@/lib/types";
 import LockedCombobox from "@/components/LockedCombobox";
+import { StopPodControls } from "./LoadExtras";
 import PickupsEditor, { type PickupFormState } from "./PickupsEditor";
 import StopsEditor, { emptyStop, type StopFormState } from "./StopsEditor";
 
@@ -392,22 +393,43 @@ export default function LoadModal({
             </div>
           )}
 
+          {load && load.load_stops.length > 1 && (
+            <div className="col-span-2 space-y-1.5 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
+              <p className="text-xs font-semibold text-black/70 dark:text-white/70">Per-drop delivery ({load.load_stops.length} drops)</p>
+              {[...load.load_stops]
+                .sort((a, b) => a.position - b.position)
+                .map((stop, i) => (
+                  <p key={stop.id} className="text-xs">
+                    <span className="font-medium">Drop {i + 1}: {stop.client_name || "(no client)"}</span>
+                    <StopPodControls stop={stop} loadId={load.id} />
+                  </p>
+                ))}
+            </div>
+          )}
+
           {load && (
             <div className="col-span-2 space-y-2 rounded-md border border-black/10 p-3 text-sm dark:border-white/10 sm:col-span-4">
               <p className="text-xs font-semibold text-black/70 dark:text-white/70">Proof of Delivery (POD)</p>
-              {podDocs.map((d) => (
-                <p key={d.id} className="text-xs">
-                  {d.url ? (
-                    <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-green-700 hover:underline dark:text-green-400">
-                      📄 {d.file_name}
-                    </a>
-                  ) : (
-                    <span>📄 {d.file_name}</span>
-                  )}{" "}
-                  <span className="text-black/40 dark:text-white/40">({d.source === "email" ? "from carrier email" : d.source === "carrier" ? "uploaded by the carrier" : "uploaded"}
-                    {d.review_status === "pending" ? " - waiting for your review" : d.review_status === "rejected" ? " - sent back" : ""})</span>
-                </p>
-              ))}
+              {podDocs.map((d) => {
+                const stopIndex = load.load_stops
+                  .slice()
+                  .sort((a, b) => a.position - b.position)
+                  .findIndex((s) => s.id === d.stop_id);
+                return (
+                  <p key={d.id} className="text-xs">
+                    {stopIndex >= 0 && <span className="font-medium">Drop {stopIndex + 1}: </span>}
+                    {d.url ? (
+                      <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-green-700 hover:underline dark:text-green-400">
+                        📄 {d.file_name}
+                      </a>
+                    ) : (
+                      <span>📄 {d.file_name}</span>
+                    )}{" "}
+                    <span className="text-black/40 dark:text-white/40">({d.source === "email" ? "from carrier email" : d.source === "carrier" ? "uploaded by the carrier" : "uploaded"}
+                      {d.review_status === "pending" ? " - waiting for your review" : d.review_status === "rejected" ? " - sent back" : ""})</span>
+                  </p>
+                );
+              })}
               {podDocs.length === 0 && load.status === "complete" && (
                 <p className="text-xs text-black/50 dark:text-white/50">No POD is attached to this load - attach one below.</p>
               )}

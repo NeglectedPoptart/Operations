@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatDate } from "@/lib/dates";
 import type { Load, LoadStop } from "@/lib/types";
 
@@ -30,7 +30,19 @@ function DeliveryLine({ stop }: { stop: LoadStop }) {
 // Load section, which is already grouped into per-date subsections.
 // `compact` lays the same information out across the width in about half the
 // height - used for the Completed list.
-export default function LoadSummary({ load, dateFirst = false, compact = false }: { load: Load; dateFirst?: boolean; compact?: boolean }) {
+export default function LoadSummary({
+  load,
+  dateFirst = false,
+  compact = false,
+  stopActions,
+}: {
+  load: Load;
+  dateFirst?: boolean;
+  compact?: boolean;
+  // Per-drop "Mark delivered" / "Add POD" controls, shown next to each drop on a multi-drop load - only
+  // passed where a tile can edit (the List and Order Check); left out everywhere LoadSummary is read-only.
+  stopActions?: (stop: LoadStop) => ReactNode;
+}) {
   const [dropsExpanded, setDropsExpanded] = useState(false);
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
   const pickups = [...load.load_pickups].sort((a, b) => a.position - b.position);
@@ -116,6 +128,7 @@ export default function LoadSummary({ load, dateFirst = false, compact = false }
                       {stop.destination_state && `, ${stop.destination_state}`}
                     </span>
                   )}
+                  {stopActions && stopActions(stop)}
                 </p>
                 <DeliveryLine stop={stop} />
               </div>

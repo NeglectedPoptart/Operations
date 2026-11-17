@@ -235,6 +235,75 @@ export async function recordLoadPod(input: {
   revalidateAll();
 }
 
+// ---- Per-drop delivery / POD on a multi-drop load (migration 172) ---------------------------------
+
+// Once every drop on a multi-drop load has been marked delivered, the load itself goes Complete - same as
+// attaching a whole-load POD does today. A single-drop load is unaffected; it still only ever completes
+// through the whole-load actions above. Never reverts a load that's already Complete.
+async function syncLoadCompletion(supabase: SupabaseClient, loadId: string): Promise<void> {
+  const { data: stops } = await supabase.from("load_stops").select("delivered_at").eq("load_id", loadId);
+  if (!stops || stops.length < 2 || !stops.every((s) => s.delivered_at)) return;
+  await supabase.from("loads").update({ status: "complete", pod_pending: false }).eq("id", loadId);
+}
+
+// Marks (or un-marks) one drop delivered, without a POD - for a drop you know is done but aren't attaching
+// paperwork for right now.
+export async function markStopDelivered(stopId: string, delivered: boolean): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: stop, error: stopError } = await supabase.from("load_stops").select("load_id").eq("id", stopId).single();
+  if (stopError || !stop) {
+    return { error: /delivered_at|column/i.test(stopError?.message ?? "") ? "Per-drop delivery isn't set up yet - run migration 172." : (stopError?.message ?? "Drop not found.") };
+  }
+  const { error } = await supabase
+    .from("load_stops")
+    .update({ delivered_at: delivered ? new Date().toISOString() : null, delivered_by: delivered ? (user?.email ?? null) : null })
+    .eq("id", stopId);
+  if (error) return { error: error.message };
+  if (delivered) await syncLoadCompletion(supabase, stop.load_id as string);
+  revalidateAll();
+  return { ok: true };
+}
+
+// A POD file the browser already put in the load-documents bucket, tied to one drop. Marks that drop
+// delivered, and completes the whole load once every drop on it has a delivery marked.
+export async function recordStopPod(input: {
+  stopId: string;
+  loadId: string;
+  fileName: string;
+  storagePath: string;
+  contentType: string | null;
+  sizeBytes: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { error } = await supabase.from("load_documents").insert({
+    load_id: input.loadId,
+    stop_id: input.stopId,
+    kind: "pod",
+    file_name: input.fileName,
+    storage_path: input.storagePath,
+    content_type: input.contentType,
+    size_bytes: input.sizeBytes,
+    source: "manual",
+  });
+  if (error) {
+    return { error: /stop_id|column/i.test(error.message) ? "Per-drop POD isn't set up yet - run migration 172." : error.message };
+  }
+  const { error: stopError } = await supabase
+    .from("load_stops")
+    .update({ delivered_at: new Date().toISOString(), delivered_by: user?.email ?? null })
+    .eq("id", input.stopId);
+  if (stopError) return { error: stopError.message };
+  await syncLoadCompletion(supabase, input.loadId);
+  revalidateAll();
+  return { ok: true };
+}
+
 export interface LoadDocumentLink {
   id: string;
   file_name: string;
@@ -242,6 +311,8 @@ export interface LoadDocumentLink {
   kind: string;
   review_status: string | null;
   url: string | null;
+  // Which drop this belongs to on a multi-drop load - null for a whole-load document.
+  stop_id: string | null;
 }
 
 export async function getLoadDocuments(loadId: string): Promise<LoadDocumentLink[]> {
@@ -262,6 +333,7 @@ export async function getLoadDocuments(loadId: string): Promise<LoadDocumentLink
         kind: (d.kind as string | undefined) ?? "pod",
         review_status: (d.review_status as string | null | undefined) ?? null,
         url: signed?.signedUrl ?? null,
+        stop_id: (d.stop_id as string | null | undefined) ?? null,
       };
     }),
   );

@@ -9,7 +9,7 @@ import {
   updateLoadReady,
   updateLoadStatus,
 } from "./actions";
-import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton } from "./LoadExtras";
+import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton, StopPodControls } from "./LoadExtras";
 import type { LoadCharge } from "@/lib/loadCharges";
 import { LOAD_STATUSES, type Load, type LoadStatus } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
@@ -155,7 +155,7 @@ export default function LoadCard({
           <ClaimBanner load={load} />
         </div>
       )}
-      <LoadSummary load={load} dateFirst={dateFirst} />
+      <LoadSummary load={load} dateFirst={dateFirst} stopActions={(stop) => <StopPodControls stop={stop} loadId={load.id} />} />
 
       {load.status === "on_the_road" && (
         <p

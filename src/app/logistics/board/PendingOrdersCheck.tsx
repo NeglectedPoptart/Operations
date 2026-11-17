@@ -6,7 +6,7 @@ import { todayISO } from "@/lib/dates";
 import type { LoadCharge } from "@/lib/loadCharges";
 import type { Broker, Load } from "@/lib/types";
 import LoadModal from "./LoadModal";
-import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton, inputClass, smallBtn, useRun } from "./LoadExtras";
+import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton, StopPodControls, inputClass, smallBtn, useRun } from "./LoadExtras";
 import {
   markPendingOrdersSeen,
   setPodPending,
@@ -204,7 +204,7 @@ function CheckCard({ load, kind, charges, onFullEdit }: { load: Load; kind: "pen
       <ClaimBanner load={load} />
       {missingEta && <p className="rounded bg-red-600 px-2.5 py-1 text-xs font-bold text-white">⚠ No carrier ETA yet</p>}
 
-      <LoadSummary load={load} dateFirst={kind === "pending"} compact />
+      <LoadSummary load={load} dateFirst={kind === "pending"} compact stopActions={(stop) => <StopPodControls stop={stop} loadId={load.id} />} />
 
       {kind === "road" && (
         <label className="flex items-center gap-2 text-xs font-medium">

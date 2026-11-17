@@ -93,6 +93,9 @@ export interface LoadStop {
   // Either a real appointment time/reference, or the literal "FCFS" - a stop
   // with neither is flagged as missing an appointment.
   appointment: string | null;
+  // This one drop's own delivery, tracked separately on a multi-drop load (migration 172).
+  delivered_at?: string | null;
+  delivered_by?: string | null;
 }
 
 // An extra pickup beyond the load's primary one (loads.source is always the
