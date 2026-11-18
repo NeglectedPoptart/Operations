@@ -31,6 +31,8 @@ function tileToneClasses(tone: "requested" | "green" | "yellow"): string {
   return "border-yellow-500/40 bg-yellow-50 hover:border-yellow-600 dark:border-yellow-700/40 dark:bg-yellow-950/20";
 }
 
+const isLocal = (b: Broker | undefined) => b?.category === "local";
+
 export default function BrokerListClient({
   brokers,
   pendingCounts,
@@ -103,6 +105,8 @@ export default function BrokerListClient({
   function handleDragOver(e: React.DragEvent, index: number) {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
+    // Cards only reorder within their own section (Local vs LTL/FTL).
+    if (isLocal(order[draggedIndex]) !== isLocal(order[index])) return;
     setOrder((prev) => {
       const next = [...prev];
       const [moved] = next.splice(draggedIndex, 1);
@@ -133,6 +137,107 @@ export default function BrokerListClient({
     dragStartOrder.current = null;
   }
 
+  function renderCard(b: Broker, index: number) {
+      const pending = pendingCounts[b.id] ?? 0;
+      const done = doneCounts[b.id] ?? 0;
+      const flagged = flaggedCounts[b.id] ?? 0;
+      const overdue = overdueCounts[b.id] ?? 0;
+      const total = pending + done;
+      const statementRequested = requested[b.id] ?? false;
+      // Green purely means nothing pending - flagged/overdue invoices
+      // are still shown (we pay late anyway, so aging alone isn't
+      // actionable) but don't block green on their own. A clicked
+      // statement request always wins over either.
+      const tone: "requested" | "green" | "yellow" = statementRequested
+        ? "requested"
+        : pending === 0
+          ? "green"
+          : "yellow";
+      const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${tileToneClasses(tone)}`;
+
+      const body = (
+        <>
+          <p className="font-medium">{b.name}</p>
+          <p className="text-sm text-black/60 dark:text-white/60">
+            {pending} pending · {done} done · {total} total
+          </p>
+          {overdue > 0 && (
+            <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">
+              {overdue} over {OVERDUE_DAYS} days
+            </p>
+          )}
+          {flagged > 0 && (
+            <p className="text-xs font-semibold text-red-600 dark:text-red-400">
+              🚩 {flagged} flagged
+            </p>
+          )}
+          <p className="text-xs text-black/40 dark:text-white/40">
+            Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
+          </p>
+          <p
+            className={`text-xs ${
+              checkedRecently(b.last_statement_checked_at)
+                ? "font-semibold text-green-600 dark:text-green-400"
+                : "text-black/40 dark:text-white/40"
+            }`}
+          >
+            Last statement checked: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
+          </p>
+          {statementRequested && (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+              Statement requested
+            </p>
+          )}
+        </>
+      );
+
+      if (editMode) {
+        return (
+          <div
+            key={b.id}
+            draggable
+            onDragStart={() => handleDragStart(index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDrop={handleDrop}
+            onDragEnd={handleDragEnd}
+            className={`${cardClasses} cursor-grab select-none active:cursor-grabbing ${
+              draggedIndex === index ? "opacity-40" : ""
+            }`}
+          >
+            <span
+              aria-hidden
+              className="shrink-0 text-lg leading-none text-black/30 dark:text-white/30"
+            >
+              ⠿
+            </span>
+            <div className="min-w-0 flex-1">{body}</div>
+          </div>
+        );
+      }
+
+      return (
+        <div key={b.id} className={cardClasses}>
+          <Link href={`/accounting/logistics-invoicing/${b.id}`} className="min-w-0 flex-1">
+            {body}
+          </Link>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <FighterJetToggle active={statementRequested} onToggle={() => handleToggle(b.id)} />
+            <button
+              type="button"
+              onClick={() => handleActiveToggle(b, false)}
+              className="text-xs font-medium text-black/40 hover:text-black/70 hover:underline dark:text-white/40 dark:hover:text-white/70"
+            >
+              Mark Inactive
+            </button>
+          </div>
+        </div>
+      );
+  }
+
+  const indexed = order.map((b, index) => ({ b, index }));
+  const topBrokers = indexed.filter(({ b }) => !isLocal(b));
+  const localBrokers = indexed.filter(({ b }) => isLocal(b));
+
   if (order.length === 0 && inactiveBrokers.length === 0) {
     return (
       <p className="text-sm text-black/40 dark:text-white/40">
@@ -157,104 +262,27 @@ export default function BrokerListClient({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {order.map((b, index) => {
-          const pending = pendingCounts[b.id] ?? 0;
-          const done = doneCounts[b.id] ?? 0;
-          const flagged = flaggedCounts[b.id] ?? 0;
-          const overdue = overdueCounts[b.id] ?? 0;
-          const total = pending + done;
-          const statementRequested = requested[b.id] ?? false;
-          // Green purely means nothing pending - flagged/overdue invoices
-          // are still shown (we pay late anyway, so aging alone isn't
-          // actionable) but don't block green on their own. A clicked
-          // statement request always wins over either.
-          const tone: "requested" | "green" | "yellow" = statementRequested
-            ? "requested"
-            : pending === 0
-              ? "green"
-              : "yellow";
-          const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${tileToneClasses(tone)}`;
+      {topBrokers.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-black/50 dark:text-white/50">
+            FTL &amp; LTL Carriers ({topBrokers.length})
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {topBrokers.map(({ b, index }) => renderCard(b, index))}
+          </div>
+        </div>
+      )}
 
-          const body = (
-            <>
-              <p className="font-medium">{b.name}</p>
-              <p className="text-sm text-black/60 dark:text-white/60">
-                {pending} pending · {done} done · {total} total
-              </p>
-              {overdue > 0 && (
-                <p className="text-xs font-semibold text-orange-600 dark:text-orange-400">
-                  {overdue} over {OVERDUE_DAYS} days
-                </p>
-              )}
-              {flagged > 0 && (
-                <p className="text-xs font-semibold text-red-600 dark:text-red-400">
-                  🚩 {flagged} flagged
-                </p>
-              )}
-              <p className="text-xs text-black/40 dark:text-white/40">
-                Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
-              </p>
-              <p
-                className={`text-xs ${
-                  checkedRecently(b.last_statement_checked_at)
-                    ? "font-semibold text-green-600 dark:text-green-400"
-                    : "text-black/40 dark:text-white/40"
-                }`}
-              >
-                Last statement checked: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
-              </p>
-              {statementRequested && (
-                <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-                  Statement requested
-                </p>
-              )}
-            </>
-          );
-
-          if (editMode) {
-            return (
-              <div
-                key={b.id}
-                draggable
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={handleDrop}
-                onDragEnd={handleDragEnd}
-                className={`${cardClasses} cursor-grab select-none active:cursor-grabbing ${
-                  draggedIndex === index ? "opacity-40" : ""
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className="shrink-0 text-lg leading-none text-black/30 dark:text-white/30"
-                >
-                  ⠿
-                </span>
-                <div className="min-w-0 flex-1">{body}</div>
-              </div>
-            );
-          }
-
-          return (
-            <div key={b.id} className={cardClasses}>
-              <Link href={`/accounting/logistics-invoicing/${b.id}`} className="min-w-0 flex-1">
-                {body}
-              </Link>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                <FighterJetToggle active={statementRequested} onToggle={() => handleToggle(b.id)} />
-                <button
-                  type="button"
-                  onClick={() => handleActiveToggle(b, false)}
-                  className="text-xs font-medium text-black/40 hover:text-black/70 hover:underline dark:text-white/40 dark:hover:text-white/70"
-                >
-                  Mark Inactive
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {localBrokers.length > 0 && (
+        <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
+          <h2 className="text-sm font-semibold text-black/50 dark:text-white/50">
+            Local Carriers ({localBrokers.length})
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {localBrokers.map(({ b, index }) => renderCard(b, index))}
+          </div>
+        </div>
+      )}
 
       {inactiveBrokers.length > 0 && (
         <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
