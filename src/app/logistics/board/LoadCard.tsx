@@ -9,7 +9,7 @@ import {
   updateLoadReady,
   updateLoadStatus,
 } from "./actions";
-import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton, StopPodControls } from "./LoadExtras";
+import { AddPodButton, ClaimBanner, LoadClaimCharges, RequestUpdateButton, SendDeliveredNoticeButton, StopPodControls } from "./LoadExtras";
 import type { LoadCharge } from "@/lib/loadCharges";
 import { LOAD_STATUSES, type Load, type LoadStatus } from "@/lib/types";
 import LoadSummary from "@/components/LoadSummary";
@@ -123,6 +123,9 @@ export default function LoadCard({
             )}
           </div>
           <div className="flex shrink-0 items-center gap-3">
+            {load.status === "complete" && (
+              <SendDeliveredNoticeButton load={load} className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10" />
+            )}
             <button
               onClick={() => setShowExtras((v) => !v)}
               className="rounded-md border border-black/20 px-2 py-1 text-xs font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
@@ -219,6 +222,9 @@ export default function LoadCard({
               )}
               {load.status !== "pending_to_load" && (
                 <AddPodButton load={load} className="rounded px-2 py-0.5 text-xs font-medium border border-black/20 hover:bg-black/5 dark:border-white/20" />
+              )}
+              {load.status === "complete" && (
+                <SendDeliveredNoticeButton load={load} className="rounded px-2 py-0.5 text-xs font-medium border border-black/20 hover:bg-black/5 dark:border-white/20" />
               )}
               {load.status !== "complete" && load.broker_id && load.rate_con_sent && (
                 <span

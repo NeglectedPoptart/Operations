@@ -539,6 +539,14 @@ function customerDeliveredEmail(blocks: string[], podCount: number): { subject: 
   return { subject, body };
 }
 
+type DeliveredStopInfo = NonNullable<Load["load_stops"]>[number];
+
+function deliveredBlock(s: DeliveredStopInfo, fallbackIso: string): string {
+  const refs = [s.po_number && `PO ${s.po_number}`, s.order_number && `Order ${s.order_number}`].filter(Boolean).join(" - ");
+  const place = [s.destination_city, s.destination_state].filter(Boolean).join(", ");
+  return [refs || "Your order", ...(place ? [`   Delivered to: ${place}`] : []), `   Delivered: ${localDay(s.delivered_at ?? fallbackIso)}`].join("\n");
+}
+
 export async function triggerCustomerDelivered(db: SupabaseClient, loadIds: string[]): Promise<void> {
   if (loadIds.length === 0) return;
   const { data: agent } = await db.from("agents").select("*").eq("key", "customer_eta").maybeSingle<Agent>();
@@ -621,12 +629,7 @@ async function runCustomerDelivered(
     const cc = splitEmails(row?.cc_emails as string | null | undefined);
 
     const podFiles = [...entry.docs.values()];
-    const blocks = entry.stops.map((s) => {
-      const refs = [s.po_number && `PO ${s.po_number}`, s.order_number && `Order ${s.order_number}`].filter(Boolean).join(" - ");
-      const place = [s.destination_city, s.destination_state].filter(Boolean).join(", ");
-      const when = s.delivered_at ? localDay(s.delivered_at) : localDay(podFiles[0].created_at);
-      return [refs || "Your order", ...(place ? [`   Delivered to: ${place}`] : []), `   Delivered: ${when}`].join("\n");
-    });
+    const blocks = entry.stops.map((s) => deliveredBlock(s, podFiles[0].created_at));
     const email = customerDeliveredEmail(blocks, podFiles.length);
     const thread = await createThread(db, agent, {
       tag: newTag(),
@@ -657,6 +660,82 @@ async function runCustomerDelivered(
     if (!already || already.length === 0) await logEvent(db, agent.id, "skipped", message);
   }
   return created;
+}
+
+// A person clicking "Send delivered notice" on a Delivered load's tile: emails each customer on the load
+// the delivered notice with the POD attached, right now. The click is the approval, so it isn't held as a
+// draft and works whether or not the Customer ETA agent is switched on; it can be sent again (a resend).
+export async function sendDeliveredNotice(
+  db: SupabaseClient,
+  loadId: string,
+): Promise<{ sentTo: string[] } | { error: string }> {
+  if (!graphConfigured()) return { error: "Outlook isn't connected yet, so HOPS can't send email." };
+  const { data: agent } = await db.from("agents").select("*").eq("key", "customer_eta").maybeSingle<Agent>();
+  if (!agent) return { error: "The Customer ETA agent isn't set up yet (HOPS Agents)." };
+
+  const { data: load, error } = await db.from("loads").select("*, load_stops(*)").eq("id", loadId).maybeSingle();
+  if (error) return { error: error.message };
+  if (!load) return { error: "Load not found." };
+  if (load.status !== "complete") return { error: "Only a Delivered load can have a delivered notice sent." };
+
+  const { data: docRows, error: docError } = await db
+    .from("load_documents")
+    .select("id, stop_id, file_name, storage_path, content_type, review_status, created_at")
+    .eq("load_id", loadId)
+    .eq("kind", "pod");
+  if (docError) return { error: docError.message };
+  type NoticeDoc = { id: string; stop_id: string | null; file_name: string; storage_path: string; content_type: string | null; review_status: string | null; created_at: string };
+  const docs = ((docRows ?? []) as NoticeDoc[]).filter((d) => d.review_status !== "rejected");
+  if (docs.length === 0) return { error: "This load has no POD yet - attach one first." };
+
+  const { data: customerRows } = await db.from("customer_emails").select("name_key, to_emails, cc_emails");
+  const emailsByKey = new Map((customerRows ?? []).map((c) => [c.name_key as string, c]));
+
+  type Group = { name: string; stops: DeliveredStopInfo[]; docs: Map<string, NoticeDoc> };
+  const groups = new Map<string, Group>();
+  for (const stop of [...((load as Load).load_stops ?? [])].sort((a, b) => a.position - b.position)) {
+    const key = customerKey(stop.client_name);
+    if (!key) continue;
+    const own = docs.filter((d) => d.stop_id === stop.id);
+    const files = own.length > 0 ? own : docs.filter((d) => !d.stop_id);
+    if (files.length === 0) continue;
+    const group: Group = groups.get(key) ?? { name: stop.client_name ?? key, stops: [], docs: new Map() };
+    group.stops.push(stop);
+    for (const d of files) group.docs.set(d.id, d);
+    groups.set(key, group);
+  }
+  if (groups.size === 0) return { error: "No customer on this load has a POD attached to their drop." };
+
+  const noEmail = [...groups]
+    .filter(([key]) => splitEmails(emailsByKey.get(key)?.to_emails as string | null | undefined).length === 0)
+    .map(([, g]) => g.name);
+  if (noEmail.length > 0) return { error: `No email address on file for ${noEmail.join(", ")}. Add them under HOPS Agents > Customer emails.` };
+
+  const sentTo: string[] = [];
+  for (const [key, group] of groups) {
+    const row = emailsByKey.get(key);
+    const to = splitEmails(row?.to_emails as string | null | undefined);
+    const cc = splitEmails(row?.cc_emails as string | null | undefined);
+    const podFiles = [...group.docs.values()];
+    const email = customerDeliveredEmail(
+      group.stops.map((s) => deliveredBlock(s, podFiles[0].created_at)),
+      podFiles.length,
+    );
+    const thread = await createThread(db, agent, {
+      tag: newTag(),
+      recordIds: [loadId],
+      to,
+      cc,
+      attachments: podFiles.map((d) => ({ name: d.file_name, path: d.storage_path, contentType: d.content_type ?? "application/octet-stream" })),
+      ...email,
+    });
+    await sendThread(db, thread.id);
+    const { data: after } = await db.from("agent_threads").select("status, error").eq("id", thread.id).single();
+    if (after?.status !== "sent") return { error: after?.error ?? "The email could not be sent." };
+    await db.from("load_stops").update({ delivered_email_at: new Date().toISOString() }).in("id", group.stops.map((s) => s.id));
+    sentTo.push(...to);
+  }
+  return { sentTo };
 }
 
 // A person clicking "Request update" on an On the Road load in Order Check / the List: sends the

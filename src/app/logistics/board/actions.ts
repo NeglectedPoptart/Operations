@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import zipcodes from "zipcodes";
 import { createClient } from "@/lib/supabase/server";
-import { requestLoadUpdate, serviceClient, triggerCustomerDelivered } from "@/lib/agents/run";
+import { requestLoadUpdate, sendDeliveredNotice, serviceClient, triggerCustomerDelivered } from "@/lib/agents/run";
 import { personName } from "@/lib/displayName";
 import { todayISO } from "@/lib/dates";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
@@ -368,6 +368,23 @@ export async function requestCarrierUpdate(loadId: string): Promise<{ sent: stri
     if ("error" in result) return result;
     revalidateAll();
     return { sent: `Asked ${result.carrier} (${result.sentTo.join(", ")}) for an update.` };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't send the email." };
+  }
+}
+
+// Emails the customer(s) on a Delivered load the delivered notice with the POD attached, now.
+export async function sendCustomerDeliveredNotice(loadId: string): Promise<{ sent: string } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+  try {
+    const result = await sendDeliveredNotice(supabase, loadId);
+    if ("error" in result) return result;
+    revalidateAll();
+    return { sent: `Delivered notice sent to ${result.sentTo.join(", ")}.` };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Couldn't send the email." };
   }

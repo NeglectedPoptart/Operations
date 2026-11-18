@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/client";
 import { CHARGE_KINDS, payerSummary, payerTone, type LoadCharge } from "@/lib/loadCharges";
 import type { Load, LoadStop } from "@/lib/types";
-import { addLoadCharge, deleteLoadCharge, markStopDelivered, recordLoadPod, recordStopPod, requestCarrierUpdate, setLoadClaim } from "./actions";
+import { addLoadCharge, deleteLoadCharge, markStopDelivered, recordLoadPod, recordStopPod, requestCarrierUpdate, sendCustomerDeliveredNotice, setLoadClaim } from "./actions";
 import ChargePayerPicker, { emptyPayer } from "./ChargePayerPicker";
 
 // The Claim flag and the extra freight charges on a load - shared by the List's load
@@ -68,6 +68,42 @@ export function RequestUpdateButton({ load, className = smallBtn }: { load: Load
       className={`${className} ${state === "sent" ? "!border-green-600 !text-green-700" : ""}`}
     >
       {state === "sending" ? "Sending..." : state === "sent" ? "✓ Update requested" : "✉ Request update"}
+    </button>
+  );
+}
+
+// "Send delivered notice" on a Delivered load's tile: emails the customer(s) that it was delivered, with the POD
+// attached, right now. Works as a resend too.
+export function SendDeliveredNoticeButton({ load, className = smallBtn }: { load: Load; className?: string }) {
+  const confirm = useConfirm();
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+
+  async function send() {
+    if (!(await confirm("Email the customer a delivered notice with the POD attached?"))) return;
+    setState("sending");
+    try {
+      const result = await sendCustomerDeliveredNotice(load.id);
+      if ("error" in result) {
+        alert(result.error);
+        setState("idle");
+      } else {
+        setState("sent");
+        setTimeout(() => setState("idle"), 8000);
+      }
+    } catch {
+      alert("Couldn't send the email - try again.");
+      setState("idle");
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void send()}
+      disabled={state === "sending"}
+      title="Email the customer that this order was delivered, with the POD attached"
+      className={`${className} ${state === "sent" ? "!border-green-600 !text-green-700" : ""}`}
+    >
+      {state === "sending" ? "Sending..." : state === "sent" ? "✓ Notice sent" : "✉ Send delivered notice"}
     </button>
   );
 }
