@@ -5,7 +5,7 @@ import { useConfirm } from "@/components/ConfirmProvider";
 import UpdateStatusButton from "@/components/UpdateStatusButton";
 import { daysSince, formatDate } from "@/lib/dates";
 import type { PendingToInvoiceItem } from "@/lib/types";
-import { clearInvoicingItems, deletePendingToInvoiceItem } from "./actions";
+import { clearInvoicingItems, clearPendingItems, deletePendingToInvoiceItem } from "./actions";
 
 function isInvoicing(item: PendingToInvoiceItem): boolean {
   return (item.status ?? "").trim().toLowerCase() === "invoicing";
@@ -90,6 +90,7 @@ export default function PendingToInvoiceClient({ initialItems }: { initialItems:
   const confirm = useConfirm();
   const [items, setItems] = useState(initialItems);
   const [clearing, setClearing] = useState(false);
+  const [clearingPending, setClearingPending] = useState(false);
 
   const pending = items.filter((i) => !isInvoicing(i));
   const invoicing = items.filter(isInvoicing);
@@ -98,6 +99,24 @@ export default function PendingToInvoiceClient({ initialItems }: { initialItems:
     if (!(await confirm("Delete this row? (Only do this once it's been invoiced.)"))) return;
     setItems((prev) => prev.filter((i) => i.id !== id));
     await deletePendingToInvoiceItem(id).catch(() => {});
+  }
+
+  async function handleClearPending() {
+    if (pending.length === 0) return;
+    if (
+      !(await confirm(
+        `Clear all ${pending.length} row${pending.length === 1 ? "" : "s"} from the Pending to Invoice list? Rows in the Invoicing list below are kept. This can't be undone.`,
+      ))
+    ) {
+      return;
+    }
+    setClearingPending(true);
+    try {
+      setItems((prev) => prev.filter(isInvoicing));
+      await clearPendingItems();
+    } finally {
+      setClearingPending(false);
+    }
   }
 
   async function handleClearInvoicing() {
@@ -125,12 +144,21 @@ export default function PendingToInvoiceClient({ initialItems }: { initialItems:
       <div className="space-y-8">
         <UpdateStatusButton pageKey="pending-to-invoice" />
         <div className="space-y-4">
-          <div>
-            <h1 className="text-2xl font-bold">Pending to Invoice</h1>
-            <p className="mt-1 text-sm text-black/60 dark:text-white/60">
-              Everything from the pending-to-invoice paste that isn&apos;t marked PAS lands here. Paste the
-              full list from Compliance &gt; PAS Files - delete a row once it&apos;s been invoiced.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h1 className="text-2xl font-bold">Pending to Invoice</h1>
+              <p className="mt-1 text-sm text-black/60 dark:text-white/60">
+                Everything from the pending-to-invoice paste that isn&apos;t marked PAS lands here. Paste the
+                full list from Compliance &gt; PAS Files - delete a row once it&apos;s been invoiced.
+              </p>
+            </div>
+            <button
+              onClick={handleClearPending}
+              disabled={clearingPending || pending.length === 0}
+              className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            >
+              {clearingPending ? "Clearing..." : "Clear List"}
+            </button>
           </div>
           <PendingTable
             items={pending}

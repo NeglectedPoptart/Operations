@@ -10,6 +10,15 @@ export async function deletePendingToInvoiceItem(id: string) {
   revalidatePath("/accounting/pending-to-invoice");
 }
 
+// Bulk-clears the main Pending to Invoice list: every row that isn't marked Invoicing (those sit in their own
+// list below and are cleared separately).
+export async function clearPendingItems() {
+  const supabase = await createClient();
+  const { error } = await supabase.from("pending_to_invoice").delete().or("status.is.null,status.not.ilike.invoicing");
+  if (error) throw new Error(error.message);
+  revalidatePath("/accounting/pending-to-invoice");
+}
+
 // Bulk-clears the "Invoicing" sub-list (status marked Invoicing) once
 // accounting has finished processing everything on it.
 export async function clearInvoicingItems() {
