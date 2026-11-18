@@ -36,6 +36,10 @@ export interface Agent {
     // not only at the fixed times. Unset means yes.
     on_carrier_reply?: boolean;
     send_times?: string[];
+    // customer_eta: email the customer "delivered" with the POD attached (unset = yes), and the moment
+    // that started - only PODs added after it trigger one (set by migration 173).
+    delivered_emails?: boolean;
+    delivered_from?: string;
     // delivered_sheets: which Delivered sheets to send (houston, dallas, east-coast; unset = all three), and a
     // test address: when set, the sheets go ONLY there (subject starts with [TEST]) and never to customers.
     lanes?: string[];
@@ -60,6 +64,8 @@ export interface AgentThread {
   to_emails: string[];
   // Only present once migration 160 is run; used by the customer emails.
   cc_emails?: string[];
+  // Only present once migration 173 is run: files attached when the thread is sent (customer delivered emails).
+  attachment_paths?: { name: string; path: string; contentType: string }[];
   subject: string;
   body: string;
   graph_message_id: string | null;

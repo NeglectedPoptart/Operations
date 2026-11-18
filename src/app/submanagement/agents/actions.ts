@@ -42,16 +42,17 @@ export async function updateAgent(
     window_start?: string;
     window_end?: string;
     on_carrier_reply?: boolean;
+    delivered_emails?: boolean;
     lanes?: string[];
     test_to?: string[];
     repeat_minutes?: number;
   },
 ) {
   const supabase = await ownerClient();
-  const { recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, on_carrier_reply, lanes, test_to, repeat_minutes, ...columns } = patch;
+  const { recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, on_carrier_reply, delivered_emails, lanes, test_to, repeat_minutes, ...columns } = patch;
   const update: Record<string, unknown> = { ...columns };
   const configPatch = Object.fromEntries(
-    Object.entries({ recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, on_carrier_reply, lanes, test_to, repeat_minutes }).filter(
+    Object.entries({ recipients, recipient_roles, order_labels, read_replies, auto_apply_replies, reply_to, send_times, window_start, window_end, on_carrier_reply, delivered_emails, lanes, test_to, repeat_minutes }).filter(
       ([, v]) => v !== undefined,
     ),
   );

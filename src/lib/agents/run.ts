@@ -17,6 +17,7 @@ import {
   listXlsxAttachments,
   markRead,
   sendEmail,
+  type EmailAttachment,
   type InboxMessage,
 } from "./graph";
 import { claudeConfigured, parseBuyersReply, parseOrdersReply, parseReply, verifyPod } from "./parseReply";
@@ -202,12 +203,19 @@ export async function sendThread(db: SupabaseClient, threadId: string): Promise<
     .single<Pick<Agent, "key" | "config">>();
 
   try {
+    const attachments: EmailAttachment[] = [];
+    for (const file of thread.attachment_paths ?? []) {
+      const { data: blob, error: downloadError } = await db.storage.from("load-documents").download(file.path);
+      if (downloadError || !blob) throw new Error(`Couldn't read ${file.name}: ${downloadError?.message ?? "file missing"}`);
+      attachments.push({ name: file.name, contentType: file.contentType, data: new Uint8Array(await blob.arrayBuffer()) });
+    }
     const sent = await sendEmail({
       to: thread.to_emails,
       cc: thread.cc_emails,
       replyTo: agent?.config.reply_to,
       subject: thread.subject,
       body: thread.body,
+      ...(attachments.length > 0 ? { attachments } : {}),
     });
     await db
       .from("agent_threads")
@@ -230,7 +238,15 @@ export async function sendThread(db: SupabaseClient, threadId: string): Promise<
 async function createThread(
   db: SupabaseClient,
   agent: Agent,
-  input: { tag: string; recordIds: string[]; to: string[]; cc?: string[]; subject: string; body: string },
+  input: {
+    tag: string;
+    recordIds: string[];
+    to: string[];
+    cc?: string[];
+    subject: string;
+    body: string;
+    attachments?: { name: string; path: string; contentType: string }[];
+  },
 ): Promise<AgentThread> {
   const { data, error } = await db
     .from("agent_threads")
@@ -240,6 +256,7 @@ async function createThread(
       record_ids: input.recordIds,
       to_emails: input.to,
       ...(input.cc && input.cc.length > 0 ? { cc_emails: input.cc } : {}),
+      ...(input.attachments && input.attachments.length > 0 ? { attachment_paths: input.attachments } : {}),
       subject: input.subject,
       body: input.body,
       status: "draft",
@@ -478,6 +495,156 @@ async function runCustomerEta(db: SupabaseClient, agent: Agent, force: boolean, 
     const message = `No ETA email address on file for: ${[...missingEmail].join(", ")}. Add them under Customer emails.`;
     if (force) notes.push(message);
     // Every 15-minute tick of the slot would otherwise repeat this.
+    const since = new Date(Date.now() - 6 * 3_600_000).toISOString();
+    const { data: already } = await db
+      .from("agent_events")
+      .select("id")
+      .eq("agent_id", agent.id)
+      .eq("kind", "skipped")
+      .eq("message", message)
+      .gte("created_at", since)
+      .limit(1);
+    if (!already || already.length === 0) await logEvent(db, agent.id, "skipped", message);
+  }
+  return created;
+}
+
+// ---------------------------------------------------------------------------
+// Customer "delivered" emails: once a drop is delivered and its POD is on file, that customer is told
+// and gets the POD attached. A single-drop load counts once it is Complete; on a multi-drop load each
+// drop goes as soon as it is marked delivered, with its own POD (or the whole-load POD). One email per
+// customer per run, covering all their newly delivered drops. Only PODs added after the agent's
+// delivered_from time count, so old loads are never emailed. Each drop goes out once (delivered_email_at).
+
+function localDay(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", { timeZone: APP_TIMEZONE, month: "numeric", day: "numeric" }).format(new Date(iso));
+}
+
+function customerDeliveredEmail(blocks: string[], podCount: number): { subject: string; body: string } {
+  const subject = blocks.length === 1 ? "Harvest Best - order delivered" : `Harvest Best - orders delivered (${blocks.length} orders)`;
+  const body = [
+    "Hello,",
+    "",
+    blocks.length === 1 ? "Your Harvest Best order has been delivered." : "Your Harvest Best orders below have been delivered.",
+    "",
+    blocks.join("\n\n"),
+    "",
+    podCount === 1 ? "The signed proof of delivery (POD) is attached." : "The signed proofs of delivery (POD) are attached.",
+    "",
+    "If you have any questions about this delivery, just reply to this email.",
+    "",
+    "Thank you,",
+    "Harvest Best Logistics",
+  ].join("\n");
+  return { subject, body };
+}
+
+export async function triggerCustomerDelivered(db: SupabaseClient, loadIds: string[]): Promise<void> {
+  if (loadIds.length === 0) return;
+  const { data: agent } = await db.from("agents").select("*").eq("key", "customer_eta").maybeSingle<Agent>();
+  if (!agent || !agent.enabled) return;
+  await runCustomerDelivered(db, agent, { loadIds });
+}
+
+async function runCustomerDelivered(
+  db: SupabaseClient,
+  agent: Agent,
+  opts: { loadIds?: string[]; notes?: string[] } = {},
+): Promise<number> {
+  if (agent.config.delivered_emails === false) return 0;
+  const from = agent.config.delivered_from;
+  if (!from) {
+    opts.notes?.push("Delivered emails aren't set up yet (run migration 173).");
+    return 0;
+  }
+
+  let docQuery = db
+    .from("load_documents")
+    .select("id, load_id, stop_id, file_name, storage_path, content_type, review_status, created_at")
+    .eq("kind", "pod")
+    .gte("created_at", from);
+  if (opts.loadIds) docQuery = docQuery.in("load_id", opts.loadIds);
+  const { data: docRows, error: docError } = await docQuery;
+  if (docError) {
+    opts.notes?.push(`Delivered emails: ${docError.message}`);
+    return 0;
+  }
+  type PodDoc = { id: string; load_id: string; stop_id: string | null; file_name: string; storage_path: string; content_type: string | null; created_at: string };
+  const docs = ((docRows ?? []) as (PodDoc & { review_status: string | null })[]).filter((d) => d.review_status !== "rejected");
+  if (docs.length === 0) return 0;
+
+  const { data: loads, error: loadError } = await db
+    .from("loads")
+    .select("*, load_stops(*)")
+    .in("id", [...new Set(docs.map((d) => d.load_id))]);
+  if (loadError) {
+    opts.notes?.push(`Delivered emails: ${loadError.message}`);
+    return 0;
+  }
+
+  type Stop = NonNullable<Load["load_stops"]>[number] & { delivered_email_at?: string | null };
+  type Entry = { name: string; stops: Stop[]; docs: Map<string, PodDoc>; loadIds: Set<string> };
+  const byCustomer = new Map<string, Entry>();
+  for (const load of (loads ?? []) as Load[]) {
+    const loadDocs = docs.filter((d) => d.load_id === load.id);
+    for (const stop of [...(load.load_stops ?? [])].sort((a, b) => a.position - b.position) as Stop[]) {
+      if (stop.delivered_email_at) continue;
+      if (load.status !== "complete" && !stop.delivered_at) continue;
+      const own = loadDocs.filter((d) => d.stop_id === stop.id);
+      const podFiles = own.length > 0 ? own : loadDocs.filter((d) => !d.stop_id);
+      if (podFiles.length === 0) continue;
+      const key = customerKey(stop.client_name);
+      if (!key) continue;
+      const entry: Entry = byCustomer.get(key) ?? { name: stop.client_name ?? key, stops: [], docs: new Map(), loadIds: new Set() };
+      entry.stops.push(stop);
+      for (const d of podFiles) entry.docs.set(d.id, d);
+      entry.loadIds.add(load.id);
+      byCustomer.set(key, entry);
+    }
+  }
+  if (byCustomer.size === 0) return 0;
+
+  const { data: customerRows, error: customerError } = await db.from("customer_emails").select("name_key, to_emails, cc_emails");
+  if (customerError) return 0;
+  const emailsByKey = new Map((customerRows ?? []).map((c) => [c.name_key as string, c]));
+
+  const missingEmail = new Set<string>();
+  let created = 0;
+  for (const [key, entry] of byCustomer) {
+    if (created >= MAX_NEW_THREADS_PER_RUN) break;
+    const row = emailsByKey.get(key);
+    const to = splitEmails(row?.to_emails as string | null | undefined);
+    if (to.length === 0) {
+      missingEmail.add(entry.name);
+      continue;
+    }
+    const cc = splitEmails(row?.cc_emails as string | null | undefined);
+
+    const podFiles = [...entry.docs.values()];
+    const blocks = entry.stops.map((s) => {
+      const refs = [s.po_number && `PO ${s.po_number}`, s.order_number && `Order ${s.order_number}`].filter(Boolean).join(" - ");
+      const place = [s.destination_city, s.destination_state].filter(Boolean).join(", ");
+      const when = s.delivered_at ? localDay(s.delivered_at) : localDay(podFiles[0].created_at);
+      return [refs || "Your order", ...(place ? [`   Delivered to: ${place}`] : []), `   Delivered: ${when}`].join("\n");
+    });
+    const email = customerDeliveredEmail(blocks, podFiles.length);
+    const thread = await createThread(db, agent, {
+      tag: newTag(),
+      recordIds: [...entry.loadIds],
+      to,
+      cc,
+      attachments: podFiles.map((d) => ({ name: d.file_name, path: d.storage_path, contentType: d.content_type ?? "application/octet-stream" })),
+      ...email,
+    });
+    await db.from("load_stops").update({ delivered_email_at: new Date().toISOString() }).in("id", entry.stops.map((s) => s.id));
+    created++;
+    if (agent.mode === "auto") await sendThread(db, thread.id);
+    else await draftCreated(db, agent, thread);
+  }
+
+  if (missingEmail.size > 0) {
+    const message = `No email address on file for delivered orders: ${[...missingEmail].join(", ")}. Add them under Customer emails.`;
+    opts.notes?.push(message);
     const since = new Date(Date.now() - 6 * 3_600_000).toISOString();
     const { data: already } = await db
       .from("agent_events")
@@ -780,7 +947,10 @@ export async function runAgents(
     }
     try {
       if (agent.key === "load_eta") created += await runLoadEta(db, agent, opts.ignoreHours === true);
-      else if (agent.key === "customer_eta") created += await runCustomerEta(db, agent, opts.ignoreHours === true, notes);
+      else if (agent.key === "customer_eta") {
+        created += await runCustomerEta(db, agent, opts.ignoreHours === true, notes);
+        created += await runCustomerDelivered(db, agent, { notes });
+      }
       else if (agent.key === "buyers_list") created += await runBuyersList(db, agent, opts.ignoreHours === true);
       else if (agent.key === "orders_pending") created += await runOrdersPending(db, agent, opts.ignoreHours === true, notes);
       else if (agent.key === "freight_statements") {
@@ -1505,6 +1675,13 @@ export async function applyReply(
 
   // The carrier has finally answered with an ETA: the customer on that load hears about it now
   // rather than at the next scheduled time (see triggerCustomerEta).
+  const podLoadIds = [...new Set(pods.map((a) => a.load_id!))];
+  if (podLoadIds.length > 0) {
+    await triggerCustomerDelivered(db, podLoadIds).catch(async (err) => {
+      await logEvent(db, null, "error", `Customer delivered email could not be prepared: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
   const etaLoadIds = work.filter((u) => u.eta_note && u.load_id).map((u) => u.load_id);
   if (etaLoadIds.length > 0) {
     await triggerCustomerEta(db, etaLoadIds).catch(async (err) => {

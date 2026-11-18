@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { extractText, getDocumentProxy } from "unpdf";
 import zipcodes from "zipcodes";
 import { createClient } from "@/lib/supabase/server";
-import { requestLoadUpdate } from "@/lib/agents/run";
+import { requestLoadUpdate, serviceClient, triggerCustomerDelivered } from "@/lib/agents/run";
 import { personName } from "@/lib/displayName";
 import { todayISO } from "@/lib/dates";
 import { destinationLabel, normalizeForMatch } from "@/lib/laneLabel";
@@ -15,6 +15,16 @@ import { splitDestinationLabel } from "@/lib/destination";
 import type { LoadStatus } from "@/lib/types";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+// A delivery was just recorded: the Customer ETA agent (if on) emails the customer "delivered" with the POD.
+// Never blocks or fails the action - the agent's own 15-minute run picks up anything this misses.
+async function tellCustomerDelivered(loadId: string): Promise<void> {
+  try {
+    await triggerCustomerDelivered(serviceClient(), [loadId]);
+  } catch {
+    // the delivery is saved either way
+  }
+}
 
 interface StopInput {
   order_number: string | null;
@@ -196,6 +206,7 @@ export async function updateLoadStatus(id: string, status: LoadStatus) {
     .update(status === "on_the_road" ? { status } : { status, pod_pending: false })
     .eq("id", id);
   if (error) throw new Error(error.message);
+  if (status === "complete") await tellCustomerDelivered(id);
   revalidateAll();
 }
 
@@ -232,6 +243,7 @@ export async function recordLoadPod(input: {
     .update({ status: "complete", pod_pending: false, pod_submitted_at: null, pod_rejected_note: null })
     .eq("id", input.loadId);
   if (loadError) throw new Error(loadError.message);
+  await tellCustomerDelivered(input.loadId);
   revalidateAll();
 }
 
@@ -262,7 +274,10 @@ export async function markStopDelivered(stopId: string, delivered: boolean): Pro
     .update({ delivered_at: delivered ? new Date().toISOString() : null, delivered_by: delivered ? (user?.email ?? null) : null })
     .eq("id", stopId);
   if (error) return { error: error.message };
-  if (delivered) await syncLoadCompletion(supabase, stop.load_id as string);
+  if (delivered) {
+    await syncLoadCompletion(supabase, stop.load_id as string);
+    await tellCustomerDelivered(stop.load_id as string);
+  }
   revalidateAll();
   return { ok: true };
 }
@@ -300,6 +315,7 @@ export async function recordStopPod(input: {
     .eq("id", input.stopId);
   if (stopError) return { error: stopError.message };
   await syncLoadCompletion(supabase, input.loadId);
+  await tellCustomerDelivered(input.loadId);
   revalidateAll();
   return { ok: true };
 }
@@ -689,6 +705,7 @@ export async function approvePod(loadId: string): Promise<{ ok: true } | { error
     .update({ status: "complete", pod_pending: false, pod_submitted_at: null, pod_rejected_note: null })
     .eq("id", loadId);
   if (error) return { error: error.message };
+  await tellCustomerDelivered(loadId);
   revalidateAll();
   return { ok: true };
 }

@@ -385,6 +385,24 @@ function AgentCard({ agent, roleOptions, people, orderLabels }: { agent: Agent; 
           <input
             type="checkbox"
             className="mt-0.5"
+            checked={agent.config.delivered_emails !== false}
+            disabled={pending}
+            onChange={(e) => save({ delivered_emails: e.target.checked })}
+          />
+          <span>
+            <b>Email the customer when their order is delivered</b>
+            <span className="block text-black/60 dark:text-white/60">
+              Once a load (or one drop of a multi-drop load) is delivered and its POD is on file, that customer gets a &quot;delivered&quot; email with the POD
+              attached. Goes to the same customer emails as the ETA updates, and follows the same approve-first / auto setting.
+            </span>
+          </span>
+        </label>
+      )}
+      {agent.key === "customer_eta" && (
+        <label className="flex items-start gap-2 rounded-lg border border-black/10 bg-white/60 p-2.5 text-xs dark:border-white/10 dark:bg-white/5">
+          <input
+            type="checkbox"
+            className="mt-0.5"
             checked={agent.config.on_carrier_reply !== false}
             disabled={pending}
             onChange={(e) => save({ on_carrier_reply: e.target.checked })}
