@@ -11,6 +11,14 @@ const AWAY_REFRESH_MS = 30_000; // coming back to a tab that was in the backgrou
 // Pages that already update themselves live, or where a refresh underneath you would only get in the way.
 const SKIP_DATA_REFRESH = ["/messages"];
 
+// Pages where what people have entered must never be touched: no data refresh and no automatic reload for a
+// new version - only the "new version ready" bar, which they click when they're done.
+const NEVER_TOUCH = ["/logistics/freight-calculator"];
+
+function onPage(pathname: string, pages: string[]): boolean {
+  return pages.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 const BUILD = process.env.NEXT_PUBLIC_BUILD_ID ?? "";
 
 function typingInAField(): boolean {
@@ -47,7 +55,7 @@ export default function AutoRefresh() {
 
     function refreshData() {
       if (document.visibilityState !== "visible" || updateRef.current || typingInAField()) return;
-      if (SKIP_DATA_REFRESH.some((p) => pathRef.current === p || pathRef.current.startsWith(`${p}/`))) return;
+      if (onPage(pathRef.current, SKIP_DATA_REFRESH) || onPage(pathRef.current, NEVER_TOUCH)) return;
       router.refresh();
     }
 
@@ -68,7 +76,7 @@ export default function AutoRefresh() {
 
     // A new version is ready: reload quietly if nobody is working in this tab, otherwise leave the bar up.
     function maybeReload() {
-      if (!updateRef.current) return;
+      if (!updateRef.current || onPage(pathRef.current, NEVER_TOUCH)) return;
       if (Date.now() - lastInput.current > IDLE_RELOAD_MS && !typingInAField()) window.location.reload();
     }
 
