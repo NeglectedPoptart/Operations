@@ -96,7 +96,7 @@ export default function LoadSummary({
         <div className={compact ? "flex flex-wrap items-baseline gap-x-3 text-sm" : "text-right text-sm"}>
           {load.rate != null && (
             chargeTotal !== 0 ? (
-              <p className="font-semibold text-emerald-700 dark:text-emerald-400">
+              <p className="font-bold text-red-600 dark:text-red-400">
                 ${(load.rate + chargeTotal).toLocaleString()}
                 <span
                   className="ml-1.5 text-xs font-normal text-black/50 dark:text-white/50"
