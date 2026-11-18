@@ -256,6 +256,9 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
       const { inserted, alreadyOnList } = await mergeInvoices(db, String(broker.id), rows);
       outcomes.push({ label: source.label, carrier, found: rows.length, added: inserted.length, already: alreadyOnList });
       touched.add(carrier);
+      // A statement that arrived by email counts as checking that carrier's statement, same as running the
+      // Statement Checker - even when every invoice on it was already on the list.
+      await db.from("brokers").update({ last_statement_checked_at: new Date().toISOString() }).eq("id", String(broker.id));
     } catch (err) {
       outcomes.push({ label: source.label, carrier, error: `couldn't save the invoices (${err instanceof Error ? err.message : String(err)}).` });
     }
