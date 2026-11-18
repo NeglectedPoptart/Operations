@@ -90,22 +90,6 @@ export function parseRateConfirmationText(text: string, knownHubs: string[] = []
     }
   }
 
-  // Order Date <= Pick up Date <= Delivery Date always holds for a real load,
-  // so sorting whatever M/D/YYYY dates appear (rather than trusting their
-  // position in the jumbled text) reliably picks out Pick up/Delivery as the
-  // middle/last one - stable even though Delivery Date's value lands nowhere
-  // near its own label in the raw extraction.
-  const dateMatches = [...bodyText.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g)];
-  const isoDates = Array.from(new Set(dateMatches.map((m) => isoDate(m[1], m[2], m[3])))).sort();
-  const loadingDate = isoDates.length >= 2 ? isoDates[isoDates.length - 2] : (isoDates[0] ?? null);
-  const deliveryDate = isoDates.length >= 1 ? isoDates[isoDates.length - 1] : null;
-
-  const source =
-    knownHubs.find((hub) => {
-      const city = hub.split(",")[0]?.trim();
-      return city ? new RegExp(`\\b${escapeRegExp(city)}\\b`, "i").test(normalized) : false;
-    }) ?? null;
-
   // The "Instructions:" label is directly adjacent to the load-specific
   // handling notes (Temp, delivery day/time, etc.) and "Order #" always
   // follows right after - unlike everything else on this template, this
@@ -115,6 +99,39 @@ export function parseRateConfirmationText(text: string, knownHubs: string[] = []
   // elsewhere in the stream and is deliberately NOT captured here - it's the
   // same on every rate confirmation and isn't load-specific.
   const instructionsBlock = normalized.match(/Instructions:\s*\n([\s\S]*?)\nOrder #/)?.[1] ?? "";
+
+  // Order Date <= Pick up Date <= Delivery Date always holds for a real load,
+  // so sorting the header's M/D/YYYY dates (rather than trusting their
+  // position in the jumbled text) picks them out - stable even though Delivery
+  // Date's value lands nowhere near its own label in the raw extraction. The
+  // Delivery Date field is often left blank (the day is in the Instructions
+  // instead), so two dates means Order + Pick up, not Pick up + Delivery.
+  // Dates are not de-duplicated: a same-day pick up and delivery is two dates.
+  const headerText = bodyText.replace(instructionsBlock, "");
+  const dateMatches = [...headerText.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/g)];
+  const isoDates = dateMatches.map((m) => isoDate(m[1], m[2], m[3])).sort();
+  const loadingDate = isoDates.length >= 2 ? isoDates[1] : (isoDates[0] ?? null);
+  let deliveryDate = isoDates.length >= 3 ? isoDates[isoDates.length - 1] : null;
+
+  // "FRIDAY DELIVER 11/20 10AM" - no year, so borrow the pick up date's (rolling into
+  // the next year if that would put delivery before pick up).
+  if (!deliveryDate && loadingDate) {
+    const m = instructionsBlock.match(/deliver\w*\s+(?:on\s+)?(?:[a-z]+\.?\s+)?(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/i);
+    if (m) {
+      const pickYear = Number(loadingDate.slice(0, 4));
+      const year = m[3] ? (m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3])) : pickYear;
+      let candidate = isoDate(m[1], m[2], String(year));
+      if (!m[3] && candidate < loadingDate) candidate = isoDate(m[1], m[2], String(year + 1));
+      deliveryDate = candidate;
+    }
+  }
+
+  const source =
+    knownHubs.find((hub) => {
+      const city = hub.split(",")[0]?.trim();
+      return city ? new RegExp(`\\b${escapeRegExp(city)}\\b`, "i").test(normalized) : false;
+    }) ?? null;
+
   const noteLines = instructionsBlock
     .split("\n")
     .map((l) => l.trim())
