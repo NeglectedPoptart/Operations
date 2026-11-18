@@ -35,6 +35,7 @@ export default function LoadSummary({
   dateFirst = false,
   compact = false,
   stopActions,
+  chargeTotal = 0,
 }: {
   load: Load;
   dateFirst?: boolean;
@@ -42,6 +43,8 @@ export default function LoadSummary({
   // Per-drop "Mark delivered" / "Add POD" controls, shown next to each drop on a multi-drop load - only
   // passed where a tile can edit (the List and Order Check); left out everywhere LoadSummary is read-only.
   stopActions?: (stop: LoadStop) => ReactNode;
+  // Sum of the load's extra freight charges - when non-zero the header shows the new total with the original freight beneath it.
+  chargeTotal?: number;
 }) {
   const [dropsExpanded, setDropsExpanded] = useState(false);
   const stops = [...load.load_stops].sort((a, b) => a.position - b.position);
@@ -92,9 +95,21 @@ export default function LoadSummary({
         </div>
         <div className={compact ? "flex flex-wrap items-baseline gap-x-3 text-sm" : "text-right text-sm"}>
           {load.rate != null && (
-            <p className="font-semibold text-emerald-700 dark:text-emerald-400">
-              ${load.rate.toLocaleString()}
-            </p>
+            chargeTotal !== 0 ? (
+              <p className="font-semibold text-emerald-700 dark:text-emerald-400">
+                ${(load.rate + chargeTotal).toLocaleString()}
+                <span
+                  className="ml-1.5 text-xs font-normal text-black/50 dark:text-white/50"
+                  title="Original freight, plus the extra charges added to this load"
+                >
+                  (${load.rate.toLocaleString()} {chargeTotal > 0 ? "+" : "-"} ${Math.abs(chargeTotal).toLocaleString()})
+                </span>
+              </p>
+            ) : (
+              <p className="font-semibold text-emerald-700 dark:text-emerald-400">
+                ${load.rate.toLocaleString()}
+              </p>
+            )
           )}
           {load.brokers?.name && <p className="text-black/60 dark:text-white/60">{load.brokers.name}</p>}
         </div>

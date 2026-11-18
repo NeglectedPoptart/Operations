@@ -36,6 +36,7 @@ export default function LoadCard({
   const [pending, startTransition] = useTransition();
   const confirm = useConfirm();
   const [showExtras, setShowExtras] = useState(false);
+  const chargeTotal = charges.reduce((s, c) => s + Number(c.amount), 0);
 
   function handleStatusChange(status: LoadStatus) {
     startTransition(() => updateLoadStatus(load.id, status));
@@ -115,7 +116,7 @@ export default function LoadCard({
                 <ClaimBanner load={load} />
               </div>
             )}
-            <LoadSummary load={load} dateFirst={dateFirst} compact />
+            <LoadSummary load={load} dateFirst={dateFirst} compact chargeTotal={chargeTotal} />
             {unsignedWhenDelivered && (
               <p className="mt-1 inline-block rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800" title="Delivered, but the carrier hasn't signed the rate confirmation yet - it stays on their Broker Pending List until they do">
                 ⚠ Delivered - rate con not signed yet
@@ -158,7 +159,7 @@ export default function LoadCard({
           <ClaimBanner load={load} />
         </div>
       )}
-      <LoadSummary load={load} dateFirst={dateFirst} stopActions={(stop) => <StopPodControls stop={stop} loadId={load.id} />} />
+      <LoadSummary load={load} dateFirst={dateFirst} chargeTotal={chargeTotal} stopActions={(stop) => <StopPodControls stop={stop} loadId={load.id} />} />
 
       {load.status === "on_the_road" && (
         <p

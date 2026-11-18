@@ -204,7 +204,7 @@ function CheckCard({ load, kind, charges, onFullEdit }: { load: Load; kind: "pen
       <ClaimBanner load={load} />
       {missingEta && <p className="rounded bg-red-600 px-2.5 py-1 text-xs font-bold text-white">⚠ No carrier ETA yet</p>}
 
-      <LoadSummary load={load} dateFirst={kind === "pending"} compact stopActions={(stop) => <StopPodControls stop={stop} loadId={load.id} />} />
+      <LoadSummary load={load} dateFirst={kind === "pending"} compact chargeTotal={charges.reduce((s, c) => s + Number(c.amount), 0)} stopActions={(stop) => <StopPodControls stop={stop} loadId={load.id} />} />
 
       {kind === "road" && (
         <label className="flex items-center gap-2 text-xs font-medium">
