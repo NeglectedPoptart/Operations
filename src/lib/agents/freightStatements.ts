@@ -28,7 +28,11 @@ export interface StatementDeps {
 }
 
 const STATEMENT_WORDS = /statement|aging|\bsoa\b|open invoices?|outstanding|a\/r\b/i;
-const SUPPORTED = "ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans and Profreight";
+// A forwarded freight INVOICE (rather than a statement) - one carrier's own invoice PDF per file.
+const INVOICE_WORDS = /invoice/i;
+// Carriers whose PDF is a single invoice, not a statement of many. It adds a line, and doesn't count as a statement check.
+const SINGLE_INVOICE_CARRIERS = new Set(["RWB"]);
+const SUPPORTED = "ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans, Profreight and RWB (invoices)";
 
 // ---- reading the files -----------------------------------------------------------------------------
 
@@ -186,8 +190,8 @@ interface Outcome {
 function outcomeLine(o: Outcome): string {
   if (o.error) return `X  ${o.label}: ${o.error}`;
   const name = o.carrier ?? "";
-  if (!o.added) return `OK ${name} (${o.label}): ${o.found} invoice${o.found === 1 ? "" : "s"} on the statement - nothing new, they were all already on the list.`;
-  return `OK ${name} (${o.label}): ${o.found} invoice${o.found === 1 ? "" : "s"} on the statement - ${o.added} new added, ${o.already} already on the list.`;
+  if (!o.added) return `OK ${name} (${o.label}): ${o.found} invoice${o.found === 1 ? "" : "s"} found - nothing new, ${o.found === 1 ? "it was" : "they were all"} already on the list.`;
+  return `OK ${name} (${o.label}): ${o.found} invoice${o.found === 1 ? "" : "s"} found - ${o.added} new added, ${o.already} already on the list.`;
 }
 
 // Reads one email. Returns true when it was a statement email (handled, good or bad), false when it was something else
@@ -208,11 +212,14 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
   const looksLike = named.length > 0 || STATEMENT_WORDS.test(msg.subject) || /\bJEAR PO\b/i.test(body);
   const files = msg.hasAttachments ? await listStatementAttachments(msg.id).catch(() => []) : [];
   const fileHints = files.some((f) => hintsIn(f.fileName).length > 0 || STATEMENT_WORDS.test(f.fileName));
-  if (!looksLike && !fileHints) {
+  // Not obviously a statement, but it says "invoice" and has a file: it might be a carrier's invoice. That is only
+  // acted on if a file turns out to be one a parser reads - anything else is left for the other readers, silently.
+  const maybeInvoice = !looksLike && !fileHints && files.length > 0 && (INVOICE_WORDS.test(msg.subject) || files.some((f) => INVOICE_WORDS.test(f.fileName)));
+  if (!looksLike && !fileHints && !maybeInvoice) {
     await remember("not_statement");
     return false;
   }
-  await remember("handled");
+  if (!maybeInvoice) await remember("handled");
 
   const context = `${msg.subject} ${msg.fromEmail}`;
   const sources: Source[] = [];
@@ -246,7 +253,12 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
     }
     // One carrier's statement can arrive twice in one email (a table and its file) - the merge drops the repeats.
     const { data: brokers } = await db.from("brokers").select("id, name");
-    const broker = (brokers ?? []).find((b) => String(b.name).trim().toLowerCase() === carrier.toLowerCase());
+    // The exact name, else (for carriers whose broker name is longer, like "RWB Trucking, LLC./Wintrust Bank") the
+    // one broker whose name starts with it.
+    const names = (brokers ?? []) as { id: string; name: string }[];
+    const exact = names.find((b) => String(b.name).trim().toLowerCase() === carrier.toLowerCase());
+    const starts = names.filter((b) => String(b.name).trim().toLowerCase().startsWith(carrier.toLowerCase()));
+    const broker = exact ?? (starts.length === 1 ? starts[0] : undefined);
     if (!broker) {
       outcomes.push({ label: source.label, carrier, error: `there's no carrier called "${carrier}" under Logistics Invoicing.` });
       continue;
@@ -257,11 +269,24 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
       outcomes.push({ label: source.label, carrier, found: rows.length, added: inserted.length, already: alreadyOnList });
       touched.add(carrier);
       // A statement that arrived by email counts as checking that carrier's statement, same as running the
-      // Statement Checker - even when every invoice on it was already on the list.
-      await db.from("brokers").update({ last_statement_checked_at: new Date().toISOString() }).eq("id", String(broker.id));
+      // Statement Checker - even when every invoice on it was already on the list. (A single invoice isn't a statement.)
+      if (!SINGLE_INVOICE_CARRIERS.has(carrier)) {
+        await db.from("brokers").update({ last_statement_checked_at: new Date().toISOString() }).eq("id", String(broker.id));
+      }
     } catch (err) {
       outcomes.push({ label: source.label, carrier, error: `couldn't save the invoices (${err instanceof Error ? err.message : String(err)}).` });
     }
+  }
+
+  if (maybeInvoice) {
+    // Nothing that reads as a carrier invoice: not ours - leave the email to the other readers, with no reply.
+    if (touched.size === 0) {
+      await remember("not_statement");
+      return false;
+    }
+    await remember("handled");
+    // A real invoice came in; ignore any other file in the email that wasn't one.
+    for (let i = outcomes.length - 1; i >= 0; i--) if (outcomes[i].error) outcomes.splice(i, 1);
   }
 
   if (outcomes.length === 0) {
@@ -290,7 +315,7 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
   try {
     await sendEmail({
       to: [msg.fromEmail],
-      subject: `${bad.length > 0 ? "Statement problem" : "Statement added"}: ${[...touched].join(", ") || msg.subject}`,
+      subject: `${bad.length > 0 ? "Statement problem" : ([...touched].every((c) => SINGLE_INVOICE_CARRIERS.has(c)) ? "Invoice added" : "Statement added")}: ${[...touched].join(", ") || msg.subject}`,
       body: emailBody,
     });
   } catch (err) {
@@ -298,7 +323,7 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
   }
   // The owner always hears about a problem; a good result only when someone else sent the statement.
   if (bad.length > 0) await deps.notify("Freight statement needs a look", `${msg.fromEmail}: ${bad.map((o) => `${o.label} - ${o.error}`).join("; ")}`.slice(0, 220));
-  else if (msg.fromEmail.toLowerCase() !== SUPREME_EMAIL.toLowerCase()) await deps.notify("Freight statement added", `${[...touched].join(", ")}: ${totalNew} new invoice${totalNew === 1 ? "" : "s"}.`);
+  else if (msg.fromEmail.toLowerCase() !== SUPREME_EMAIL.toLowerCase()) await deps.notify(([...touched].every((c) => SINGLE_INVOICE_CARRIERS.has(c)) ? "Freight invoice added" : "Freight statement added"), `${[...touched].join(", ")}: ${totalNew} new invoice${totalNew === 1 ? "" : "s"}.`);
 
   await markRead(msg.id).catch(() => {});
   return true;

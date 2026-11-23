@@ -449,6 +449,24 @@ export function parseAlimatPdfText(text: string): ParseResult {
   return { rows };
 }
 
+// RWB Trucking's own invoice PDF (not a statement - one invoice per file, forwarded to HOPS as it arrives).
+// unpdf reads it in normal order, one labelled field per line:
+//   Invoice # 132748395 / PO Number P2611-038-610124 / Invoice Date 11/23/2026 / ... / Total Due $1,800.00
+// Total Due (the invoiced amount, before any payment) is read rather than Balance Due, matching the statements.
+export function parseRwbInvoicePdfText(text: string): ParseResult {
+  const invoiceNo = text.match(/Invoice\s*#\s*(\d+)/i)?.[1];
+  const invoiceDate = text.match(/Invoice Date[ \t]+(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1];
+  const amount = text.match(/Total Due[ \t]+\$?\s*([\d,]+\.\d{2})/i)?.[1];
+  // PO Number can be left blank - only a value on the same line counts (the next line is another label).
+  const po = text.match(/PO Number[ \t]+(\S+)/i)?.[1] ?? text.match(/PO Reference:[ \t]+(\S+)/i)?.[1] ?? "";
+  if (!invoiceNo || amount === undefined) {
+    return { rows: [], error: "Couldn't find an invoice number and Total Due in this RWB invoice." };
+  }
+  return {
+    rows: [{ invoice_no: invoiceNo, invoice_date: invoiceDate ? parseUsDateToIso(invoiceDate) : null, customer_po: /^(payment|invoice)$/i.test(po) ? "" : po, amount: parseMoney(amount) }],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Which parser goes with which carrier. Shared by the Invoicing page (Upload / Paste Statement) and the
 // Freight Statements agent, so an emailed statement is read exactly the way an uploaded one is. Keyed on the
@@ -464,10 +482,12 @@ export const CARRIER_PARSERS = new Map<string, StatementParser>([
   ["JERUE", parseJeruePdfText],
   ["PGTRANS", parsePgtransPastedTable],
   ["PROFREIGHT", parseProfreightPdfText],
+  // Matched to the broker whose name starts with "RWB" (its full name is "RWB Trucking, LLC./Wintrust Bank").
+  ["RWB", parseRwbInvoicePdfText],
 ]);
 
 // Only these carriers send an actual PDF - Jear's is an emailed Excel table and PGTrans's is a spreadsheet export.
-export const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT"]);
+export const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT", "RWB"]);
 
 // Jear also sends a separate weekly CSV export ("Weekly SOA") with its own due-date-to-invoice-date terms.
 export const CSV_CARRIERS = new Map<string, StatementParser>([["JEAR", parseJearStatementCsv]]);
@@ -483,4 +503,5 @@ export const CARRIER_NAME_HINTS: [string, RegExp][] = [
   ["JERUE", /jerue/i],
   ["PGTRANS", /pg[\s_-]?trans/i],
   ["PROFREIGHT", /pro[\s_-]?freight/i],
+  ["RWB", /RWB\s+Trucking|(?<![A-Za-z])RWB(?![A-Za-z])/i],
 ];
