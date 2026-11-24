@@ -31,6 +31,7 @@ export interface CarrierRow {
   name: string;
   followup_email: string | null;
   active: boolean;
+  category: string;
 }
 
 export interface CustomerRow {
@@ -1003,8 +1004,10 @@ function ReviewCard({ item }: { item: ReviewItem }) {
   );
 }
 
-function CarrierEmails({ carriers }: { carriers: CarrierRow[] }) {
+function CarrierEmails({ allCarriers }: { allCarriers: CarrierRow[] }) {
   const [showInactive, setShowInactive] = useState(false);
+  // FTL (otr) and LTL carriers only - local carriers aren't emailed.
+  const carriers = allCarriers.filter((c) => c.category !== "local");
   const rows = carriers.filter((c) => showInactive || c.active);
   const missing = carriers.filter((c) => c.active && !c.followup_email).length;
 
@@ -1196,7 +1199,7 @@ export default function AgentsClient({
       </Section>
 
       <Section title="Carrier emails">
-        <CarrierEmails carriers={carriers} />
+        <CarrierEmails allCarriers={carriers} />
       </Section>
 
       <Section title="Customer emails">

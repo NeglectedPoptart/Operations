@@ -29,7 +29,7 @@ export default async function AgentsPage() {
       .eq("status", "pending_review")
       .order("created_at"),
     supabase.from("agent_events").select("*").order("created_at", { ascending: false }).limit(50),
-    supabase.from("brokers").select("id, name, followup_email, active").order("name"),
+    supabase.from("brokers").select("id, name, followup_email, active, category").order("name"),
   ]);
 
   const firstError = [agentsRes, draftsRes, repliesRes, eventsRes, brokersRes].find((r) => r.error)?.error;
