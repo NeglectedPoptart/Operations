@@ -140,6 +140,7 @@ export const NAV: NavCategory[] = [
       { href: "/management/schedules", label: "Schedules" },
       { href: "/management/performance-reviews", label: "Performance Reviews" },
       { href: "/management/employee-files", label: "Employee Files" },
+      { href: "/management/org-chart", label: "Org Chart" },
       { href: "/management/employee-hours", label: "Employee Hours" },
       { href: "/management/costs", label: "Costs" },
     ],
