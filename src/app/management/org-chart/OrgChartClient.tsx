@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { EMPLOYEE_STATUSES, type EmployeeStatus } from "@/lib/types";
 
 export interface OrgEmployee {
@@ -28,6 +28,7 @@ const NONE = new Set(["", "n/a", "na", "none", "-", "--", "—"]);
 
 // "Nasser Halim/Jacob Romero", "A, B" or "A and B" -> ["Nasser Halim", "Jacob Romero"]
 function managerNames(value: string | null): string[] {
+  if (NONE.has(norm(value ?? ""))) return [];
   return (value ?? "")
     .split(/\s*(?:\/|,|;|&|\band\b)\s*/i)
     .map((s) => s.trim())
@@ -97,7 +98,7 @@ function Card({ node }: { node: TreeNode }) {
   return (
     <Link
       href="/management/employee-files"
-      className="relative block w-48 rounded-lg border border-black/15 bg-white px-3 py-2 text-center shadow-sm hover:border-green-600 dark:border-white/15 dark:bg-neutral-900 dark:hover:border-green-500"
+      className="relative mx-auto block w-44 rounded-lg border border-black/15 bg-white px-3 py-2 text-center shadow-sm hover:border-green-600 dark:border-white/15 dark:bg-neutral-900 dark:hover:border-green-500"
     >
       <p className="text-sm font-semibold leading-tight">{e.name}</p>
       {sub && <p className="mt-0.5 text-xs leading-tight text-black/60 dark:text-white/60">{sub}</p>}
@@ -119,15 +120,28 @@ function Card({ node }: { node: TreeNode }) {
 }
 
 function Branch({ node }: { node: TreeNode }) {
+  // A team of people with nobody under them stacks down the page instead of spreading sideways, so a big
+  // team doesn't make the chart wider than the screen.
+  const stacked = node.children.length > 0 && node.children.every((c) => c.children.length === 0);
   return (
     <li>
       <Card node={node} />
-      {node.children.length > 0 && (
-        <ul>
+      {stacked ? (
+        <div className="org-stack">
           {node.children.map((c) => (
-            <Branch key={c.employee.id} node={c} />
+            <div key={c.employee.id} className="org-stack-item">
+              <Card node={c} />
+            </div>
           ))}
-        </ul>
+        </div>
+      ) : (
+        node.children.length > 0 && (
+          <ul>
+            {node.children.map((c) => (
+              <Branch key={c.employee.id} node={c} />
+            ))}
+          </ul>
+        )
       )}
     </li>
   );
@@ -137,7 +151,7 @@ function Branch({ node }: { node: TreeNode }) {
 const CHART_CSS = `
 .org-tree{--org-line:rgba(120,120,120,.55)}
 .org-tree ul{display:flex;justify-content:center;padding-top:22px;position:relative;margin:0;padding-left:0}
-.org-tree li{list-style:none;text-align:center;position:relative;padding:22px 8px 0}
+.org-tree li{list-style:none;text-align:center;position:relative;padding:22px 6px 0}
 .org-tree li::before,.org-tree li::after{content:"";position:absolute;top:0;right:50%;border-top:1px solid var(--org-line);width:50%;height:22px}
 .org-tree li::after{right:auto;left:50%;border-left:1px solid var(--org-line)}
 .org-tree li:only-child::before,.org-tree li:only-child::after{display:none}
@@ -146,7 +160,14 @@ const CHART_CSS = `
 .org-tree li:last-child::before{border-right:1px solid var(--org-line);border-radius:0 6px 0 0}
 .org-tree li:first-child::after{border-radius:6px 0 0 0}
 .org-tree li>ul::before{content:"";position:absolute;top:0;left:50%;border-left:1px solid var(--org-line);height:22px}
-.org-tree .org-roots{padding-top:0;display:flex;flex-wrap:nowrap;justify-content:center;gap:40px;align-items:flex-start}
+.org-tree .org-roots{padding-top:0;display:flex;flex-wrap:nowrap;justify-content:center;gap:28px;align-items:flex-start}
+.org-stack{position:relative;width:204px;margin:8px auto 0;padding-left:28px;text-align:left}
+.org-stack-item{position:relative;margin-top:8px}
+.org-stack-item:first-child{margin-top:0}
+.org-stack-item::before{content:"";position:absolute;left:-14px;top:-8px;height:calc(100% + 8px);border-left:1px solid var(--org-line)}
+.org-stack-item:first-child::before{top:-8px}
+.org-stack-item:last-child::before{height:28px}
+.org-stack-item::after{content:"";position:absolute;left:-14px;top:20px;width:14px;border-top:1px solid var(--org-line)}
 .org-roots>li{padding-top:0}
 .org-roots>li::before,.org-roots>li::after{display:none}
 `;
@@ -155,6 +176,25 @@ export default function OrgChartClient({ employees }: { employees: OrgEmployee[]
   const [status, setStatus] = useState<EmployeeStatus | "all">("active");
   const shown = useMemo(() => employees.filter((e) => status === "all" || e.status === status), [employees, status]);
   const { roots, unassigned } = useMemo(() => buildTree(shown), [shown]);
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLUListElement>(null);
+
+  // Shrinks the chart to the width of the page so it never needs sideways scrolling.
+  useEffect(() => {
+    const box = outer.current;
+    const chart = inner.current;
+    if (!box || !chart) return;
+    const fit = () => {
+      chart.style.zoom = "1";
+      const avail = box.clientWidth - 32;
+      const need = chart.scrollWidth;
+      chart.style.zoom = need > avail ? String(Math.max(0.35, avail / need)) : "1";
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [roots]);
 
   return (
     <div className="space-y-4">
@@ -187,8 +227,8 @@ export default function OrgChartClient({ employees }: { employees: OrgEmployee[]
       {shown.length === 0 ? (
         <p className="text-sm text-black/50 dark:text-white/50">Nobody to show here.</p>
       ) : (
-        <div className="org-tree overflow-x-auto rounded-lg border border-black/10 p-6 dark:border-white/10">
-          <ul className="org-roots" style={{ width: "max-content", minWidth: "100%" }}>
+        <div ref={outer} className="org-tree overflow-x-auto rounded-lg border border-black/10 p-4 dark:border-white/10">
+          <ul ref={inner} className="org-roots" style={{ width: "max-content", margin: "0 auto" }}>
             {roots.map((r) => (
               <Branch key={r.employee.id} node={r} />
             ))}
