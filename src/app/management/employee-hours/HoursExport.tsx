@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, currentWeekStart, formatDateSlash, todayISO } from "@/lib/dates";
-import { detailRows, lastWeek, summaryRows, toCsv, toTsv, totalEmployees, type ExportDay } from "@/lib/hoursExport";
+import { lastWeek, summaryRows, toTsv, totalEmployees, type ExportDay } from "@/lib/hoursExport";
 import { decimalHours, hoursMinutes } from "@/lib/timeEntry";
 import { getAllEmployeeHours } from "./actions";
 import type { EmployeeOption } from "./EmployeeHoursClient";
@@ -10,9 +10,8 @@ import type { EmployeeOption } from "./EmployeeHoursClient";
 const btn = "rounded-md border border-black/20 px-3 py-1.5 text-sm font-medium hover:bg-black/5 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/10";
 const dateInput = "mt-0.5 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-black";
 
-function download(name: string, text: string) {
-  // The BOM makes Excel read the file as UTF-8.
-  const blob = new Blob(["﻿", text], { type: "text/csv;charset=utf-8" });
+function download(name: string, bytes: Uint8Array) {
+  const blob = new Blob([bytes as BlobPart], { type: "application/pdf" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -20,8 +19,8 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(a.href);
 }
 
-// Everyone's hours for a week or pay period in one place: see the totals, download them (or every day's times)
-// as a spreadsheet file, or copy them to paste into Excel / email.
+// Everyone's hours for a week or pay period in one place: see the totals, download one PDF with everyone's totals
+// and day-by-day times, or copy the totals to paste into Excel / email.
 export default function HoursExport({ employees }: { employees: EmployeeOption[] }) {
   const [open, setOpen] = useState(false);
   const initial = lastWeek(todayISO());
@@ -31,6 +30,7 @@ export default function HoursExport({ employees }: { employees: EmployeeOption[]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [making, setMaking] = useState(false);
   const token = useRef(0);
 
   useEffect(() => {
@@ -51,6 +51,19 @@ export default function HoursExport({ employees }: { employees: EmployeeOption[]
   const check = totals.reduce((s, t) => s + t.problems, 0);
   const stamp = `${from}_to_${to}`;
 
+  async function downloadPdf() {
+    setMaking(true);
+    setError(null);
+    try {
+      const { buildHoursPdf } = await import("@/lib/hoursPdf");
+      download(`employee-hours-${stamp}.pdf`, await buildHoursPdf({ totals, from, to }));
+    } catch (e) {
+      setError(e instanceof Error ? `Couldn't make the PDF: ${e.message}` : "Couldn't make the PDF.");
+    } finally {
+      setMaking(false);
+    }
+  }
+
   function setWeek(monday: string) {
     setFrom(monday);
     setTo(addDays(monday, 6));
@@ -62,7 +75,7 @@ export default function HoursExport({ employees }: { employees: EmployeeOption[]
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch {
-      setError("Your browser wouldn't let HOPS copy - use Download instead.");
+      setError("Your browser wouldn't let HOPS copy - use Download PDF instead.");
     }
   }
 
@@ -170,11 +183,8 @@ export default function HoursExport({ employees }: { employees: EmployeeOption[]
       <p className="text-xs text-black/50 dark:text-white/50">Overtime is anything over 40 hours in a Monday-to-Sunday week. If your dates start or end mid-week, only the days inside the range count toward that week.</p>
 
       <div className="flex flex-wrap gap-2">
-        <button className={btn} disabled={loading || totals.length === 0} onClick={() => download(`employee-hours-${stamp}.csv`, toCsv(summaryRows(totals, from, to)))}>
-          ⬇ Download totals (CSV)
-        </button>
-        <button className={btn} disabled={loading || totals.length === 0} onClick={() => download(`employee-hours-detail-${stamp}.csv`, toCsv(detailRows(totals)))}>
-          ⬇ Download every day (CSV)
+        <button className={btn} disabled={loading || making || totals.length === 0} onClick={() => void downloadPdf()}>
+          {making ? "Making PDF..." : "⬇ Download PDF"}
         </button>
         <button className={btn} disabled={loading || totals.length === 0} onClick={() => void copy()}>
           {copied ? "✓ Copied - paste into Excel" : "Copy totals"}
