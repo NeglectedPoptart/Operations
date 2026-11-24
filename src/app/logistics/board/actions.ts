@@ -71,6 +71,15 @@ function loadFieldsFromForm(formData: FormData) {
   };
 }
 
+// "Buying from vendors" box: the Source City isn't counted as a pickup (migration 176). Kept out of the main
+// insert/update so saving a load never depends on that column existing; turning it on before the migration is
+// run says so, turning it off (the default) is silently skipped.
+async function saveSourceIsPickup(supabase: SupabaseClient, id: string, formData: FormData): Promise<void> {
+  const vendorBuy = formData.get("source_is_pickup") === "1";
+  const { error } = await supabase.from("loads").update({ source_is_pickup: !vendorBuy }).eq("id", id);
+  if (error && vendorBuy) throw new Error("The load was saved, but 'Buying from vendors' needs migration 176 run first.");
+}
+
 function cleanStr(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const s = v.trim();
@@ -181,6 +190,7 @@ export async function createLoad(formData: FormData): Promise<string> {
   // Booked under a carrier: tell them (after the response, so saving isn't slowed by the email).
   if (fields.broker_id) after(() => notifyCarrierNewLoad(data.id));
   revalidateAll();
+  if (formData.get("source_is_pickup") === "1") await saveSourceIsPickup(supabase, data.id, formData);
   return data.id;
 }
 
@@ -204,6 +214,7 @@ export async function updateLoad(id: string, formData: FormData) {
   // Newly assigned to a carrier (not just edited while already theirs): tell them.
   if (fields.broker_id && fields.broker_id !== (before?.broker_id ?? null)) after(() => notifyCarrierNewLoad(id));
   revalidateAll();
+  await saveSourceIsPickup(supabase, id, formData);
 }
 
 export async function updateLoadStatus(id: string, status: LoadStatus) {

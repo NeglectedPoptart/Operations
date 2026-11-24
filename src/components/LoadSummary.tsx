@@ -52,7 +52,8 @@ export default function LoadSummary({
   const firstStop = stops[0];
   const multiDrop = stops.length > 1;
   const manyDrops = stops.length > DROP_LIST_COLLAPSE_THRESHOLD;
-  const totalPicks = 1 + pickups.length;
+  // The Source City counts as the first pickup unless the load is marked as bought entirely from vendors.
+  const totalPicks = (load.source_is_pickup === false ? 0 : 1) + pickups.length;
 
   return (
     <>
@@ -120,7 +121,7 @@ export default function LoadSummary({
           {pickups.map((p, i) => (
             <p key={p.id}>
               <span className="font-medium">Pickup {i + 1}: </span>
-              {[p.pu_number && `#${p.pu_number}`, p.vendor, p.location].filter(Boolean).join(" ")}
+              {[p.pu_number && `PU #${p.pu_number}`, p.vendor, p.location].filter(Boolean).join(" ")}
             </p>
           ))}
         </div>

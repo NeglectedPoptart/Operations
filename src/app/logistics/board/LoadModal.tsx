@@ -265,6 +265,20 @@ export default function LoadModal({
             </select>
           </div>
 
+          <label className="col-span-2 flex items-start gap-2 text-xs text-black/70 dark:text-white/70 sm:col-span-4">
+            <input
+              type="checkbox"
+              name="source_is_pickup"
+              value="1"
+              defaultChecked={load?.source_is_pickup === false}
+              className="mt-0.5 h-4 w-4"
+            />
+            <span>
+              Buying from vendors - the Source City is only the lane, not a pickup. The tile counts just the pickups below
+              (PU # = the vendor&apos;s pickup number, separate from the order #).
+            </span>
+          </label>
+
           <PickupsEditor pickups={pickups} onChange={setPickups} />
 
           <StopsEditor

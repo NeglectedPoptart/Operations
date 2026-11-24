@@ -129,6 +129,8 @@ export interface Load {
   eta_note: string | null;
   ready_to_load: boolean;
   rate_con_sent: boolean;
+  // false = the Source City is only the origin lane (everything is bought from vendors), so it isn't counted as a pickup - migration 176.
+  source_is_pickup?: boolean;
   // Carrier says it's delivered but the signed POD hasn't arrived yet.
   pod_pending: boolean;
   // Flagged as a Claim (something bad happened) to review later - see migration 155.
