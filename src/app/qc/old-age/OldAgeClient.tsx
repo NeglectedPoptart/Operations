@@ -10,6 +10,7 @@ import { OLD_AGE_NEXT_STEPS, type OldAgeItem, type OldAgeMove, type OldAgeNextSt
 import {
   addOldAgeMove,
   addOldAgeRow,
+  clearOldAgeItems,
   deleteOldAgeItem,
   deleteOldAgeMove,
   extractPdfText,
@@ -573,6 +574,7 @@ export default function OldAgeClient({
   const [importing, setImporting] = useState(false);
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [copiedAll, setCopiedAll] = useState(false);
   const [imageStatusAll, setImageStatusAll] = useState<string | null>(null);
 
@@ -662,6 +664,24 @@ export default function OldAgeClient({
     setItems((prev) => prev.filter((i) => i.id !== id));
     setMoves((prev) => prev.filter((m) => m.item_id !== id));
     await deleteOldAgeItem(id).catch(() => {});
+  }
+
+  async function handleClearAll() {
+    if (!(await confirm(`Clear all ${items.length} rows from Old Age? This removes every item, its notes, cash list entries and moves.`))) return;
+    setClearing(true);
+    try {
+      const result = await clearOldAgeItems();
+      if ("error" in result) {
+        alert(result.error);
+        return;
+      }
+      setItems([]);
+      setMoves([]);
+      setExpandedMovesId(null);
+      setShowUpload(true);
+    } finally {
+      setClearing(false);
+    }
   }
 
   async function handleAddMove(itemId: string, orderReference: string, qty: number, entryDate: string, notes: string) {
@@ -815,6 +835,15 @@ export default function OldAgeClient({
           >
             {showUpload ? "Hide upload" : "Upload PDF"}
           </button>
+          {items.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              disabled={clearing}
+              className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-800 dark:hover:bg-red-950/30"
+            >
+              {clearing ? "Clearing..." : "Clear All"}
+            </button>
+          )}
         </div>
       </div>
 

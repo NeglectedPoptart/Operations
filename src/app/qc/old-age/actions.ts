@@ -62,6 +62,15 @@ export async function importOldAgeItems(rows: ParsedOldAgeRow[]) {
   return data;
 }
 
+// Empties the whole list (their moves go with them).
+export async function clearOldAgeItems(): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("old_age_items").delete().not("id", "is", null);
+  if (error) return { error: error.message };
+  revalidateAll();
+  return { ok: true };
+}
+
 export async function addOldAgeRow(nextPosition: number) {
   const supabase = await createClient();
   const { data, error } = await supabase
