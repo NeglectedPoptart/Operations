@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { appBaseUrl } from "@/lib/carrierRates/token";
 import { extractLotpathRows } from "@/lib/lotpathExtract";
-import { extractLotpathPhotos, pdfLooksLikeLotpath } from "@/lib/lotpathPhotos";
+import { queueFullPhotos } from "@/lib/lotpathFullPhotos";
+import { extractLotpathPhotos, pdfLooksLikeLotpath, type LotpathPhoto } from "@/lib/lotpathPhotos";
 import { saveLotpathParsed } from "@/lib/lotpathSave";
 import { parseLotpathRows } from "@/lib/lotpathParse";
 import { SUPREME_EMAIL } from "@/lib/roles";
@@ -63,8 +64,10 @@ export async function handleQcInspectionEmail(db: SupabaseClient, msg: InboxMess
         outcomes.push({ label: r.fileName, ok: false, line: `X  ${r.fileName}: ${parsed.error}` });
         continue;
       }
-      const photos = await extractLotpathPhotos(r.bytes).catch(() => [] as Buffer[]);
-      const saved = await saveLotpathParsed(db, parsed, { photos, status: "LotPath report (emailed)" });
+      const photos = await extractLotpathPhotos(r.bytes).catch(() => [] as LotpathPhoto[]);
+      const saved = await saveLotpathParsed(db, parsed, { photos: photos.map((p) => p.thumb), status: "LotPath report (emailed)" });
+      // The PDF's photos are thumbnails linking to the full-size ones - fetched in the background and swapped in.
+      if (saved.status === "imported" && saved.photos > 0) await queueFullPhotos(db, saved.inspectionId, photos.map((p) => p.fullUrl)).catch(() => {});
       const name = `${parsed.commodity || parsed.planName}${parsed.headerFields.find((h) => /lot/i.test(h.label))?.value ? ` - lot ${parsed.headerFields.find((h) => /lot/i.test(h.label))!.value}` : ""}`;
       if (saved.status === "imported") outcomes.push({ label: r.fileName, ok: true, line: `OK ${name}: added to Inspections with ${saved.photos} photo${saved.photos === 1 ? "" : "s"}${saved.planCreated ? ` (a new "${parsed.planName}" inspection plan was made from the report)` : ""}.` });
       else if (saved.status === "duplicate") outcomes.push({ label: r.fileName, ok: true, line: `OK ${name}: already on the Inspections list - nothing added.` });

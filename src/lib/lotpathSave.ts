@@ -123,7 +123,10 @@ export async function saveLotpathParsed(
             return error ? null : path;
           }),
         );
-        for (const path of results) if (path) rows.push({ inspection_id: inserted.id as string, storage_path: path, position: rows.length });
+        // position = the photo's place in the report, so a full-size version can be matched to it later.
+        results.forEach((path, k) => {
+          if (path) rows.push({ inspection_id: inserted.id as string, storage_path: path, position: start + k });
+        });
       }
       if (rows.length > 0) {
         const { error } = await supabase.from("qc_lot_photos").insert(rows);

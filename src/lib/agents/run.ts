@@ -7,6 +7,7 @@ import { runDeliveredSheets } from "./deliveredSheets";
 import { runCarrierRates } from "./carrierRates";
 import { handleStatementEmail, runFreightStatements } from "./freightStatements";
 import { handleQcInspectionEmail } from "./qcInspectionEmail";
+import { processFullPhotos } from "@/lib/lotpathFullPhotos";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
@@ -1402,6 +1403,13 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
 
   if (messages.length > 0) {
     await db.from("agent_state").upsert({ key: "inbox_cursor", value: cursor, updated_at: new Date().toISOString() });
+  }
+  // Full-size photos for LotPath reports imported earlier (their PDFs only carry thumbnails) - a few each pass.
+  const photoBudget = Math.min(20_000, 42_000 - (Date.now() - started));
+  if (photoBudget > 5_000) {
+    await processFullPhotos(db, photoBudget).catch(async (err) => {
+      await logEvent(db, null, "error", `Full-size LotPath photos could not be fetched: ${err instanceof Error ? err.message : String(err)}`);
+    });
   }
   return { processed };
 }
