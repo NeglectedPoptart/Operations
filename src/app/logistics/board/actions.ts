@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyCarrierCharge, notifyCarrierNewLoad } from "@/lib/brokerPortal/notifyCarrier";
 // Same unpdf-based extraction as the Price Sheets PDF import - see that
 // file's comment for why unpdf specifically (serverless-safe, no separate
 // worker file to resolve at runtime).
@@ -176,6 +178,8 @@ export async function createLoad(formData: FormData): Promise<string> {
   await replaceStops(supabase, data.id, stops);
   await replacePickups(supabase, data.id, pickups);
   await ensureLane(supabase, fields.source, stops);
+  // Booked under a carrier: tell them (after the response, so saving isn't slowed by the email).
+  if (fields.broker_id) after(() => notifyCarrierNewLoad(data.id));
   revalidateAll();
   return data.id;
 }
@@ -186,6 +190,8 @@ export async function updateLoad(id: string, formData: FormData) {
   const stops = stopsFromForm(formData);
   const pickups = pickupsFromForm(formData);
 
+  const { data: before } = await supabase.from("loads").select("broker_id").eq("id", id).maybeSingle();
+
   const { error } = await supabase
     .from("loads")
     .update(fields.status === "on_the_road" ? fields : { ...fields, pod_pending: false })
@@ -195,6 +201,8 @@ export async function updateLoad(id: string, formData: FormData) {
   await replaceStops(supabase, id, stops);
   await replacePickups(supabase, id, pickups);
   await ensureLane(supabase, fields.source, stops);
+  // Newly assigned to a carrier (not just edited while already theirs): tell them.
+  if (fields.broker_id && fields.broker_id !== (before?.broker_id ?? null)) after(() => notifyCarrierNewLoad(id));
   revalidateAll();
 }
 
@@ -555,11 +563,14 @@ export async function addLoadCharge(input: {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const chargeKind = input.kind.trim() || "Other";
+  const chargeAmount = Math.round(input.amount * 100) / 100;
+  const chargeNote = input.note.trim() || null;
   const { error } = await supabase.from("load_charges").insert({
     load_id: input.loadId,
-    kind: input.kind.trim() || "Other",
-    amount: Math.round(input.amount * 100) / 100,
-    note: input.note.trim() || null,
+    kind: chargeKind,
+    amount: chargeAmount,
+    note: chargeNote,
     payer: input.payer,
     payer_name: input.payer === "warehouse" || input.payer === "customer" ? input.payerName?.trim() || null : null,
     cause: input.payer === "harvest_best" && (input.cause === "expected" || input.cause === "our_error") ? input.cause : null,
@@ -571,6 +582,8 @@ export async function addLoadCharge(input: {
     if (/payer|cause|recovery_status/.test(error.message)) return { error: PAYER_MIGRATION_MESSAGE };
     return { error: /load_charges/.test(error.message) ? "Charges aren't set up yet - ask the admin to run migration 155." : error.message };
   }
+  // The load's carrier (if it has one) is told about the charge.
+  after(() => notifyCarrierCharge(input.loadId, { kind: chargeKind, amount: chargeAmount, note: chargeNote }));
   revalidateAll();
   return { ok: true };
 }
