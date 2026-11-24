@@ -6,6 +6,7 @@ import { isAvailabilityEmail, importFobEmail } from "@/lib/fobEmailImport";
 import { runDeliveredSheets } from "./deliveredSheets";
 import { runCarrierRates } from "./carrierRates";
 import { handleStatementEmail, runFreightStatements } from "./freightStatements";
+import { handleQcInspectionEmail } from "./qcInspectionEmail";
 import { sendPushToTokens } from "@/lib/push";
 import { SUPREME_EMAIL } from "@/lib/roles";
 import type { Load } from "@/lib/types";
@@ -1215,6 +1216,19 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
           notify: (title, body) => notifyOwner(db, title, body),
         }).catch(async (err) => {
           await logEvent(db, null, "error", `Statement email could not be read: ${err instanceof Error ? err.message : String(err)}`);
+          return false;
+        })
+      ) {
+        processed++;
+        continue;
+      }
+      // A third-party inspector's LotPath report (PDF) forwarded by a HOPS user: added to QC > Inspections with its photos.
+      if (
+        await handleQcInspectionEmail(db, msg, {
+          log: (kind, message) => logEvent(db, null, kind, message),
+          notify: (title, body) => notifyOwner(db, title, body, "/qc/inspections"),
+        }).catch(async (err) => {
+          await logEvent(db, null, "error", `LotPath report email could not be read: ${err instanceof Error ? err.message : String(err)}`);
           return false;
         })
       ) {
