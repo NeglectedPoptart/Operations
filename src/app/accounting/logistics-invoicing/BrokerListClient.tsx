@@ -33,7 +33,8 @@ function tileToneClasses(tone: "requested" | "review" | "green" | "yellow"): str
   return "border-yellow-500/40 bg-yellow-50 hover:border-yellow-600 dark:border-yellow-700/40 dark:bg-yellow-950/20";
 }
 
-const isLocal = (b: Broker | undefined) => b?.category === "local";
+// Which section a carrier's tile sits in: FTL (the default "otr" category), LTL, then Local.
+const sectionOf = (b: Broker | undefined) => (b?.category === "local" ? "local" : b?.category === "ltl" ? "ltl" : "ftl");
 
 export default function BrokerListClient({
   brokers,
@@ -123,8 +124,8 @@ export default function BrokerListClient({
   function handleDragOver(e: React.DragEvent, index: number) {
     e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
-    // Cards only reorder within their own section (Local vs LTL/FTL).
-    if (isLocal(order[draggedIndex]) !== isLocal(order[index])) return;
+    // Cards only reorder within their own section (FTL, LTL or Local).
+    if (sectionOf(order[draggedIndex]) !== sectionOf(order[index])) return;
     setOrder((prev) => {
       const next = [...prev];
       const [moved] = next.splice(draggedIndex, 1);
@@ -284,8 +285,9 @@ export default function BrokerListClient({
   }
 
   const indexed = order.map((b, index) => ({ b, index }));
-  const topBrokers = indexed.filter(({ b }) => !isLocal(b));
-  const localBrokers = indexed.filter(({ b }) => isLocal(b));
+  const ftlBrokers = indexed.filter(({ b }) => sectionOf(b) === "ftl");
+  const ltlBrokers = indexed.filter(({ b }) => sectionOf(b) === "ltl");
+  const localBrokers = indexed.filter(({ b }) => sectionOf(b) === "local");
 
   if (order.length === 0 && inactiveBrokers.length === 0) {
     return (
@@ -311,13 +313,24 @@ export default function BrokerListClient({
         </button>
       </div>
 
-      {topBrokers.length > 0 && (
+      {ftlBrokers.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold text-black/50 dark:text-white/50">
-            FTL &amp; LTL Carriers ({topBrokers.length})
+            FTL Carriers ({ftlBrokers.length})
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {topBrokers.map(({ b, index }) => renderCard(b, index))}
+            {ftlBrokers.map(({ b, index }) => renderCard(b, index))}
+          </div>
+        </div>
+      )}
+
+      {ltlBrokers.length > 0 && (
+        <div className="space-y-2 border-t border-black/10 pt-4 dark:border-white/10">
+          <h2 className="text-sm font-semibold text-black/50 dark:text-white/50">
+            LTL Carriers ({ltlBrokers.length})
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {ltlBrokers.map(({ b, index }) => renderCard(b, index))}
           </div>
         </div>
       )}
