@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import ExcelJS from "exceljs";
+import * as XLSX from "xlsx";
 import { extractText, getDocumentProxy } from "unpdf";
 import { appBaseUrl } from "@/lib/carrierRates/token";
 import {
@@ -75,6 +76,17 @@ function sourceFromRows(label: string, rows: string[][]): Source {
   return { label, kind: "sheet", text: "", csv: kept.map((r) => r.map(csvCell).join(",")).join("\n"), tsv: kept.map((r) => r.join("\t")).join("\n") };
 }
 
+// First sheet that has anything on it, as the text Excel shows (dates as MM/DD/YYYY, amounts with their commas).
+export function readOldXls(data: Buffer): string[][] {
+  const workbook = XLSX.read(data, { type: "buffer" });
+  for (const sheetName of workbook.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, raw: false, defval: "", dateNF: "mm/dd/yyyy" });
+    const text = rows.map((r) => r.map((c) => String(c ?? "").trim()));
+    if (text.some((r) => r.some((c) => c !== ""))) return text;
+  }
+  throw new Error("the workbook has no data");
+}
+
 async function readFile(file: { fileName: string; contentType: string; data: Buffer }): Promise<Source> {
   const name = file.fileName;
   const blank = { csv: "", tsv: "", text: "" };
@@ -99,7 +111,8 @@ async function readFile(file: { fileName: string; contentType: string; data: Buf
       return sourceFromRows(name, rows);
     }
     if (/\.xls$/i.test(name)) {
-      return { label: name, kind: "sheet", ...blank, error: "this is an old .xls file, which HOPS can't open - save it as .xlsx (or send the PDF) and email it again" };
+      // The old Excel format (PGTrans's QuickBooks export is one) - ExcelJS only reads .xlsx.
+      return sourceFromRows(name, readOldXls(file.data));
     }
     if (/\.(csv|txt)$/i.test(name)) {
       const raw = file.data.toString("utf8").replace(/^﻿/, "");
