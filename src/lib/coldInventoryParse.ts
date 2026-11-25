@@ -185,15 +185,15 @@ export function isBellPepper(commodity: string): boolean {
 }
 
 export function isBroccoli(commodity: string): boolean {
-  return commodity.toLowerCase().includes("broccoli");
+  // The warehouse also abbreviates it ("BROCC FUCHOY RED 20LB"), so any word starting "brocc" counts.
+  return /brocc/i.test(commodity);
 }
 
 export function isCarrotOrCelery(commodity: string): boolean {
   const c = commodity.toLowerCase();
-  // "celnkd" ("celery naked") is this warehouse's abbreviated form for some
-  // celery items - doesn't contain "celery" as a substring, so it needs its
-  // own check alongside the fully-spelled-out ones.
-  return c.includes("carrot") || c.includes("celery") || c.includes("celnkd");
+  // The warehouse abbreviates celery ("CELNKD" naked, "CELSLV" sleeved, ...), so any word starting "cel"
+  // counts - except "cello", which is lettuce packaging.
+  return c.includes("carrot") || /cel(?!lo)/.test(c);
 }
 
 export function isLettuce(commodity: string): boolean {
