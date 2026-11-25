@@ -5,6 +5,7 @@ import { appBaseUrl } from "@/lib/carrierRates/token";
 import {
   CARRIER_NAME_HINTS,
   CARRIER_PARSERS,
+  isVitaColdStorage,
   PDF_CARRIERS,
   parseJearPastedTable,
   parseJearStatementCsv,
@@ -34,7 +35,7 @@ const INVOICE_WORDS = /invoice/i;
 const SINGLE_INVOICE_CARRIERS = new Set(["AFNIN", "RWB"]);
 // A scanned proof-of-delivery file sent along with an invoice ("POD_Invoice_AF271B.pdf"): no text to read, not a statement.
 const POD_FILE = /(^|[^a-z])pod([^a-z]|$)/i;
-const SUPPORTED = "AFNIN (invoices), ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans, Profreight and RWB (invoices)";
+const SUPPORTED = "AFNIN (invoices), ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans, Profreight, RWB (invoices) and Vita Transport";
 
 // ---- reading the files -----------------------------------------------------------------------------
 
@@ -187,10 +188,13 @@ interface Outcome {
   added?: number;
   already?: number;
   error?: string;
+  // Read and deliberately not used (not an error).
+  skipped?: string;
 }
 
 function outcomeLine(o: Outcome): string {
   if (o.error) return `X  ${o.label}: ${o.error}`;
+  if (o.skipped) return `-- ${o.label}: ${o.skipped}`;
   const name = o.carrier ?? "";
   if (!o.added) return `OK ${name} (${o.label}): ${o.found} invoice${o.found === 1 ? "" : "s"} found - nothing new, ${o.found === 1 ? "it was" : "they were all"} already on the list.`;
   return `OK ${name} (${o.label}): ${o.found} invoice${o.found === 1 ? "" : "s"} found - ${o.added} new added, ${o.already} already on the list.`;
@@ -245,6 +249,11 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
       if (!isBody || fileSources === 0) {
         outcomes.push({ label: source.label, error: `couldn't tell which carrier this is (I read ${SUPPORTED}). Put the carrier's name in the subject or the file name and send it again.` });
       }
+      continue;
+    }
+    // Vita sends its warehouse (Cold Storage) statement alongside the Transport one: only Transport is a carrier list.
+    if (carrier === "VITA" && source.kind === "pdf" && isVitaColdStorage(source.text)) {
+      outcomes.push({ label: source.label, carrier, skipped: "Vita Cold Storage (warehouse) statement - skipped, only Vita Express Transport is added." });
       continue;
     }
     const parsed = applyParser(carrier, source);
@@ -318,7 +327,7 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
   try {
     await sendEmail({
       to: [msg.fromEmail],
-      subject: `${bad.length > 0 ? "Statement problem" : ([...touched].every((c) => SINGLE_INVOICE_CARRIERS.has(c)) ? "Invoice added" : "Statement added")}: ${[...touched].join(", ") || msg.subject}`,
+      subject: `${bad.length > 0 ? "Statement problem" : touched.size === 0 ? "Nothing added" : ([...touched].every((c) => SINGLE_INVOICE_CARRIERS.has(c)) ? "Invoice added" : "Statement added")}: ${[...touched].join(", ") || msg.subject}`,
       body: emailBody,
     });
   } catch (err) {

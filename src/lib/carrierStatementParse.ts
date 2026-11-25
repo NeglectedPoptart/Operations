@@ -488,6 +488,48 @@ export function parseAfninInvoicePdfText(text: string): ParseResult {
   };
 }
 
+// Vita's Statement PDF. Vita sends TWO statements with the same layout: "Vita Express Transport, LLC" (the freight
+// invoices - this is the carrier called Vita in HOPS) and "Vita Cold Storage LLC" (warehouse charges, which are not
+// carrier invoices). Only the Transport one is read; the Cold Storage one is reported as not this carrier's.
+// unpdf reads each invoice as:
+//   09/29/2026 Invoice #7213: Due 09/29/2026. / PO# 0065535 (any number of reference lines) / 140.00 140.00
+// Invoice number is stored as INV-7213 (how the accounting system's bills name them, so the two line up).
+// Amount is the invoiced AMOUNT, not the open amount; Customer PO holds the reference lines.
+export function isVitaColdStorage(text: string): boolean {
+  return /Vita Cold Storage/i.test(text) && !/Vita Express Transport/i.test(text);
+}
+
+export function parseVitaStatementPdfText(text: string): ParseResult {
+  if (!/Vita Express Transport/i.test(text)) return { rows: [], error: "This isn't Vita's Transport statement." };
+  const rows: ParsedInvoiceRow[] = [];
+  let current: { no: string; date: string; refs: string[] } | null = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    const head = line.match(/^(\d{2}\/\d{2}\/\d{4})\s+Invoice\s*#\s*(\d+)\s*:/i);
+    if (head) {
+      current = { no: head[2], date: head[1], refs: [] };
+      continue;
+    }
+    if (!current) continue;
+    const money = line.match(/^([\d,]+\.\d{2})\s+[\d,]+\.\d{2}$/);
+    if (money) {
+      rows.push({
+        invoice_no: `INV-${current.no}`,
+        invoice_date: parseUsDateToIso(current.date),
+        customer_po: current.refs.join(", "),
+        amount: parseMoney(money[1]),
+      });
+      current = null;
+      continue;
+    }
+    // A page's repeated "Current Due / 1-30 Days ..." summary, or a column header, ends the reference lines.
+    if (/^(Current|Due|Amount|DATE\b|\d+(-|\+)\s*\d*\s*Days|Past Due)/i.test(line)) continue;
+    if (line) current.refs.push(line.replace(/^PO#\s*/i, ""));
+  }
+  if (rows.length === 0) return { rows: [], error: "Couldn't find any invoice rows in this Vita statement." };
+  return { rows };
+}
+
 // ---------------------------------------------------------------------------
 // Which parser goes with which carrier. Shared by the Invoicing page (Upload / Paste Statement) and the
 // Freight Statements agent, so an emailed statement is read exactly the way an uploaded one is. Keyed on the
@@ -506,10 +548,11 @@ export const CARRIER_PARSERS = new Map<string, StatementParser>([
   ["PROFREIGHT", parseProfreightPdfText],
   // Matched to the broker whose name starts with "RWB" (its full name is "RWB Trucking, LLC./Wintrust Bank").
   ["RWB", parseRwbInvoicePdfText],
+  ["VITA", parseVitaStatementPdfText],
 ]);
 
 // Only these carriers send an actual PDF - Jear's is an emailed Excel table and PGTrans's is a spreadsheet export.
-export const PDF_CARRIERS = new Set(["AFNIN", "ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT", "RWB"]);
+export const PDF_CARRIERS = new Set(["AFNIN", "ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT", "RWB", "VITA"]);
 
 // Jear also sends a separate weekly CSV export ("Weekly SOA") with its own due-date-to-invoice-date terms.
 export const CSV_CARRIERS = new Map<string, StatementParser>([["JEAR", parseJearStatementCsv]]);
@@ -527,4 +570,5 @@ export const CARRIER_NAME_HINTS: [string, RegExp][] = [
   ["PGTRANS", /pg[\s_-]?trans/i],
   ["PROFREIGHT", /pro[\s_-]?freight/i],
   ["RWB", /RWB\s+Trucking|(?<![A-Za-z])RWB(?![A-Za-z])/i],
+  ["VITA", /(?<![a-z])vita(?![a-z])/i],
 ];
