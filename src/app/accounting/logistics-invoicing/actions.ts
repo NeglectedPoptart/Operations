@@ -89,33 +89,45 @@ export async function applyStatementCheck(
 ) {
   const supabase = await createClient();
 
-  if (removeIds.length > 0) {
-    const { error } = await supabase.from("invoice_statements").delete().in("id", removeIds);
+  // Only rows that are really changing count: a re-run over a statement that was already applied finds the
+  // same rows already Done+flagged / Pending, and that must not show up as a "recent change".
+  const touched = [...new Set([...removeIds, ...doneFlagIds, ...pendingIds])];
+  const current = new Map<string, { status: string | null; flagged: boolean }>();
+  if (touched.length > 0) {
+    const { data, error } = await supabase.from("invoice_statements").select("id, status, flagged").in("id", touched);
+    if (error) throw new Error(error.message);
+    for (const r of data ?? []) current.set(String(r.id), { status: (r.status as string | null) ?? null, flagged: Boolean(r.flagged) });
+  }
+  const realRemove = removeIds.filter((id) => current.has(id));
+  const realDoneFlag = doneFlagIds.filter((id) => {
+    const c = current.get(id);
+    return c && !(c.status === "done" && c.flagged);
+  });
+  const realPending = pendingIds.filter((id) => {
+    const c = current.get(id);
+    return c && !(c.status === "pending" && !c.flagged);
+  });
+
+  if (realRemove.length > 0) {
+    const { error } = await supabase.from("invoice_statements").delete().in("id", realRemove);
     if (error) throw new Error(error.message);
   }
-  if (doneFlagIds.length > 0) {
-    const { error } = await supabase
-      .from("invoice_statements")
-      .update({ status: "done", flagged: true })
-      .in("id", doneFlagIds);
+  if (realDoneFlag.length > 0) {
+    const { error } = await supabase.from("invoice_statements").update({ status: "done", flagged: true }).in("id", realDoneFlag);
     if (error) throw new Error(error.message);
-    const { error: activityError } = await supabase
-      .from("brokers")
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq("id", brokerId);
+  }
+  if (realPending.length > 0) {
+    const { error } = await supabase.from("invoice_statements").update({ status: "pending", flagged: false }).in("id", realPending);
+    if (error) throw new Error(error.message);
+  }
+  if (realRemove.length + realDoneFlag.length + realPending.length > 0) {
+    const { error: activityError } = await supabase.from("brokers").update({ last_activity_at: new Date().toISOString() }).eq("id", brokerId);
     if (activityError) throw new Error(activityError.message);
-  }
-  if (pendingIds.length > 0) {
-    const { error } = await supabase
-      .from("invoice_statements")
-      .update({ status: "pending", flagged: false })
-      .in("id", pendingIds);
-    if (error) throw new Error(error.message);
   }
 
   // Stamped every time this runs, regardless of what (if anything) actually
-  // changed - "last statement checked" means the last time someone used the
-  // tool on this carrier, not the last time it found something to update.
+  // changed - "Last Statement Update" means the last time a statement was checked for this carrier, not the
+  // last time it found something to change (that is "Recent changes", above).
   const { error: checkedError } = await supabase
     .from("brokers")
     .update({ last_statement_checked_at: new Date().toISOString() })

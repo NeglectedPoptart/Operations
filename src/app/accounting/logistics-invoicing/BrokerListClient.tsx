@@ -192,9 +192,6 @@ export default function BrokerListClient({
               🚩 {flagged} flagged
             </p>
           )}
-          <p className="text-xs text-black/40 dark:text-white/40">
-            Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
-          </p>
           <p
             className={`text-xs ${
               checkedRecently(b.last_statement_checked_at)
@@ -202,7 +199,10 @@ export default function BrokerListClient({
                 : "text-black/40 dark:text-white/40"
             }`}
           >
-            Last statement checked: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
+            Last Statement Update: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
+          </p>
+          <p className="text-xs text-black/40 dark:text-white/40">
+            Recent changes: {formatTimestampSlash(b.last_activity_at) || "—"}
           </p>
           {statementRequested && (
             <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
@@ -359,9 +359,6 @@ export default function BrokerListClient({
                         {overdue} over {OVERDUE_DAYS} days
                       </p>
                     )}
-                    <p className="text-xs text-black/40 dark:text-white/40">
-                      Last update: {formatTimestampSlash(b.last_activity_at) || "—"}
-                    </p>
                     <p
                       className={`text-xs ${
                         checkedRecently(b.last_statement_checked_at)
@@ -369,7 +366,10 @@ export default function BrokerListClient({
                           : "text-black/40 dark:text-white/40"
                       }`}
                     >
-                      Last statement checked: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
+                      Last Statement Update: {formatTimestampSlash(b.last_statement_checked_at) || "—"}
+                    </p>
+                    <p className="text-xs text-black/40 dark:text-white/40">
+                      Recent changes: {formatTimestampSlash(b.last_activity_at) || "—"}
                     </p>
                   </Link>
                   <button

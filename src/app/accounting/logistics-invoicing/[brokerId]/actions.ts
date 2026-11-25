@@ -39,10 +39,9 @@ export async function importInvoices(brokerId: string, rows: ParsedInvoiceRow[])
   return inserted as unknown as InvoiceStatement[];
 }
 
-// "Last update" on the broker's Invoicing tile only tracks the two events
-// that actually mean someone worked the account: marking an invoice Done,
-// or adding a note - not every incidental field touch (e.g. re-marking
-// Pending, dismissing a flag).
+// "Recent changes" on the broker's Invoicing tile only tracks events that actually mean someone worked the
+// account: marking an invoice Pending or Done (or clearing that), or adding/changing a note - and only when the
+// value really changed (clicking into a note and leaving it alone, or dismissing a flag, doesn't count).
 async function bumpBrokerActivity(supabase: Awaited<ReturnType<typeof createClient>>, brokerId: string) {
   const { error } = await supabase
     .from("brokers")
@@ -57,9 +56,12 @@ export async function updateInvoiceStatement(
   patch: Partial<Pick<InvoiceStatement, "status" | "notes" | "flagged">>,
 ) {
   const supabase = await createClient();
+  const { data: before } = await supabase.from("invoice_statements").select("status, notes").eq("id", id).maybeSingle();
   const { error } = await supabase.from("invoice_statements").update(patch).eq("id", id);
   if (error) throw new Error(error.message);
-  if (patch.status === "done" || patch.notes !== undefined) {
+  const statusChanged = patch.status !== undefined && (patch.status ?? null) !== (before?.status ?? null);
+  const notesChanged = patch.notes !== undefined && (patch.notes?.trim() || null) !== ((before?.notes as string | null | undefined)?.trim() || null);
+  if (statusChanged || notesChanged) {
     await bumpBrokerActivity(supabase, brokerId);
   }
   revalidateAll(brokerId);
