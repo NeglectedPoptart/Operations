@@ -467,6 +467,27 @@ export function parseRwbInvoicePdfText(text: string): ParseResult {
   };
 }
 
+// AFNIN Logistics' own invoice PDF (one invoice per file, forwarded to HOPS as it arrives, usually with a separate
+// scanned "POD_Invoice_..." file that has no text). unpdf reads it as:
+//   AFNIN LOGISTICS AND SUPPLY LLC DATE: 11/10/2026 / INVOICE: AF271B / ... one "FREIGHT ... PU# ... PO# ... $ 85.00"
+//   line per truck (a PO# can wrap onto the next line) / SUBTOTAL 625.00$ / TOTAL 625.00$
+// The Customer PO column gets every PO# on the invoice.
+export function parseAfninInvoicePdfText(text: string): ParseResult {
+  // Only an AFNIN invoice: this parser also gets tried on files that name no carrier, so it must not match other carriers' PDFs.
+  if (!/AFNIN/i.test(text)) return { rows: [], error: "This isn't an AFNIN invoice." };
+  const invoiceNo = text.match(/INVOICE:\s*([A-Z0-9-]+)/i)?.[1];
+  const invoiceDate = text.match(/DATE:\s*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1];
+  // TOTAL, not SUBTOTAL; the amount can sit either side of its "$".
+  const amount = text.match(/(?<![A-Za-z])TOTAL\s*\$?\s*([\d,]+\.\d{2})/i)?.[1];
+  if (!invoiceNo || amount === undefined) {
+    return { rows: [], error: "Couldn't find an invoice number and TOTAL in this AFNIN invoice." };
+  }
+  const pos = [...new Set([...text.matchAll(/PO#\s*([A-Z0-9-]+)/gi)].map((m) => m[1]))];
+  return {
+    rows: [{ invoice_no: invoiceNo, invoice_date: invoiceDate ? parseUsDateToIso(invoiceDate) : null, customer_po: pos.join(", "), amount: parseMoney(amount) }],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Which parser goes with which carrier. Shared by the Invoicing page (Upload / Paste Statement) and the
 // Freight Statements agent, so an emailed statement is read exactly the way an uploaded one is. Keyed on the
@@ -474,6 +495,7 @@ export function parseRwbInvoicePdfText(text: string): ParseResult {
 export type StatementParser = (text: string) => ParseResult;
 
 export const CARRIER_PARSERS = new Map<string, StatementParser>([
+  ["AFNIN", parseAfninInvoicePdfText],
   ["ALIMAT", parseAlimatPdfText],
   ["AMP", parseAmpPdfText],
   ["DSV Logistics LLC", parseDsvPdfText],
@@ -487,13 +509,14 @@ export const CARRIER_PARSERS = new Map<string, StatementParser>([
 ]);
 
 // Only these carriers send an actual PDF - Jear's is an emailed Excel table and PGTrans's is a spreadsheet export.
-export const PDF_CARRIERS = new Set(["ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT", "RWB"]);
+export const PDF_CARRIERS = new Set(["AFNIN", "ALIMAT", "AMP", "DSV Logistics LLC", "GRIFFITH", "JERUE", "PROFREIGHT", "RWB"]);
 
 // Jear also sends a separate weekly CSV export ("Weekly SOA") with its own due-date-to-invoice-date terms.
 export const CSV_CARRIERS = new Map<string, StatementParser>([["JEAR", parseJearStatementCsv]]);
 
 // How each carrier's name shows up in an email's subject, a file name, the sender or the statement's own text.
 export const CARRIER_NAME_HINTS: [string, RegExp][] = [
+  ["AFNIN", /afnin/i],
   ["ALIMAT", /ali[\s_-]?mat/i],
   // Letters on either side rule a match out, but an underscore or digit doesn't ("AMP_statement.pdf" is AMP).
   ["AMP", /A\.M\.P\.\s*Carriers|(?<![A-Za-z])AMP(?![A-Za-z])/],

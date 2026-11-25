@@ -31,8 +31,10 @@ const STATEMENT_WORDS = /statement|aging|\bsoa\b|open invoices?|outstanding|a\/r
 // A forwarded freight INVOICE (rather than a statement) - one carrier's own invoice PDF per file.
 const INVOICE_WORDS = /invoice/i;
 // Carriers whose PDF is a single invoice, not a statement of many. It adds a line, and doesn't count as a statement check.
-const SINGLE_INVOICE_CARRIERS = new Set(["RWB"]);
-const SUPPORTED = "ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans, Profreight and RWB (invoices)";
+const SINGLE_INVOICE_CARRIERS = new Set(["AFNIN", "RWB"]);
+// A scanned proof-of-delivery file sent along with an invoice ("POD_Invoice_AF271B.pdf"): no text to read, not a statement.
+const POD_FILE = /(^|[^a-z])pod([^a-z]|$)/i;
+const SUPPORTED = "AFNIN (invoices), ALIMAT, AMP, DSV, Griffith, Jear, Jerue, PGTrans, Profreight and RWB (invoices)";
 
 // ---- reading the files -----------------------------------------------------------------------------
 
@@ -232,6 +234,7 @@ export async function handleStatementEmail(db: SupabaseClient, msg: InboxMessage
   const touched = new Set<string>();
   for (const source of sources) {
     const isBody = source.kind === "body";
+    if (!isBody && POD_FILE.test(source.label)) continue;
     if (source.error) {
       outcomes.push({ label: source.label, error: source.error });
       continue;
