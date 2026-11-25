@@ -20,6 +20,9 @@ export interface Broker {
   id: string;
   name: string;
   request_statement: boolean;
+  // "Someone should review this carrier" - flagged from the Invoicing home page (migration 177).
+  needs_review?: boolean;
+  needs_review_at?: string | null;
   position: number;
   last_activity_at: string | null;
   // Backend-only categorization - Local and LTL brokers are excluded from

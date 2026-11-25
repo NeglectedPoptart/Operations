@@ -5,8 +5,7 @@ import Link from "next/link";
 import { daysSince, formatTimestampSlash, isoDateOf } from "@/lib/dates";
 import { OVERDUE_DAYS } from "@/lib/invoicingParse";
 import type { Broker } from "@/lib/types";
-import FighterJetToggle from "@/components/FighterJetToggle";
-import { toggleRequestStatement, reorderBrokers, setBrokerActive } from "./actions";
+import { toggleNeedsReview, toggleRequestStatement, reorderBrokers, setBrokerActive } from "./actions";
 
 // Green when the Statement Checker was run on this carrier within the last
 // 2 days (of whatever "today" is when the page loads) - a quick "have I
@@ -18,12 +17,15 @@ function checkedRecently(lastCheckedAt: string | null): boolean {
 }
 
 // A tile's own status coloring (green/yellow) always yields to the
-// statement-request toggle, which the office actively clicked to flag this
-// carrier - that intent should never be visually buried under whatever the
-// aging happens to say.
-function tileToneClasses(tone: "requested" | "green" | "yellow"): string {
+// statement-request and review flags, which the office actively clicked to
+// flag this carrier - that intent should never be visually buried under
+// whatever the aging happens to say.
+function tileToneClasses(tone: "requested" | "review" | "green" | "yellow"): string {
   if (tone === "requested") {
     return "border-red-300/70 bg-red-50/60 dark:border-red-800/50 dark:bg-red-950/10";
+  }
+  if (tone === "review") {
+    return "border-purple-400/70 bg-purple-50 dark:border-purple-700/60 dark:bg-purple-950/20";
   }
   if (tone === "green") {
     return "border-green-500/40 bg-green-50 hover:border-green-600 dark:border-green-700/40 dark:bg-green-950/20";
@@ -57,6 +59,9 @@ export default function BrokerListClient({
   const [requested, setRequested] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(brokers.map((b) => [b.id, b.request_statement])),
   );
+  const [review, setReview] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(brokers.map((b) => [b.id, Boolean(b.needs_review)])),
+  );
   const [, startTransition] = useTransition();
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const dragStartOrder = useRef<Broker[] | null>(null);
@@ -69,6 +74,19 @@ export default function BrokerListClient({
         await toggleRequestStatement(id, next);
       } catch {
         setRequested((prev) => ({ ...prev, [id]: !next }));
+      }
+    });
+  }
+
+  function handleReview(id: string) {
+    const next = !review[id];
+    setReview((prev) => ({ ...prev, [id]: next }));
+    startTransition(async () => {
+      try {
+        await toggleNeedsReview(id, next);
+      } catch (e) {
+        setReview((prev) => ({ ...prev, [id]: !next }));
+        alert(e instanceof Error ? e.message : "Couldn't save that.");
       }
     });
   }
@@ -148,9 +166,12 @@ export default function BrokerListClient({
       // are still shown (we pay late anyway, so aging alone isn't
       // actionable) but don't block green on their own. A clicked
       // statement request always wins over either.
-      const tone: "requested" | "green" | "yellow" = statementRequested
+      const needsReview = review[b.id] ?? false;
+      const tone: "requested" | "review" | "green" | "yellow" = statementRequested
         ? "requested"
-        : pending === 0
+        : needsReview
+          ? "review"
+          : pending === 0
           ? "green"
           : "yellow";
       const cardClasses = `relative flex items-center gap-3 rounded-lg border p-4 shadow-sm transition ${tileToneClasses(tone)}`;
@@ -188,6 +209,11 @@ export default function BrokerListClient({
               Statement requested
             </p>
           )}
+          {needsReview && (
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-purple-700 dark:text-purple-300">
+              ⚑ Needs review
+            </p>
+          )}
         </>
       );
 
@@ -221,7 +247,30 @@ export default function BrokerListClient({
             {body}
           </Link>
           <div className="flex shrink-0 flex-col items-end gap-2">
-            <FighterJetToggle active={statementRequested} onToggle={() => handleToggle(b.id)} />
+            <button
+              type="button"
+              onClick={() => handleToggle(b.id)}
+              aria-pressed={statementRequested}
+              className={`w-36 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
+                statementRequested
+                  ? "border-red-600 bg-red-600 text-white hover:bg-red-700"
+                  : "border-black/20 bg-white text-black/70 hover:border-red-500 hover:text-red-600 dark:border-white/20 dark:bg-transparent dark:text-white/70"
+              }`}
+            >
+              {statementRequested ? "✓ Statement requested" : "Request statement"}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleReview(b.id)}
+              aria-pressed={needsReview}
+              className={`w-36 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
+                needsReview
+                  ? "border-purple-600 bg-purple-600 text-white hover:bg-purple-700"
+                  : "border-black/20 bg-white text-black/70 hover:border-purple-500 hover:text-purple-700 dark:border-white/20 dark:bg-transparent dark:text-white/70"
+              }`}
+            >
+              {needsReview ? "⚑ Needs review" : "Flag for review"}
+            </button>
             <button
               type="button"
               onClick={() => handleActiveToggle(b, false)}

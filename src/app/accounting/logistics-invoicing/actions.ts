@@ -39,6 +39,17 @@ export async function toggleRequestStatement(brokerId: string, value: boolean) {
   revalidatePath("/accounting/logistics-invoicing");
 }
 
+// "Someone should review this carrier" - a flag on the carrier's tile, separate from asking them for a statement.
+export async function toggleNeedsReview(brokerId: string, value: boolean) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("brokers")
+    .update({ needs_review: value, needs_review_at: value ? new Date().toISOString() : null })
+    .eq("id", brokerId);
+  if (error) throw new Error(/needs_review/.test(error.message) ? "Flag for review isn't set up yet - run migration 177." : error.message);
+  revalidatePath("/accounting/logistics-invoicing");
+}
+
 // Marks a broker as not-actively-used (or reactivates it) - never deletes
 // it, just drops it out of the Board's broker picker and moves its tile
 // into the greyed-out "Not Actively Using" section here.
