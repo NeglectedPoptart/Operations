@@ -1350,11 +1350,25 @@ export async function pollInbox(
     // Carrier files (the signed POD): stored on the load, each one read by
     // Claude to see whether it really is a POD and which load it belongs to.
     let attachments: ReplyAttachment[] = [];
-    // Photos pasted into the body of the reply count too (listAttachments keeps the ones big enough to be a scan).
-    if ((msg.hasAttachments || msg.hasInlineImages) && agent?.key === "load_eta") {
+    // Always looked for on a carrier reply, not only when the mailbox says it has attachments: a photo pasted into
+    // the body of the reply doesn't set that flag (listAttachments keeps the ones big enough to be a scan).
+    if (agent?.key === "load_eta") {
       try {
+        await step(`Looking for a POD file with ${msg.fromEmail}'s reply`);
         attachments = await storeAttachments(db, msg.id, thread, msg.text);
         proposed = withPodUpdates(proposed, attachments);
+        // Said out loud, so it's clear what HOPS found and decided about each file.
+        await logEvent(
+          db,
+          thread.agent_id,
+          "inbox",
+          attachments.length === 0
+            ? `No POD file found with ${msg.fromEmail}'s reply to "${thread.subject}"`
+            : `Files with ${msg.fromEmail}'s reply: ${attachments
+                .map((a) => `${a.file_name} - ${a.is_pod ? `POD${a.load_number ? ` for load #${a.load_number}` : " (couldn't tell which load)"}` : "not a POD"}${a.note ? ` (${a.note})` : ""}`)
+                .join("; ")}`.slice(0, 600),
+          thread.id,
+        );
       } catch (err) {
         parseError = parseError ?? `Could not read the attachments: ${err instanceof Error ? err.message : String(err)}`;
       }

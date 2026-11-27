@@ -183,7 +183,7 @@ export async function listInboxSince(sinceISO: string, limit: number): Promise<I
     text: (m.uniqueBody?.content || m.body?.content || "").trim(),
     fullText: (m.body?.content || m.uniqueBody?.content || "").trim(),
     hasAttachments: m.hasAttachments === true,
-    hasInlineImages: /<img\b[^>]*\bsrc\s*=\s*["']cid:/i.test(m.body?.content ?? m.uniqueBody?.content ?? ""),
+    hasInlineImages: /<img\b[^>]*\bsrc\s*=\s*["']cid:|\[cid:[^\]\s]+\]/i.test(m.body?.content ?? m.uniqueBody?.content ?? ""),
   }));
 }
 
