@@ -12,6 +12,7 @@ import type {
   ReplyAttachment,
 } from "@/lib/agents/types";
 import AgentOffice from "./AgentOffice";
+import LiveStatus from "./LiveStatus";
 import {
   applyBuyerReplyUpdates,
   applyOrderReplyUpdates,
@@ -1146,6 +1147,8 @@ export default function AgentsClient({
           </button>
         </div>
       </div>
+
+      <LiveStatus initialEvents={events} agentName={agentName} />
 
       <SetupChecklist status={status} />
 

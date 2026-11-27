@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { customerKey } from "@/lib/agents/customerKey";
 import { createClient } from "@/lib/supabase/server";
 import { canOpenPage } from "@/lib/pageAccess";
+import { trackedPass } from "@/lib/agents/status";
 import { applyBuyersReply, applyOrdersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
 import type { AgentMode, ProposedBuyerUpdate, ProposedLoadUpdate, ProposedOrderUpdate, ReplyAttachment } from "@/lib/agents/types";
 
@@ -74,7 +75,7 @@ export async function runAgentNow(id: string) {
 
 export async function checkInboxNow() {
   const supabase = await ownerClient();
-  const result = await pollInbox(supabase);
+  const result = await trackedPass(supabase, "button", (step) => pollInbox(supabase, step));
   revalidateAll();
   return result;
 }

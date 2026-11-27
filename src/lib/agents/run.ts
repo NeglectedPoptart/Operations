@@ -1163,10 +1163,18 @@ function withPodUpdates(proposed: ProposedLoadUpdate[], attachments: ReplyAttach
   return out;
 }
 
-export async function pollInbox(db: SupabaseClient): Promise<{ processed: number }> {
-  if (!graphConfigured()) return { processed: 0 };
+export async function pollInbox(
+  db: SupabaseClient,
+  // Reports what it is doing for the live status card (see status.ts).
+  onStep?: (text: string) => Promise<void>,
+): Promise<{ processed: number; seen: number; left: number }> {
+  if (!graphConfigured()) return { processed: 0, seen: 0, left: 0 };
   const started = Date.now();
+  const step = async (text: string) => {
+    await onStep?.(text).catch(() => {});
+  };
 
+  await step("Checking the HOP@ inbox");
   const { data: state } = await db.from("agent_state").select("value").eq("key", "inbox_cursor").maybeSingle();
   const since = (state?.value as string | null) ?? new Date(Date.now() - 24 * 3_600_000).toISOString();
   const mailbox = agentMailbox().toLowerCase();
@@ -1174,11 +1182,18 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
   const messages = await listInboxSince(since, 25);
   let cursor = since;
   let processed = 0;
+  // New emails looked at this pass, and the ones nothing recognised (left unread for a person).
+  let seen = 0;
+  let left = 0;
 
   for (const msg of messages) {
     if (processed >= MAX_REPLIES_PER_POLL || Date.now() - started > 40_000) break;
     cursor = msg.receivedAt;
     if (msg.fromEmail === mailbox) continue;
+    // The newest email is re-read every pass (the cursor is "at or after"), so only a later one counts as new.
+    const isNew = msg.receivedAt > since;
+    if (isNew) seen++;
+    await step(`Reading email from ${msg.fromEmail}: ${msg.subject}`.slice(0, 160));
 
     // The morning Availability pricing email: applied to today's FOB Pharr sheet, not an agent reply.
     if (isAvailabilityEmail(msg)) {
@@ -1249,7 +1264,12 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
           await logEvent(db, null, "error", `Inventory email could not be read: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
-      continue; // not a reply to an agent email - left unread for a person
+      // Not a reply to an agent email - left unread for a person. Said out loud once, so it's clear HOPS did see it.
+      if (isNew) {
+        left++;
+        await logEvent(db, null, "inbox", `Email from ${msg.fromEmail} "${msg.subject}" - not a reply to a HOPS email or a statement/report HOPS reads, so it was left in the mailbox for a person`);
+      }
+      continue;
     }
 
     // The owner answering an "Approve?" email - never a carrier/buyer reply.
@@ -1309,6 +1329,7 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
       parseError = "Claude isn't set up (ANTHROPIC_API_KEY) - read and apply this one by hand.";
     } else {
       try {
+        await step(`Reading ${msg.fromEmail}'s reply to "${thread.subject}"`.slice(0, 160));
         const result = await parseReply({
           agentKey: agent?.key ?? "",
           originalBody: thread.body,
@@ -1407,11 +1428,12 @@ export async function pollInbox(db: SupabaseClient): Promise<{ processed: number
   // Full-size photos for LotPath reports imported earlier (their PDFs only carry thumbnails) - a few each pass.
   const photoBudget = Math.min(20_000, 42_000 - (Date.now() - started));
   if (photoBudget > 5_000) {
+    await step("Fetching full-size LotPath photos");
     await processFullPhotos(db, photoBudget).catch(async (err) => {
       await logEvent(db, null, "error", `Full-size LotPath photos could not be fetched: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
-  return { processed };
+  return { processed, seen, left };
 }
 
 // Writes a reply's updates to the loads. A load only goes Complete when a POD
