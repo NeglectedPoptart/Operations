@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { customerKey } from "@/lib/agents/customerKey";
 import { createClient } from "@/lib/supabase/server";
 import { canOpenPage } from "@/lib/pageAccess";
-import { trackedPass } from "@/lib/agents/status";
+import { TICK_STATUS_KEY, trackedPass, type TickStatus } from "@/lib/agents/status";
 import { applyBuyersReply, applyOrdersReply, applyReply, pollInbox, runAgents, sendThread } from "@/lib/agents/run";
 import type { AgentMode, ProposedBuyerUpdate, ProposedLoadUpdate, ProposedOrderUpdate, ReplyAttachment } from "@/lib/agents/types";
 
@@ -78,6 +78,31 @@ export async function checkInboxNow() {
   const result = await trackedPass(supabase, "button", (step) => pollInbox(supabase, step));
   revalidateAll();
   return result;
+}
+
+// "Check now": the same pass the 15-minute timer does (read the HOP@ inbox, then run whichever scheduled agents are
+// due), started on demand. Shows on the live status card like any other pass.
+export async function forceCheckNow(): Promise<{ ok: true; seen: number; handled: number; left: number; created: number } | { error: string }> {
+  const supabase = await ownerClient();
+  const { data: row } = await supabase.from("agent_state").select("value").eq("key", TICK_STATUS_KEY).maybeSingle();
+  try {
+    const current = row?.value ? (JSON.parse(row.value as string) as TickStatus) : null;
+    if (current?.state === "running" && Date.now() - new Date(current.startedAt).getTime() < 90_000) return { error: "A check is already running - watch it on the card." };
+  } catch {
+    // an unreadable status is treated as not running
+  }
+  try {
+    const result = await trackedPass(supabase, "button", async (step) => {
+      const inbox = await pollInbox(supabase, step);
+      await step("Running the scheduled agents (ETA follow-ups, price sheets, statements)");
+      const run = await runAgents(supabase);
+      return { processed: inbox.processed, seen: inbox.seen, left: inbox.left, created: run.created };
+    });
+    revalidateAll();
+    return { ok: true, seen: result.seen, handled: result.processed, left: result.left, created: result.created };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "The check failed." };
+  }
 }
 
 export async function approveDraft(threadId: string, edits: { to: string[]; subject: string; body: string }) {

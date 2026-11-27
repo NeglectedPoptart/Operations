@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { AgentEvent } from "@/lib/agents/types";
 import { TICK_STATUS_KEY, type TickStatus } from "@/lib/agents/status";
+import { forceCheckNow } from "./actions";
 
 // HOPS mission control: a live picture of the background worker. Email comes in on the left, passes through the
 // HOPS core, and flows out to the part of the app it feeds. Packets move while a pass is running, a ring around the
@@ -66,6 +67,8 @@ export default function LiveStatus({ initialEvents, agentName }: { initialEvents
   const [loaded, setLoaded] = useState(false);
   const [events, setEvents] = useState<AgentEvent[]>(initialEvents);
   const [now, setNow] = useState(() => Date.now());
+  const [forcing, startForce] = useTransition();
+  const [forceMsg, setForceMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -180,10 +183,27 @@ export default function LiveStatus({ initialEvents, agentName }: { initialEvents
           </span>
           <h2 className="text-sm font-bold tracking-wide">{headline}</h2>
         </div>
+        <div className="flex items-center gap-3">
         <span className="text-xs text-slate-400">
           {running && status ? `${Math.max(0, Math.round((now - startedMs) / 1000))}s${status.source === "button" ? " · started by you" : ""}` : nextIn !== null && !stale ? `Checks every ${TIMER_MINUTES} min · next in about ${nextIn} min` : ""}
         </span>
+        <button
+          type="button"
+          disabled={forcing || running}
+          onClick={() => {
+            setForceMsg(null);
+            startForce(async () => {
+              const r = await forceCheckNow();
+              setForceMsg("error" in r ? r.error : r.seen === 0 && r.handled === 0 && r.created === 0 ? "Checked - nothing new." : `Checked - ${r.seen} new email${r.seen === 1 ? "" : "s"}, ${r.handled} handled${r.created > 0 ? `, ${r.created} email${r.created === 1 ? "" : "s"} sent or drafted` : ""}.`);
+            });
+          }}
+          className="rounded-md border border-amber-400/60 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-400/20 disabled:opacity-50"
+        >
+          {forcing || running ? "Checking..." : "⚡ Check now"}
+        </button>
+        </div>
       </div>
+      {forceMsg && <p className="mt-1 text-xs text-amber-200">{forceMsg}</p>}
       {lastCheck && (
         <p className="mt-1 text-xs text-slate-300">
           {lastCheck}
