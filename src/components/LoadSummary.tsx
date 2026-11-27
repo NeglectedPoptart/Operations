@@ -189,7 +189,12 @@ function LoadNotes({ notes, compact }: { notes: string | null; compact: boolean 
   for (const line of notes.split("\n")) {
     if (!line.trim()) continue;
     const m = AGENT_LINE.exec(line.trim());
-    if (m) agent.push({ date: m[1], text: m[2] });
+    if (m) {
+      // The same update repeated back-to-back is shown once.
+      const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      const last = agent[agent.length - 1];
+      if (!last || norm(last.text) !== norm(m[2])) agent.push({ date: m[1], text: m[2] });
+    }
     else typed.push(line);
   }
   const hidden = showAll ? 0 : Math.max(0, agent.length - AGENT_LINES_SHOWN);

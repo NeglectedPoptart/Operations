@@ -114,6 +114,21 @@ function shortDate(iso: string | null): string {
   return `${Number(m)}/${Number(d)}`;
 }
 
+// Adds an "[Agent 11/27] ..." line to a load's notes - unless the newest agent line already says the same
+// thing (a carrier repeating the same ETA/location shouldn't stack up identical lines).
+function addAgentLine(existing: string | null | undefined, stamp: string, text: string): string {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  const lines = (existing ?? "").split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = /^\s*\[Agent [^\]]*\]\s*(.*)$/.exec(lines[i]);
+    if (m) {
+      if (norm(m[1]) === norm(text)) return existing ?? "";
+      break;
+    }
+  }
+  return [existing, `[Agent ${stamp}] ${text}`].filter(Boolean).join("\n");
+}
+
 function splitEmails(value: string | null | undefined): string[] {
   return (value ?? "")
     .split(/[,;\s]+/)
@@ -1756,7 +1771,7 @@ export async function applyReply(
     const loadPods = pods.filter((a) => a.load_id === u.load_id);
     const patch: Record<string, unknown> = {};
     if (u.eta_note) patch.eta_note = u.eta_note;
-    if (u.append_note) patch.notes = [load?.notes, `[Agent ${stamp}] ${u.append_note}`].filter(Boolean).join("\n");
+    if (u.append_note) patch.notes = addAgentLine(load?.notes, stamp, u.append_note);
     if (u.ready_to_load !== null) patch.ready_to_load = u.ready_to_load;
     if (u.new_status) patch.status = u.new_status;
 
@@ -1780,14 +1795,10 @@ export async function applyReply(
         );
         if (docError) throw new Error(docError.message);
       }
-      patch.notes = [patch.notes ?? load?.notes, `[Agent ${stamp}] POD received by email - delivered.`]
-        .filter(Boolean)
-        .join("\n");
+      patch.notes = addAgentLine((patch.notes as string | undefined) ?? load?.notes, stamp, "POD received by email - delivered.");
     } else if (u.delivered === true && load?.status !== "complete") {
       patch.pod_pending = true;
-      patch.notes = [patch.notes ?? load?.notes, `[Agent ${stamp}] Carrier says delivered - waiting on POD.`]
-        .filter(Boolean)
-        .join("\n");
+      patch.notes = addAgentLine((patch.notes as string | undefined) ?? load?.notes, stamp, "Carrier says delivered - waiting on POD.");
     } else if (patch.status === "complete") {
       patch.pod_pending = false;
     }
@@ -1795,7 +1806,7 @@ export async function applyReply(
     if (Object.keys(patch).length === 0) continue;
     const { error: updateError } = await db.from("loads").update(patch).eq("id", u.load_id);
     if (updateError) throw new Error(updateError.message);
-    const changes = Object.keys(patch).filter((k) => k !== "notes" || u.append_note);
+    const changes = Object.keys(patch).filter((k) => k !== "notes" || patch.notes !== load?.notes);
     applied.push(`load #${u.load_number}: ${loadPods.length > 0 ? "POD received, Complete" : changes.join(", ")}`);
   }
 
