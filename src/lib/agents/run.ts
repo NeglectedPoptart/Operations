@@ -1350,7 +1350,8 @@ export async function pollInbox(
     // Carrier files (the signed POD): stored on the load, each one read by
     // Claude to see whether it really is a POD and which load it belongs to.
     let attachments: ReplyAttachment[] = [];
-    if (msg.hasAttachments && agent?.key === "load_eta") {
+    // Photos pasted into the body of the reply count too (listAttachments keeps the ones big enough to be a scan).
+    if ((msg.hasAttachments || msg.hasInlineImages) && agent?.key === "load_eta") {
       try {
         attachments = await storeAttachments(db, msg.id, thread, msg.text);
         proposed = withPodUpdates(proposed, attachments);

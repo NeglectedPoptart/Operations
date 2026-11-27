@@ -148,6 +148,9 @@ export interface InboxMessage {
   // The whole message, including anything quoted below a forward.
   fullText: string;
   hasAttachments: boolean;
+  // A picture embedded in the body of the email (what a phone photo pasted into a reply becomes). Microsoft's
+  // hasAttachments leaves these out, so a reply whose only file is one reads as having no attachments.
+  hasInlineImages: boolean;
 }
 
 export async function listInboxSince(sinceISO: string, limit: number): Promise<InboxMessage[]> {
@@ -180,6 +183,7 @@ export async function listInboxSince(sinceISO: string, limit: number): Promise<I
     text: (m.uniqueBody?.content || m.body?.content || "").trim(),
     fullText: (m.body?.content || m.uniqueBody?.content || "").trim(),
     hasAttachments: m.hasAttachments === true,
+    hasInlineImages: /<img\b[^>]*\bsrc\s*=\s*["']cid:/i.test(m.body?.content ?? m.uniqueBody?.content ?? ""),
   }));
 }
 
