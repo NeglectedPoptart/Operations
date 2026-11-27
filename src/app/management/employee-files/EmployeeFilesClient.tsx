@@ -734,12 +734,13 @@ function EmployeeDetail({
                     {uploadingCategory === key ? "Uploading..." : "+ Upload"}
                     <input
                       type="file"
+                      multiple
                       className="hidden"
                       disabled={uploadingCategory === key}
                       onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                        const file = e.target.files?.[0];
+                        const files = Array.from(e.target.files ?? []);
                         e.target.value = "";
-                        if (file) onUploadDoc(employee.id, cat.value, file);
+                        for (const file of files) onUploadDoc(employee.id, cat.value, file);
                       }}
                     />
                   </label>

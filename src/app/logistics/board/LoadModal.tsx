@@ -81,7 +81,7 @@ export default function LoadModal({
   // uploaded right after the load is saved.
   const bolDocs = allDocs.filter((d) => d.kind === "delivery_bol");
   const [bolBusy, setBolBusy] = useState(false);
-  const [bolFile, setBolFile] = useState<File | null>(null);
+  const [bolFiles, setBolFiles] = useState<File[]>([]);
   const createdLoadId = useRef<string | null>(null);
   const [podUploading, setPodUploading] = useState(false);
   const [podError, setPodError] = useState<string | null>(null);
@@ -120,12 +120,12 @@ export default function LoadModal({
     if ("error" in r) throw new Error(r.error);
   }
 
-  async function handleBolFile(file: File) {
+  async function handleBolFile(files: File[]) {
     if (!load) return;
     setPodError(null);
     setBolBusy(true);
     try {
-      await uploadDeliveryBol(load.id, file);
+      for (const file of files) await uploadDeliveryBol(load.id, file);
       setAllDocs(await getLoadDocuments(load.id));
     } catch (e) {
       setPodError(e instanceof Error ? e.message : "Upload failed.");
@@ -134,26 +134,28 @@ export default function LoadModal({
     }
   }
 
-  async function handlePodFile(file: File) {
+  async function handlePodFile(files: File[]) {
     if (!load) return;
     setPodError(null);
     setPodUploading(true);
     try {
       // Straight to Storage from the browser (a server action's body is
       // capped far below a scan's size), then recorded against the load.
-      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
-      const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
-      const { error: uploadError } = await createClient()
-        .storage.from("load-documents")
-        .upload(storagePath, file, { contentType: file.type || undefined });
-      if (uploadError) throw new Error(uploadError.message);
-      await recordLoadPod({
-        loadId: load.id,
-        fileName: file.name,
-        storagePath,
-        contentType: file.type || null,
-        sizeBytes: file.size,
-      });
+      for (const file of files) {
+        const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
+        const { error: uploadError } = await createClient()
+          .storage.from("load-documents")
+          .upload(storagePath, file, { contentType: file.type || undefined });
+        if (uploadError) throw new Error(uploadError.message);
+        await recordLoadPod({
+          loadId: load.id,
+          fileName: file.name,
+          storagePath,
+          contentType: file.type || null,
+          sizeBytes: file.size,
+        });
+      }
       onClose();
     } catch (e) {
       setPodError(e instanceof Error ? e.message : "Upload failed.");
@@ -188,9 +190,12 @@ export default function LoadModal({
           // If the BOL upload failed last time, the load already exists - only retry the file.
           const id = createdLoadId.current ?? (await createLoad(formData));
           createdLoadId.current = id;
-          if (bolFile) {
+          if (bolFiles.length > 0) {
             try {
-              await uploadDeliveryBol(id, bolFile);
+              for (const f of [...bolFiles]) {
+                await uploadDeliveryBol(id, f);
+                setBolFiles((prev) => prev.filter((x) => x !== f));
+              }
             } catch (e) {
               throw new Error(`The load was added, but the Delivery BOL didn't upload (${e instanceof Error ? e.message : "upload failed"}). Press Save to try the file again, or clear it and attach it later by editing the load.`);
             }
@@ -321,12 +326,13 @@ export default function LoadModal({
                   <input
                     type="file"
                     accept="application/pdf,image/*"
+                    multiple
                     className="hidden"
                     disabled={bolBusy}
                     onChange={(e) => {
-                      const f = e.target.files?.[0];
+                      const fs = Array.from(e.target.files ?? []);
                       e.target.value = "";
-                      if (f) void handleBolFile(f);
+                      if (fs.length > 0) void handleBolFile(fs);
                     }}
                   />
                 </label>
@@ -334,22 +340,23 @@ export default function LoadModal({
             ) : (
               <div className="flex flex-wrap items-center gap-3 text-xs">
                 <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
-                  {bolFile ? "Choose a different file" : "Attach Delivery BOL"}
+                  {bolFiles.length > 0 ? "Attach another file" : "Attach Delivery BOL"}
                   <input
                     type="file"
                     accept="application/pdf,image/*"
+                    multiple
                     className="hidden"
                     onChange={(e) => {
-                      const f = e.target.files?.[0];
+                      const fs = Array.from(e.target.files ?? []);
                       e.target.value = "";
-                      if (f) setBolFile(f);
+                      if (fs.length > 0) setBolFiles((prev) => [...prev, ...fs]);
                     }}
                   />
                 </label>
-                {bolFile ? (
+                {bolFiles.length > 0 ? (
                   <>
-                    <span>📎 {bolFile.name}</span>
-                    <button type="button" className="text-red-600 hover:underline" onClick={() => setBolFile(null)}>
+                    <span>📎 {bolFiles.map((f) => f.name).join(", ")}</span>
+                    <button type="button" className="text-red-600 hover:underline" onClick={() => setBolFiles([])}>
                       clear
                     </button>
                   </>
@@ -464,12 +471,13 @@ export default function LoadModal({
                   <input
                     type="file"
                     accept="application/pdf,image/*"
+                    multiple
                     className="hidden"
                     disabled={podUploading}
                     onChange={(e) => {
-                      const f = e.target.files?.[0];
+                      const fs = Array.from(e.target.files ?? []);
                       e.target.value = "";
-                      if (f) void handlePodFile(f);
+                      if (fs.length > 0) void handlePodFile(fs);
                     }}
                   />
                 </label>

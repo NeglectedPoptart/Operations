@@ -285,12 +285,15 @@ export default function FoodSafetyClient({
                             {uploadingKey === key ? "Uploading..." : "+ Upload"}
                             <input
                               type="file"
+                              multiple
                               className="hidden"
                               disabled={uploadingKey === key}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                const file = e.target.files?.[0];
+                                const files = Array.from(e.target.files ?? []);
                                 e.target.value = "";
-                                if (file) handleUpload(g.id, type.id, file);
+                                void (async () => {
+                                  for (const file of files) await handleUpload(g.id, type.id, file);
+                                })();
                               }}
                             />
                           </label>

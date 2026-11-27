@@ -791,12 +791,15 @@ export default function PerformanceReviewsClient({
                             {uploadingDocFor === emp.id ? "Uploading..." : "+ Upload Document"}
                             <input
                               type="file"
+                              multiple
                               className="hidden"
                               disabled={uploadingDocFor === emp.id}
                               onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                                const file = e.target.files?.[0];
+                                const files = Array.from(e.target.files ?? []);
                                 e.target.value = "";
-                                if (file) handleUploadDocument(emp, file);
+                                void (async () => {
+                                  for (const file of files) await handleUploadDocument(emp, file);
+                                })();
                               }}
                             />
                           </label>

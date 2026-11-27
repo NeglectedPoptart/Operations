@@ -115,17 +115,19 @@ export function AddPodButton({ load, className = smallBtn }: { load: Load; class
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleFile(file: File) {
+  async function handleFile(files: File[]) {
     setError(null);
     setBusy(true);
     try {
-      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
-      const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
-      const { error: uploadError } = await createClient()
-        .storage.from("load-documents")
-        .upload(storagePath, file, { contentType: file.type || undefined });
-      if (uploadError) throw new Error(uploadError.message);
-      await recordLoadPod({ loadId: load.id, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+      for (const file of files) {
+        const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
+        const { error: uploadError } = await createClient()
+          .storage.from("load-documents")
+          .upload(storagePath, file, { contentType: file.type || undefined });
+        if (uploadError) throw new Error(uploadError.message);
+        await recordLoadPod({ loadId: load.id, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -140,12 +142,13 @@ export function AddPodButton({ load, className = smallBtn }: { load: Load; class
         <input
           type="file"
           accept="application/pdf,image/*"
+          multiple
           className="hidden"
           disabled={busy}
           onChange={(e) => {
-            const f = e.target.files?.[0];
+            const fs = Array.from(e.target.files ?? []);
             e.target.value = "";
-            if (f) void handleFile(f);
+            if (fs.length > 0) void handleFile(fs);
           }}
         />
       </label>
@@ -173,18 +176,20 @@ export function StopPodControls({ stop, loadId }: { stop: LoadStop; loadId: stri
     }
   }
 
-  async function handleFile(file: File) {
+  async function handleFile(files: File[]) {
     setError(null);
     setBusy(true);
     try {
-      const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
-      const storagePath = `manual/${loadId}/${crypto.randomUUID()}${ext}`;
-      const { error: uploadError } = await createClient()
-        .storage.from("load-documents")
-        .upload(storagePath, file, { contentType: file.type || undefined });
-      if (uploadError) throw new Error(uploadError.message);
-      const r = await recordStopPod({ stopId: stop.id, loadId, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
-      if ("error" in r) throw new Error(r.error);
+      for (const file of files) {
+        const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const storagePath = `manual/${loadId}/${crypto.randomUUID()}${ext}`;
+        const { error: uploadError } = await createClient()
+          .storage.from("load-documents")
+          .upload(storagePath, file, { contentType: file.type || undefined });
+        if (uploadError) throw new Error(uploadError.message);
+        const r = await recordStopPod({ stopId: stop.id, loadId, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+        if ("error" in r) throw new Error(r.error);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed.");
     } finally {
@@ -208,12 +213,13 @@ export function StopPodControls({ stop, loadId }: { stop: LoadStop; loadId: stri
         <input
           type="file"
           accept="application/pdf,image/*"
+          multiple
           className="hidden"
           disabled={busy}
           onChange={(e) => {
-            const f = e.target.files?.[0];
+            const fs = Array.from(e.target.files ?? []);
             e.target.value = "";
-            if (f) void handleFile(f);
+            if (fs.length > 0) void handleFile(fs);
           }}
         />
       </label>
