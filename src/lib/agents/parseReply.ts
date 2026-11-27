@@ -127,10 +127,11 @@ export async function parseReply(input: {
 const POD_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["is_pod", "load_number", "confident", "note"],
+  required: ["is_pod", "load_number", "drop_number", "confident", "note"],
   properties: {
     is_pod: { type: "boolean" },
     load_number: { anyOf: [{ type: "integer" }, { type: "null" }] },
+    drop_number: { anyOf: [{ type: "integer" }, { type: "null" }] },
     confident: { type: "boolean" },
     note: { type: "string", description: "One short sentence: what the document is and who signed or received." },
   },
@@ -143,6 +144,7 @@ A POD is a delivery receipt or bill of lading showing the load was received: a r
 Return:
 - is_pod: true only if the file shows evidence the freight was received (signature/stamp by the receiver or a clear received-on date).
 - load_number: which numbered load in the list the document belongs to, by comparing PO numbers, order numbers, customer and destination. If there is exactly one load in the list, the document is a POD, and nothing in it contradicts that load, return 1. Null if you cannot tell which load.
+- drop_number: when the matched load lists several numbered drops, which drop (1, 2, 3...) this document is the receipt for, by comparing the receiving customer, PO, order number and destination on the document. Null if the load has only one drop, if one document clearly covers every drop, or if you cannot tell which drop.
 - confident: true only if is_pod is clear AND the load match is clear (an identifier matches, or the single-load case above). False if the scan is unreadable, unsigned, or its references point at a different load.
 - note: one short sentence.`;
 
@@ -152,7 +154,7 @@ export async function verifyPod(input: {
   loads: { number: number; description: string }[];
   // The carrier's own message that came with the file - a hint about what they meant it to be.
   replyText?: string;
-}): Promise<{ is_pod: boolean; load_number: number | null; confident: boolean; note: string }> {
+}): Promise<{ is_pod: boolean; load_number: number | null; drop_number: number | null; confident: boolean; note: string }> {
   const client = new Anthropic();
   const base64 = input.data.toString("base64");
   const file =
@@ -184,9 +186,9 @@ export async function verifyPod(input: {
 
   const text = response.content.find((b) => b.type === "text");
   if (response.stop_reason === "refusal" || !text || text.type !== "text") {
-    return { is_pod: false, load_number: null, confident: false, note: "Claude could not read this file - check it by hand." };
+    return { is_pod: false, load_number: null, drop_number: null, confident: false, note: "Claude could not read this file - check it by hand." };
   }
-  return JSON.parse(text.text) as { is_pod: boolean; load_number: number | null; confident: boolean; note: string };
+  return JSON.parse(text.text) as { is_pod: boolean; load_number: number | null; drop_number: number | null; confident: boolean; note: string };
 }
 
 // ---------------------------------------------------------------------------

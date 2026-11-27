@@ -128,6 +128,8 @@ export interface ReplyAttachment {
   // Which numbered load the POD is for (index into the thread's loads).
   load_number: number | null;
   load_id: string | null;
+  // Which drop of a multi-drop load the POD is for (the stop's id) - null when it covers the whole load or the drop wasn't clear.
+  stop_id?: string | null;
   confident: boolean;
   note: string | null;
 }

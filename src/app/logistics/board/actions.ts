@@ -339,6 +339,31 @@ export async function recordStopPod(input: {
   return { ok: true };
 }
 
+// Ties an already-attached POD to one drop of a multi-drop load (or back to "whole load" with null). Tying it
+// marks that drop delivered, completes the load once every drop is, and lets the delivered email go out to
+// the right customer with the right POD.
+export async function assignPodToStop(docId: string, stopId: string | null): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data: doc, error: docError } = await supabase.from("load_documents").select("load_id").eq("id", docId).single();
+  if (docError || !doc) return { error: docError?.message ?? "Document not found." };
+  const { error } = await supabase.from("load_documents").update({ stop_id: stopId }).eq("id", docId);
+  if (error) return { error: /stop_id|column/i.test(error.message) ? "Per-drop POD isn't set up yet - run migration 172." : error.message };
+  if (stopId) {
+    await supabase
+      .from("load_stops")
+      .update({ delivered_at: new Date().toISOString(), delivered_by: user?.email ?? null })
+      .eq("id", stopId)
+      .is("delivered_at", null);
+    await syncLoadCompletion(supabase, doc.load_id as string);
+  }
+  await tellCustomerDelivered(doc.load_id as string);
+  revalidateAll();
+  return { ok: true };
+}
+
 export interface LoadDocumentLink {
   id: string;
   file_name: string;

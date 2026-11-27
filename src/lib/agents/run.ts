@@ -129,6 +129,24 @@ function addAgentLine(existing: string | null | undefined, stamp: string, text: 
   return [existing, `[Agent ${stamp}] ${text}`].filter(Boolean).join("\n");
 }
 
+// Which POD files go with one drop of a load: the files tied to that drop, else - on a load with a single
+// customer - the whole-load files. On a multi-drop load for several customers an untied POD is NOT sent to
+// everyone (each customer must only get their own paperwork); it waits until someone ties it to a drop, and
+// `held` says so.
+function podFilesForStop<D extends { stop_id: string | null }>(
+  stops: { id: string; client_name: string | null }[],
+  stop: { id: string },
+  loadDocs: D[],
+): { files: D[]; held: boolean } {
+  const own = loadDocs.filter((d) => d.stop_id === stop.id);
+  if (own.length > 0) return { files: own, held: false };
+  const loose = loadDocs.filter((d) => !d.stop_id);
+  if (loose.length === 0) return { files: [], held: false };
+  const customers = new Set(stops.map((s) => customerKey(s.client_name)).filter(Boolean));
+  if (stops.length > 1 && customers.size > 1) return { files: [], held: true };
+  return { files: loose, held: false };
+}
+
 function splitEmails(value: string | null | undefined): string[] {
   return (value ?? "")
     .split(/[,;\s]+/)
@@ -610,13 +628,14 @@ async function runCustomerDelivered(
   type Stop = NonNullable<Load["load_stops"]>[number] & { delivered_email_at?: string | null };
   type Entry = { name: string; stops: Stop[]; docs: Map<string, PodDoc>; loadIds: Set<string> };
   const byCustomer = new Map<string, Entry>();
+  const heldLoads = new Set<string>();
   for (const load of (loads ?? []) as Load[]) {
     const loadDocs = docs.filter((d) => d.load_id === load.id);
     for (const stop of [...(load.load_stops ?? [])].sort((a, b) => a.position - b.position) as Stop[]) {
       if (stop.delivered_email_at) continue;
       if (load.status !== "complete" && !stop.delivered_at) continue;
-      const own = loadDocs.filter((d) => d.stop_id === stop.id);
-      const podFiles = own.length > 0 ? own : loadDocs.filter((d) => !d.stop_id);
+      const { files: podFiles, held } = podFilesForStop(load.load_stops ?? [], stop, loadDocs);
+      if (held) heldLoads.add(`(${loadHeadline(load)})`);
       if (podFiles.length === 0) continue;
       const key = customerKey(stop.client_name);
       if (!key) continue;
@@ -627,6 +646,7 @@ async function runCustomerDelivered(
       byCustomer.set(key, entry);
     }
   }
+  if (heldLoads.size > 0) opts.notes?.push(`Delivered email held for load ${[...heldLoads].join(", ")}: it has several customers and the POD isn't tied to a drop yet (Edit load > Proof of Delivery).`);
   if (byCustomer.size === 0) return 0;
 
   const { data: customerRows, error: customerError } = await db.from("customer_emails").select("name_key, to_emails, cc_emails");
@@ -710,18 +730,21 @@ export async function sendDeliveredNotice(
 
   type Group = { name: string; stops: DeliveredStopInfo[]; docs: Map<string, NoticeDoc> };
   const groups = new Map<string, Group>();
+  let heldNoTie = false;
   for (const stop of [...((load as Load).load_stops ?? [])].sort((a, b) => a.position - b.position)) {
     const key = customerKey(stop.client_name);
     if (!key) continue;
-    const own = docs.filter((d) => d.stop_id === stop.id);
-    const files = own.length > 0 ? own : docs.filter((d) => !d.stop_id);
+    const { files, held } = podFilesForStop((load as Load).load_stops ?? [], stop, docs);
+    if (held) heldNoTie = true;
     if (files.length === 0) continue;
     const group: Group = groups.get(key) ?? { name: stop.client_name ?? key, stops: [], docs: new Map() };
     group.stops.push(stop);
     for (const d of files) group.docs.set(d.id, d);
     groups.set(key, group);
   }
-  if (groups.size === 0) return { error: "No customer on this load has a POD attached to their drop." };
+  if (groups.size === 0) {
+    return { error: heldNoTie ? "This load has several customers and its POD isn't tied to a drop yet - open Edit load > Proof of Delivery and pick the drop each POD belongs to." : "No customer on this load has a POD attached to their drop." };
+  }
 
   const noEmail = [...groups]
     .filter(([key]) => splitEmails(emailsByKey.get(key)?.to_emails as string | null | undefined).length === 0)
@@ -1103,7 +1126,7 @@ async function storeAttachments(db: SupabaseClient, messageId: string, thread: A
     const load = byId.get(id);
     return {
       number: i + 1,
-      description: load ? [loadHeadline(load), ...stopLines(load)].join(" | ") : "unknown load",
+      description: load ? [loadHeadline(load), ...stopLines(load).map((l, n, all) => (all.length > 1 ? `Drop ${n + 1}: ${l}` : l))].join(" | ") : "unknown load",
     };
   });
 
@@ -1130,11 +1153,14 @@ async function storeAttachments(db: SupabaseClient, messageId: string, thread: A
     try {
       const verdict = await verifyPod({ data: file.data, contentType: file.contentType, loads: numbered, replyText });
       const loadId = verdict.load_number ? (thread.record_ids[verdict.load_number - 1] ?? null) : null;
+      const matchedStops = loadId ? [...(byId.get(loadId)?.load_stops ?? [])].sort((a, b) => a.position - b.position) : [];
+      const stopId = matchedStops.length > 1 && verdict.drop_number ? (matchedStops[verdict.drop_number - 1]?.id ?? null) : null;
       out.push({
         ...base,
         is_pod: verdict.is_pod,
         load_number: loadId ? verdict.load_number : null,
         load_id: loadId,
+        stop_id: stopId,
         // A file that isn't a POD needs no review; one that is must be matched.
         confident: verdict.is_pod ? verdict.confident && loadId !== null : true,
         note: verdict.note,
@@ -1776,8 +1802,10 @@ export async function applyReply(
     if (u.new_status) patch.status = u.new_status;
 
     if (loadPods.length > 0) {
-      patch.status = "complete";
-      patch.pod_pending = false;
+      // A POD matched to one drop of a multi-drop load marks that drop delivered; the load itself only goes
+      // Complete once every drop is. A POD that covers the whole load (or whose drop wasn't clear) completes it.
+      const tied = loadPods.filter((a) => a.stop_id);
+      const loose = loadPods.filter((a) => !a.stop_id);
       const { data: have } = await db.from("load_documents").select("storage_path").eq("load_id", u.load_id);
       const haveSet = new Set((have ?? []).map((d) => d.storage_path as string));
       const fresh = loadPods.filter((a) => !haveSet.has(a.storage_path));
@@ -1785,6 +1813,7 @@ export async function applyReply(
         const { error: docError } = await db.from("load_documents").insert(
           fresh.map((a) => ({
             load_id: u.load_id,
+            stop_id: a.stop_id ?? null,
             kind: "pod",
             file_name: a.file_name,
             storage_path: a.storage_path,
@@ -1795,7 +1824,27 @@ export async function applyReply(
         );
         if (docError) throw new Error(docError.message);
       }
-      patch.notes = addAgentLine((patch.notes as string | undefined) ?? load?.notes, stamp, "POD received by email - delivered.");
+      let allDelivered = loose.length > 0;
+      const dropNames: string[] = [];
+      if (tied.length > 0) {
+        const { data: stopRows } = await db.from("load_stops").select("id, client_name, position, delivered_at").eq("load_id", u.load_id).order("position");
+        const tiedIds = new Set(tied.map((a) => a.stop_id));
+        const nowIso = new Date().toISOString();
+        for (const st of stopRows ?? []) {
+          if (!tiedIds.has(st.id as string)) continue;
+          dropNames.push(String(st.client_name ?? "a drop"));
+          if (!st.delivered_at) await db.from("load_stops").update({ delivered_at: nowIso, delivered_by: "HOPS (carrier email)" }).eq("id", st.id);
+        }
+        if (!allDelivered) allDelivered = (stopRows ?? []).every((st) => st.delivered_at || tiedIds.has(st.id as string));
+      }
+      if (allDelivered) {
+        patch.status = "complete";
+        patch.pod_pending = false;
+      }
+      const podLine = dropNames.length > 0 && loose.length === 0
+        ? `POD received by email for ${dropNames.join(" and ")}${allDelivered ? " - all drops delivered." : " - other drops still to deliver."}`
+        : "POD received by email - delivered.";
+      patch.notes = addAgentLine((patch.notes as string | undefined) ?? load?.notes, stamp, podLine);
     } else if (u.delivered === true && load?.status !== "complete") {
       patch.pod_pending = true;
       patch.notes = addAgentLine((patch.notes as string | undefined) ?? load?.notes, stamp, "Carrier says delivered - waiting on POD.");
@@ -1807,7 +1856,7 @@ export async function applyReply(
     const { error: updateError } = await db.from("loads").update(patch).eq("id", u.load_id);
     if (updateError) throw new Error(updateError.message);
     const changes = Object.keys(patch).filter((k) => k !== "notes" || patch.notes !== load?.notes);
-    applied.push(`load #${u.load_number}: ${loadPods.length > 0 ? "POD received, Complete" : changes.join(", ")}`);
+    applied.push(`load #${u.load_number}: ${loadPods.length > 0 ? (patch.status === "complete" ? "POD received, Complete" : "POD received for a drop") : changes.join(", ")}`);
   }
 
   await db

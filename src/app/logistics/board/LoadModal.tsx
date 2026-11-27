@@ -7,9 +7,11 @@ import {
   createDestinationCity,
   createHub,
   createLoad,
+  assignPodToStop,
   getLoadDocuments,
   recordLoadDeliveryBol,
   recordLoadPod,
+  recordStopPod,
   recordLoadRateCon,
   removeLoadDocument,
   resetRateConSignature,
@@ -75,6 +77,17 @@ export default function LoadModal({
   // Proof of delivery ------------------------------------------------------
   const [allDocs, setAllDocs] = useState<LoadDocumentLink[]>([]);
   const podDocs = allDocs.filter((d) => d.kind === "pod");
+  // Multi-drop loads: which drop a POD belongs to. The upload goes to the picked drop (default: the next
+  // drop with no POD yet); "" = the whole load.
+  const stopsSorted = load ? [...load.load_stops].sort((a, b) => a.position - b.position) : [];
+  const multiDrop = stopsSorted.length > 1;
+  const [podStopChoice, setPodStopChoice] = useState<string | null>(null);
+  const defaultPodStop = stopsSorted.find((s) => !s.delivered_at && !podDocs.some((d) => d.stop_id === s.id)) ?? stopsSorted[0];
+  const podStopId = !multiDrop ? "" : (podStopChoice ?? defaultPodStop?.id ?? "");
+  const dropLabel = (i: number) => {
+    const st = stopsSorted[i];
+    return `Drop ${i + 1}: ${st.client_name || "(no client)"}${st.order_number ? ` #${st.order_number}` : st.po_number ? ` PO ${st.po_number}` : ""}`;
+  };
   const rateConDocs = allDocs.filter((d) => d.kind === "ratecon" || d.kind === "ratecon_signed");
   const [rateConBusy, setRateConBusy] = useState(false);
   // Delivery BOL (optional): on an existing load it uploads straight away; on a new load the chosen file is
@@ -139,6 +152,21 @@ export default function LoadModal({
     setPodError(null);
     setPodUploading(true);
     try {
+      // On a multi-drop load the POD is tied to the drop picked beside the button.
+      if (podStopId) {
+        for (const file of files) {
+          const ext = file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : "";
+          const storagePath = `manual/${load.id}/${crypto.randomUUID()}${ext}`;
+          const { error: uploadError } = await createClient()
+            .storage.from("load-documents")
+            .upload(storagePath, file, { contentType: file.type || undefined });
+          if (uploadError) throw new Error(uploadError.message);
+          const r = await recordStopPod({ stopId: podStopId, loadId: load.id, fileName: file.name, storagePath, contentType: file.type || null, sizeBytes: file.size });
+          if ("error" in r) throw new Error(r.error);
+        }
+        setAllDocs(await getLoadDocuments(load.id));
+        return;
+      }
       // Straight to Storage from the browser (a server action's body is
       // capped far below a scan's size), then recorded against the load.
       for (const file of files) {
@@ -438,7 +466,28 @@ export default function LoadModal({
                   .findIndex((s) => s.id === d.stop_id);
                 return (
                   <p key={d.id} className="text-xs">
-                    {stopIndex >= 0 && <span className="font-medium">Drop {stopIndex + 1}: </span>}
+                    {multiDrop ? (
+                      <select
+                        value={d.stop_id ?? ""}
+                        disabled={podUploading}
+                        onChange={(e) => {
+                          const v = e.target.value || null;
+                          void assignPodToStop(d.id, v).then(async (r) => {
+                            if ("error" in r) setPodError(r.error);
+                            else setAllDocs(await getLoadDocuments(load.id));
+                          });
+                        }}
+                        className={`mr-1.5 rounded border px-1 py-0.5 text-[11px] ${d.stop_id ? "border-black/20 dark:border-white/20" : "border-amber-500 bg-amber-50 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200"}`}
+                        title="Which drop this POD is for - the delivered email sends each customer their own POD"
+                      >
+                        <option value="">Not tied to a drop</option>
+                        {stopsSorted.map((st, i) => (
+                          <option key={st.id} value={st.id}>{dropLabel(i)}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      stopIndex >= 0 && <span className="font-medium">Drop {stopIndex + 1}: </span>
+                    )}
                     {d.url ? (
                       <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-green-700 hover:underline dark:text-green-400">
                         📄 {d.file_name}
@@ -451,6 +500,9 @@ export default function LoadModal({
                   </p>
                 );
               })}
+              {multiDrop && podDocs.some((d) => !d.stop_id) && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">A POD that isn&apos;t tied to a drop won&apos;t be emailed to customers - pick its drop above.</p>
+              )}
               {podDocs.length === 0 && load.status === "complete" && (
                 <p className="text-xs text-black/50 dark:text-white/50">No POD is attached to this load - attach one below.</p>
               )}
@@ -466,8 +518,23 @@ export default function LoadModal({
                     Delivered - Pending POD
                   </label>
                 )}
+                {multiDrop && (
+                  <label className="flex items-center gap-1.5">
+                    POD is for
+                    <select
+                      value={podStopId}
+                      onChange={(e) => setPodStopChoice(e.target.value)}
+                      className="rounded border border-black/20 px-1 py-0.5 text-xs dark:border-white/20 dark:bg-transparent"
+                    >
+                      {stopsSorted.map((st, i) => (
+                        <option key={st.id} value={st.id}>{dropLabel(i)}</option>
+                      ))}
+                      <option value="">Whole load (all drops)</option>
+                    </select>
+                  </label>
+                )}
                 <label className="cursor-pointer rounded-md border border-black/20 px-2 py-1 font-medium hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10">
-                  {podUploading ? "Uploading..." : load.status === "complete" ? "Attach POD" : "Attach POD and mark Complete"}
+                  {podUploading ? "Uploading..." : multiDrop && podStopId ? "Attach POD to this drop" : load.status === "complete" ? "Attach POD" : "Attach POD and mark Complete"}
                   <input
                     type="file"
                     accept="application/pdf,image/*"
