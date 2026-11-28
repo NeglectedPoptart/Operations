@@ -10,6 +10,7 @@ import {
   createBroker,
   createDestinationCity,
   createHub,
+  addStopsToLoad,
   createLoad,
   extractRateConfirmationText,
   lookupZipCityState,
@@ -57,6 +58,9 @@ interface StopDraft {
 
 interface LoadDraft {
   id: string;
+  // Set when this rate confirmation is another order for a truck that's already on the list: its drops are
+  // added to that load instead of creating a new one.
+  existingLoadId: string;
   loadingDate: string;
   source: string;
   rate: string;
@@ -77,10 +81,12 @@ export default function RateConfirmationImport({
   brokers,
   hubOptions: initialHubOptions,
   cityOptions: initialCityOptions,
+  existingLoads,
 }: {
   brokers: Broker[];
   hubOptions: string[];
   cityOptions: string[];
+  existingLoads: { id: string; label: string }[];
 }) {
   const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -147,6 +153,7 @@ export default function RateConfirmationImport({
 
     return {
       id: crypto.randomUUID(),
+      existingLoadId: "",
       loadingDate: parsed.loadingDate ?? "",
       source: parsed.source ?? "",
       rate: parsed.rate !== null ? String(parsed.rate) : "",
@@ -241,7 +248,46 @@ export default function RateConfirmationImport({
     });
   }
 
+  // Attaches each rate confirmation PDF on the draft to a load (the carrier signs it on their Broker Pending List).
+  async function attachRateCons(loadId: string, draft: LoadDraft) {
+    const failed: string[] = [];
+    for (const s of draft.stops) {
+      if (!s.file) continue;
+      try {
+        const storagePath = `ratecons/${loadId}/${crypto.randomUUID()}.pdf`;
+        const { error: uploadError } = await createClient().storage.from("load-documents").upload(storagePath, s.file, { contentType: "application/pdf" });
+        if (uploadError) throw new Error(uploadError.message);
+        const r = await recordLoadRateCon({ loadId, fileName: s.file.name, storagePath, contentType: "application/pdf", sizeBytes: s.file.size });
+        if ("error" in r) throw new Error(r.error);
+      } catch {
+        failed.push(s.file.name);
+      }
+    }
+    if (failed.length > 0) alert(`The load was saved, but the rate confirmation PDF could not be attached (${failed.join(", ")}). Open the load and use "Attach rate confirmation PDF".`);
+  }
+
   async function saveDraft(draft: LoadDraft) {
+    if (draft.existingLoadId) {
+      const r = await addStopsToLoad(
+        draft.existingLoadId,
+        draft.stops.map((s) => {
+          const { city, state } = splitDestinationLabel(s.destination);
+          return {
+            order_number: s.orderNumber || null,
+            po_number: s.poNumber || null,
+            client_name: s.clientName || null,
+            destination_city: city || null,
+            destination_state: state || null,
+            delivery_date: s.deliveryDate || null,
+            delivery_time: null,
+            appointment: s.appointment || null,
+          };
+        }),
+      );
+      if ("error" in r) throw new Error(r.error);
+      await attachRateCons(draft.existingLoadId, draft);
+      return;
+    }
     let brokerId = "";
     if (draft.brokerChoice.mode === "existing") {
       brokerId = draft.brokerChoice.brokerId;
@@ -280,25 +326,12 @@ export default function RateConfirmationImport({
 
     // Keep a scan of each rate confirmation on the load (the carrier signs it on their Broker Pending
     // List). The load is already saved, so a failure here only warns.
-    const failed: string[] = [];
-    for (const s of draft.stops) {
-      if (!s.file) continue;
-      try {
-        const storagePath = `ratecons/${loadId}/${crypto.randomUUID()}.pdf`;
-        const { error: uploadError } = await createClient().storage.from("load-documents").upload(storagePath, s.file, { contentType: "application/pdf" });
-        if (uploadError) throw new Error(uploadError.message);
-        const r = await recordLoadRateCon({ loadId, fileName: s.file.name, storagePath, contentType: "application/pdf", sizeBytes: s.file.size });
-        if ("error" in r) throw new Error(r.error);
-      } catch {
-        failed.push(s.file.name);
-      }
-    }
-    if (failed.length > 0) alert(`The load was saved, but the rate confirmation PDF could not be attached (${failed.join(", ")}). Open the load and use "Attach rate confirmation PDF".`);
+    await attachRateCons(loadId, draft);
   }
 
   async function handleConfirmAll() {
     const missingBrokerIndex = drafts.findIndex(
-      (d) => d.brokerChoice.mode === "new" && !d.brokerChoice.newName.trim(),
+      (d) => !d.existingLoadId && d.brokerChoice.mode === "new" && !d.brokerChoice.newName.trim(),
     );
     if (missingBrokerIndex !== -1) {
       alert(`Enter a broker name for "${draftLabel(drafts[missingBrokerIndex], missingBrokerIndex)}", or pick an existing one.`);
@@ -384,6 +417,18 @@ export default function RateConfirmationImport({
                         ))}
                     </select>
                   )}
+                  <select
+                    value={draft.existingLoadId}
+                    onChange={(e) => updateDraft(draft.id, { existingLoadId: e.target.value })}
+                    className={`${field} w-auto max-w-[16rem] bg-white text-xs text-black`}
+                  >
+                    <option value="">New truck (its own load)</option>
+                    {existingLoads.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        Add to: {l.label}
+                      </option>
+                    ))}
+                  </select>
                   <button onClick={() => removeDraft(draft.id)} className="text-xs font-medium text-red-600 hover:underline">
                     Remove
                   </button>
@@ -400,6 +445,15 @@ export default function RateConfirmationImport({
                 </ul>
               )}
 
+              {draft.existingLoadId && (
+                <p className="rounded-md border border-blue-500/30 bg-blue-50 p-2 text-xs text-blue-900 dark:bg-blue-950/20 dark:text-blue-200">
+                  This order will be added as another drop on {existingLoads.find((l) => l.id === draft.existingLoadId)?.label ?? "that truck"}, and this rate
+                  confirmation attached to it. Pick up date, source, rate and carrier stay as they are on that load. If the carrier already signed, they&apos;ll be
+                  asked to sign the updated rate confirmation (and are emailed).
+                </p>
+              )}
+
+              {!draft.existingLoadId && (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div>
                   <label className={label}>Pick up Date</label>
@@ -463,6 +517,7 @@ export default function RateConfirmationImport({
                   )}
                 </div>
               </div>
+              )}
 
               <div className="space-y-3">
                 {draft.stops.map((stop) => (
@@ -545,6 +600,7 @@ export default function RateConfirmationImport({
                 ))}
               </div>
 
+              {!draft.existingLoadId && (
               <div>
                 <label className={label}>Notes</label>
                 <textarea
@@ -554,6 +610,7 @@ export default function RateConfirmationImport({
                   className={field}
                 />
               </div>
+              )}
 
             </div>
           ))}
@@ -565,7 +622,7 @@ export default function RateConfirmationImport({
                 disabled={savingAll}
                 className="rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
               >
-                {savingAll ? "Saving..." : `Confirm & Add ${drafts.length} Load${drafts.length === 1 ? "" : "s"} to Pending to Load`}
+                {savingAll ? "Saving..." : drafts.every((d) => d.existingLoadId) ? `Confirm & Add ${drafts.length} Order${drafts.length === 1 ? "" : "s"} to the Truck${drafts.length === 1 ? "" : "s"}` : `Confirm & Add ${drafts.length} Load${drafts.length === 1 ? "" : "s"} to Pending to Load`}
               </button>
               <button
                 onClick={reset}

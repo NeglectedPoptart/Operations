@@ -56,6 +56,20 @@ export default function BoardClient({
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [loads]);
 
+  // Trucks a new rate confirmation can still be added to: everything not yet Delivered.
+  const existingLoads = useMemo(
+    () =>
+      loads
+        .filter((l) => l.status !== "complete")
+        .map((l) => {
+          const stops = [...l.load_stops].sort((a, b) => a.position - b.position);
+          const orders = stops.map((s) => (s.order_number ? `#${s.order_number}` : s.client_name)).filter(Boolean).join(" + ");
+          const date = l.loading_date ? l.loading_date.slice(5).replace("-", "/") : "";
+          return { id: l.id, label: [orders || "Load", l.brokers?.name, date && `loads ${date}`].filter(Boolean).join(" · ") };
+        }),
+    [loads],
+  );
+
   const filteredLoads = useMemo(() => {
     if (!customerFilter) return loads;
     return loads.filter((l) =>
@@ -106,6 +120,7 @@ export default function BoardClient({
         brokers={brokers}
         hubOptions={hubOptions}
         cityOptions={cityOptions}
+        existingLoads={existingLoads}
       />
 
       {LOAD_STATUSES.map((section) => {

@@ -92,6 +92,28 @@ export async function notifyCarrierNewLoad(loadId: string): Promise<void> {
   }
 }
 
+// Another order was added to a load that's already on the carrier's list (an updated rate confirmation is attached).
+export async function notifyCarrierOrderAdded(loadId: string, added: Row[]): Promise<void> {
+  try {
+    if (!graphConfigured()) return;
+    const c = await carrierLoad(loadId);
+    if (!c) return;
+    const lines = [
+      `We've added ${added.length === 1 ? "another order" : `${added.length} more orders`} to your load ${c.ref}:`,
+      "",
+      ...dropLines(added),
+      "",
+      "The rate confirmation on your list has been updated - please open it and sign it again.",
+      "",
+      "All deliveries on the truck now:",
+      ...dropLines(c.stops),
+    ];
+    await send(c, `Order added to your load - ${c.ref}`, lines);
+  } catch {
+    // the order is saved either way
+  }
+}
+
 // A charge was added to one of this carrier's loads.
 export async function notifyCarrierCharge(loadId: string, charge: { kind: string; amount: number; note: string | null }): Promise<void> {
   try {

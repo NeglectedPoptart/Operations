@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
-import { notifyCarrierCharge, notifyCarrierNewLoad } from "@/lib/brokerPortal/notifyCarrier";
+import { notifyCarrierCharge, notifyCarrierNewLoad, notifyCarrierOrderAdded } from "@/lib/brokerPortal/notifyCarrier";
 // Same unpdf-based extraction as the Price Sheets PDF import - see that
 // file's comment for why unpdf specifically (serverless-safe, no separate
 // worker file to resolve at runtime).
@@ -134,14 +134,70 @@ function revalidateAll() {
   revalidatePath("/");
 }
 
+// Saves the drops from the edit form. A drop that was already on the load is updated in place (matched by order
+// number, else customer, else its position) so its id - and with it the delivered mark, the delivered-email
+// record and any POD tied to it - survives an edit. Only drops that were removed are deleted.
 async function replaceStops(supabase: SupabaseClient, loadId: string, stops: StopInput[]) {
-  const { error: deleteError } = await supabase.from("load_stops").delete().eq("load_id", loadId);
-  if (deleteError) throw new Error(deleteError.message);
-  if (stops.length === 0) return;
+  const { data: existingRows, error: readError } = await supabase.from("load_stops").select("id, position, order_number, client_name").eq("load_id", loadId);
+  if (readError) throw new Error(readError.message);
+  const old = [...(existingRows ?? [])].sort((a, b) => (a.position as number) - (b.position as number));
+  const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+  const keyOf = (order: unknown, client: unknown) => (norm(order) ? `o:${norm(order)}` : norm(client) ? `c:${norm(client)}` : "");
+  const used = new Set<string>();
+  const matchFor: (string | null)[] = stops.map((s) => {
+    const k = keyOf(s.order_number, s.client_name);
+    if (!k) return null;
+    const hit = old.find((o) => !used.has(o.id as string) && keyOf(o.order_number, o.client_name) === k);
+    if (hit) used.add(hit.id as string);
+    return (hit?.id as string | undefined) ?? null;
+  });
+  stops.forEach((_, i) => {
+    if (matchFor[i]) return;
+    const hit = old.find((o) => !used.has(o.id as string) && (o.position as number) === i + 1);
+    if (hit) {
+      used.add(hit.id as string);
+      matchFor[i] = hit.id as string;
+    }
+  });
 
-  const rows = stops.map((s, i) => ({ load_id: loadId, position: i + 1, ...s }));
+  const gone = old.filter((o) => !used.has(o.id as string)).map((o) => o.id as string);
+  if (gone.length > 0) {
+    const { error: deleteError } = await supabase.from("load_stops").delete().in("id", gone);
+    if (deleteError) throw new Error(deleteError.message);
+  }
+  for (let i = 0; i < stops.length; i++) {
+    const id = matchFor[i];
+    if (id) {
+      const { error } = await supabase.from("load_stops").update({ position: i + 1, ...stops[i] }).eq("id", id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase.from("load_stops").insert({ load_id: loadId, position: i + 1, ...stops[i] });
+      if (error) throw new Error(error.message);
+    }
+  }
+}
+
+// Adds more orders (drops) to a truck that's already on the list - used when a new rate confirmation comes in
+// for freight riding an existing load. The new drops go on the end; delivered marks and PODs on the existing
+// drops are untouched. If the carrier had already signed, the signature is cleared so they sign the updated
+// rate confirmation, and they're emailed.
+export async function addStopsToLoad(loadId: string, stops: StopInput[]): Promise<{ ok: true } | { error: string }> {
+  const supabase = await createClient();
+  const { data: load, error: loadError } = await supabase.from("loads").select("id, status, broker_id, ratecon_signed_at").eq("id", loadId).maybeSingle();
+  if (loadError || !load) return { error: loadError?.message ?? "Load not found." };
+  if (load.status === "complete") return { error: "That load is already Delivered." };
+  if (stops.length === 0) return { error: "Nothing to add." };
+
+  const { data: existing } = await supabase.from("load_stops").select("position").eq("load_id", loadId);
+  let next = Math.max(0, ...((existing ?? []).map((s) => s.position as number))) + 1;
+  const rows = stops.map((s) => ({ load_id: loadId, position: next++, ...s }));
   const { error } = await supabase.from("load_stops").insert(rows);
-  if (error) throw new Error(error.message);
+  if (error) return { error: error.message };
+
+  if (load.ratecon_signed_at) await supabase.from("loads").update({ ratecon_signed_at: null, ratecon_signed_by: null }).eq("id", loadId);
+  if (load.broker_id) after(() => notifyCarrierOrderAdded(loadId, rows as unknown as Record<string, unknown>[]));
+  revalidateAll();
+  return { ok: true };
 }
 
 async function replacePickups(supabase: SupabaseClient, loadId: string, pickups: PickupInput[]) {
